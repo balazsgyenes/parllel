@@ -1,9 +1,9 @@
 from typing import Dict, List, Tuple
 
-from nptyping import NDArray
-
+from parllel.types.traj_info import TrajInfo
+from parllel.buffers.buffer import Buffer
 from .cage import Cage
-from parllel.utils.traj_info import TrajInfo
+
 
 class ParallelProcessCage(Cage):
     def __init__(self, EnvClass, env_kwargs) -> None:
@@ -14,7 +14,7 @@ class ParallelProcessCage(Cage):
         self._follower_pipe = None
         self._step_buffer = None
 
-    def initialize(self, step_buffer: NDArray) -> None:
+    def initialize(self, step_buffer: Buffer) -> None:
         """Instantiate environment and subprocess, etc.
         """
         self._step_buffer = step_buffer
@@ -22,7 +22,7 @@ class ParallelProcessCage(Cage):
     def start_step(self) -> None:
         pass
 
-    def await_step(self) -> NDArray:
+    def await_step(self) -> Buffer:
         pass
 
     def shutdown(self) -> None:
