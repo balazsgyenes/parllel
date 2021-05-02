@@ -170,6 +170,8 @@ class NamedArrayTuple(NamedTuple):
         fields and assign values into selected index or slice of corresponding
         value.  Else, assign whole of value to selected index or slice of
         all fields.  Ignore fields that are both None.
+
+        # TODO: add handling of None fields
         """
         if not (isinstance(value, tuple) and  # Check for matching structure.
                 getattr(value, "_fields", None) == self._fields):

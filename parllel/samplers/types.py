@@ -2,6 +2,6 @@ from parllel.types.named_tuple import NamedArrayTupleType
 
 Samples = NamedArrayTupleType("Samples", ["agent", "env"])
 AgentSamples = NamedArrayTupleType("AgentSamples",
-    ["action", "prev_action", "agent_info"])
+    ["action", "agent_info", "rnn_state"])
 EnvSamples = NamedArrayTupleType("EnvSamples",
-    ["observation", "reward", "prev_reward", "done", "env_info"])
+    ["observation", "reward", "done", "env_info"])
