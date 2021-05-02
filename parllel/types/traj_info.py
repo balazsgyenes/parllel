@@ -9,7 +9,7 @@ class TrajInfo:
     _current_discount: float = 1.0
     _discount: float = 1.0
 
-    def step(self, observation, reward, done, env_info):
+    def step(self, observation, action, reward, done, env_info):
         self.Length += 1
         self.Return += reward
         self.NonzeroRewards += reward != 0
