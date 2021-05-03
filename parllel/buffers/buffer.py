@@ -34,6 +34,11 @@ class Buffer:
             self._buffer.shape = padded_shape
         else:
             self._buffer = np.zeros(shape=padded_shape, dtype=self._dtype)
+        
+        # store position of last write operation. This is used by `rotate()` to
+        # ensure that the last write from the last batch ends up as previous
+        # value.
+        self._position = 0
 
     def rotate(self):
         """Prepare buffer for collecting next batch.
@@ -43,7 +48,10 @@ class Buffer:
             become previous values for upcoming batch (e.g. value_T becomes
             value_(-1) and value_(T+1) becomes value_0).
             """
-            self._buffer[:(self._padding+1)] = self._buffer[-(self._padding+1):]
+            last_values = slice(self._position, self._position + self._padding + 1)
+            next_previous_values = slice(0, self._padding + 1)
+            self._buffer[next_previous_values] = self._buffer[last_values]
+        self._position = 0
 
     def __getitem__(self, location: Union[int, slice]):
         if isinstance(location, int):
@@ -52,6 +60,7 @@ class Buffer:
             raise NotImplementedError
 
     def __setitem__(self, location: Union[int, slice], value):
+        self._position += 1
         if isinstance(location, int):
             self._buffer[location + self._padding] = value
         else:
