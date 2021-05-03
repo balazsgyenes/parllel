@@ -1,22 +1,20 @@
-from typing import List, Tuple
 from functools import reduce
+from typing import List, Tuple
 
 from parllel.types.traj_info import TrajInfo
-from .types import Samples
+from .collections import Samples
 
 class Sampler:
     def __init__(self,
         batch_T: int,
         batch_B: int,
         get_bootstrap_value: bool = False,
+        break_if_all_done: bool = False,
     ) -> None:
         self.batch_T = batch_T
         self.batch_B = batch_B
         self.get_bootstrap_value = get_bootstrap_value
-
-        self.agent = None
-        self.envs = None
-        self.batch_buffer = None
+        self.break_if_all_done = break_if_all_done
 
     def initialize(self, agent, envs, batch_buffer: Samples) -> None:
         self.agent = agent
@@ -64,6 +62,10 @@ class Sampler:
                     self.agent.reset_one(idx=b)
                 observation[t+1, b] = next_obs
                 done[t, b] = next_done
+
+            if self.break_if_all_done and all(done[t]):
+                # all done
+                break
         
         # get bootstrap value if requested
         if self.get_bootstrap_value:

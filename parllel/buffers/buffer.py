@@ -21,9 +21,8 @@ class Buffer:
         assert padding >= 0, "Padding must not be negative."
         self._padding = padding
 
-        self._buffer = None
-
     def initialize(self):
+        # initialize buffer in either local or shared memory
         padded_shape = (self._shape[0] + 2 * self._padding,) + self._shape[1:]
         if self._shared_memory:
             size = int(np.prod(padded_shape))
