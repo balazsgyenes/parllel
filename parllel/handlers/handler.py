@@ -5,5 +5,5 @@ class Handler:
     def step(self) -> None:
         pass
 
-    def shutdown(self) -> None:
+    def close(self) -> None:
         pass

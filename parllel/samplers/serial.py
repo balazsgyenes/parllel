@@ -81,5 +81,5 @@ class Sampler:
 
         return self.batch_buffer, completed_trajectories
 
-    def shutdown(self):
+    def close(self):
         pass

@@ -68,5 +68,5 @@ class Cage:
         # TODO: how should obs be returned??
         return completed_trajs
 
-    def shutdown(self) -> None:
+    def close(self) -> None:
         self._env.close()
