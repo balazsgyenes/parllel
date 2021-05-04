@@ -67,6 +67,9 @@ class Sampler:
                 # all done
                 break
         
+        #TODO: must ensure that observations for next batch are written to T+1,
+        # even if trajectory is finished early
+
         # get bootstrap value if requested
         if self.get_bootstrap_value:
             # TODO: replace with agent.step()? Sampler chooses if rnn_state is advanced
