@@ -7,6 +7,16 @@ import numpy as np
 
 class Buffer:
     """Abstracts memory management for large arrays.
+
+    Optional padding can be used to extend the first dimension of the array symmetrically on both ends.
+    When reusing the buffer, this allows *looking into the past* by indexing out of the regular bounds of the array's shape. 
+
+    Examples:
+        >>> a = Buffer(shape=(4, 5), dtype=np.int, padding=1)
+        >>> a[4, :] = np.ones((1, 5))  # access the last element
+        >>> a.rotate()  # bring the last element to the front of the array at position -1
+        >>> a[-1]  # In contrast to lists, -1 does not refer to the last element in the array, but to the actual -1st element in the array. 
+        array([[1., 1., 1., 1., 1.]])
     """
     def __init__(self,
         shape: Tuple[int],

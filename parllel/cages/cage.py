@@ -9,6 +9,13 @@ from parllel.types.named_tuple import NamedTuple
 class Cage:
     """Cages abstract communication between the sampler and the environments.
 
+    Args:
+        EnvClass (Callable): TODO
+        env_kwargs (Dict): Key word arguments that should be passed to the `__init__` of `EnvClass`
+        TrajInfoClass (Callable): TODO
+        traj_info_kwargs (Dict): Key word arguments that should be passed to the `__init__` of `TrajInfoClass`
+        wait_before_reset (bool): TODO
+
     TODO: this class will need to own a buffer object of some kind so it can
     write into it. Otherwise there is no way except to pass numpy arrays
     through pipes.
@@ -18,7 +25,7 @@ class Cage:
     def __init__(self,
         EnvClass: Callable,
         env_kwargs: Dict,
-        TrajInfoCls: Callable,
+        TrajInfoClass: Callable,
         traj_info_kwargs: Dict,
         wait_before_reset: bool = False
     ) -> None:
@@ -31,7 +38,7 @@ class Cage:
     def initialize(self) -> None:
         self._env = self.EnvClass(**self.env_kwargs)
         self._completed_trajs = []
-        self._traj_info = self.TrajInfoCls(**self.traj_info_kwargs)
+        self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
         self._done = False
 
     def step(self, action) -> None:
