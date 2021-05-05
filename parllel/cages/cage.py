@@ -41,7 +41,7 @@ class Cage:
         self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
         self._done = False
 
-    def step(self, action) -> None:
+    def step_async(self, action) -> None:
         if self._done:
             #TODO: do we need any fake values here or can we just ignore them?
             # ensure that done is True for the rest of the batch
@@ -60,7 +60,7 @@ class Cage:
     def await_step(self) -> EnvStep:
         return self._step_result
 
-    def random_step(self):
+    def random_step_async(self):
         """Take a step with a random action from the env's action space.
         """
         raise NotImplementedError

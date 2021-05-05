@@ -53,13 +53,13 @@ class Sampler:
                 observation[t], action[t-1], reward[t-1], rnn_state[t])
             
             for b, env in enumerate(self.envs):
-                env.step(action[t, b])
+                env.step_async(action[t, b])
 
             for b, env in enumerate(self.envs):
                 next_obs, reward[t, b], next_done, env_info[t, b] = env.await_step()
                 if next_done:
                     next_obs = env.reset()
-                    self.agent.reset_one(idx=b)
+                    self.agent.reset_one(idx=b) # TODO: replace line
                 observation[t+1, b] = next_obs
                 done[t, b] = next_done
 

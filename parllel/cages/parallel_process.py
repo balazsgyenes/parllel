@@ -47,7 +47,7 @@ class ParallelProcessCage(Cage, mp.Process):
         # ensures that `step` is always followed by `await_step`
         self._last_command = None
 
-    def step(self, action) -> None:
+    def step_async(self, action) -> None:
         assert self._last_command is None
         self._leader_pipe.send(Message(Command.step, action))
         #TODO: obviously we don't want to send this numpy array through a pipe
@@ -59,7 +59,7 @@ class ParallelProcessCage(Cage, mp.Process):
         self._last_command = None
         return env_step
 
-    def random_step(self):
+    def random_step_async(self):
         """Take a step with a random action from the env's action space.
         """
         assert self._last_command is None
@@ -93,14 +93,14 @@ class ParallelProcessCage(Cage, mp.Process):
 
             if command == Command.step:
                 # data must be `action` argument
-                super().step(data)
+                super().step_async(data)
                 env_step = super().await_step()
                 # return must be `EnvStep`
                 self._follower_pipe.send(env_step)
 
             elif command == Command.random_step:
                 # data must be None
-                super().random_step()
+                super().random_step_async()
                 env_step = super().await_step()
                 # return must be `EnvStep`
                 self._follower_pipe.send(env_step)
