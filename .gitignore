@@ -1,0 +1,8 @@
+# Python cache files
+*.pyc
+
+# Python module metadata folder
+*.egg-info
+
+# log data folder
+log_data
