@@ -1,8 +1,10 @@
 from dataclasses import dataclass
+from functools import partial
 import enum
 from typing import Dict, List, Callable, Any
 import multiprocessing as mp
 
+from parllel.buffers.weak import WeakBuffer
 from parllel.envs.collections import EnvStep
 from parllel.types.traj_info import TrajInfo
 from .cage import Cage
@@ -14,6 +16,7 @@ class Command(enum.Enum):
     random_step = 2
     collect_completed_trajs = 3
     close = 4
+    write_to_buffer = 5
 
 
 @dataclass
@@ -36,12 +39,23 @@ class ParallelProcessCage(Cage, mp.Process):
         super().__init__(EnvClass, env_kwargs, TrajInfoCls, traj_info_kwargs,
             wait_before_reset)
         
-    def initialize(self) -> None:
+    def initialize(self, samples_buffer) -> None:
         """Instantiate environment and subprocess, etc.
         """
+        self._samples_buffer = samples_buffer
+        self._buffer_index = {}
+
         self._leader_pipe, self._follower_pipe = mp.Pipe()
         # start executing `run` method, which also calls super().initialize()
         self.start()
+
+        def write_callback(target_buffer_id, location, source_array_id):
+            self._leader_pipe.send(Message(Command.write_to_buffer, dict(
+                target_buffer_id = target_buffer_id,
+                location = location,
+                source_array_id = source_array_id,
+            )))
+        self._write_callback = write_callback
 
         # a primitive locking mechanism on the caller side
         # ensures that `step` is always followed by `await_step`
@@ -55,8 +69,15 @@ class ParallelProcessCage(Cage, mp.Process):
 
     def await_step(self) -> EnvStep:
         assert self._last_command in {Command.step, Command.random_step}
-        env_step = self._leader_pipe.recv()
+        array_ids = self._leader_pipe.recv()
         self._last_command = None
+
+        env_step = EnvStep(WeakBuffer(
+                write_callback=partial(self._write_callback, source_buffer_id=array_id),
+                read_callback=None,
+            ) for array_id in array_ids
+        )
+
         return env_step
 
     def random_step_async(self):
@@ -85,8 +106,8 @@ class ParallelProcessCage(Cage, mp.Process):
         # initialize Cage object
         super().initialize()
 
-        self._closing = False
-        while not self._closing:
+        _closing = False
+        while not _closing:
             message = self._follower_pipe.recv()
             command = message.command
             data = message.data
@@ -96,8 +117,24 @@ class ParallelProcessCage(Cage, mp.Process):
                 super().step_async(data)
                 env_step = super().await_step()
                 # return must be `EnvStep`
-                self._follower_pipe.send(env_step)
 
+                array_cache = {
+                    id(elem): elem
+                    for elem in env_step
+                }
+
+                self._follower_pipe.send(tuple(array_cache.keys()))
+
+                for _ in range(len(array_cache)):
+                    message = self._follower_pipe.recv()
+                    assert message.command == Command.write_to_buffer
+                    write_call = message.data
+
+                    source_array = array_cache[write_call["source_buffer_id"]]
+                    target_buffer = self._buffer_index[write_call["target_buffer_id"]]
+                    location = write_call["location"]
+                    target_buffer[location] = source_array
+            
             elif command == Command.random_step:
                 # data must be None
                 super().random_step_async()
@@ -113,7 +150,7 @@ class ParallelProcessCage(Cage, mp.Process):
 
             elif command == Command.close:
                 super().close()  # close Cage object
-                self._closing = True  # TODO: replace with break?
+                _closing = True  # TODO: replace with break?
 
             else:
                 raise ValueError(f"Unhandled command type {command}.")
