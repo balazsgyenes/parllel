@@ -1,11 +1,16 @@
 from dataclasses import dataclass
-from functools import partial
 import enum
-from typing import Dict, List, Callable, Any
+from functools import partial
 import multiprocessing as mp
+from typing import Dict, List, Callable, Any, Union
 
+import numpy as np
+from nptyping import NDArray
+
+from parllel.buffers.sharedmemory import SharedMemoryBuffer
 from parllel.buffers.weak import WeakBuffer
 from parllel.envs.collections import EnvStep
+from parllel.types.named_tuple import NamedArrayTuple, NamedTuple
 from parllel.types.traj_info import TrajInfo
 from .cage import Cage
 
@@ -43,7 +48,7 @@ class ParallelProcessCage(Cage, mp.Process):
         """Instantiate environment and subprocess, etc.
         """
         self._samples_buffer = samples_buffer
-        self._buffer_index = {}
+        self._buffer_index = create_buffer_index(self._samples_buffer)
 
         self._leader_pipe, self._follower_pipe = mp.Pipe()
         # start executing `run` method, which also calls super().initialize()
@@ -57,7 +62,7 @@ class ParallelProcessCage(Cage, mp.Process):
             )))
         self._write_callback = write_callback
 
-        # a primitive locking mechanism on the caller side
+        # a simple locking mechanism on the caller side
         # ensures that `step` is always followed by `await_step`
         self._last_command = None
 
@@ -74,7 +79,7 @@ class ParallelProcessCage(Cage, mp.Process):
 
         env_step = EnvStep(WeakBuffer(
                 write_callback=partial(self._write_callback, source_buffer_id=array_id),
-                read_callback=None,
+                read_callback=None,  # TODO: add read callback for debugging
             ) for array_id in array_ids
         )
 
@@ -154,3 +159,27 @@ class ParallelProcessCage(Cage, mp.Process):
 
             else:
                 raise ValueError(f"Unhandled command type {command}.")
+
+
+def create_buffer_index(samples_buffer: Union[tuple, NamedArrayTuple, SharedMemoryBuffer]
+) -> Dict[int, SharedMemoryBuffer]:
+    index = {}
+    for elem in samples_buffer:
+        if isinstance(elem, SharedMemoryBuffer):
+            index[elem.unique_id] = elem
+        else:
+            index.update(create_buffer_index(elem))
+    return index
+
+
+def create_array_cache(sample: Union[tuple, NamedTuple, NamedArrayTuple, NDArray]
+) -> Dict[int, NDArray]:
+    array_cache = {}
+    for elem in sample:
+        if isinstance(elem, np.ndarray):
+            array_cache[id(elem)] = elem
+        else:
+            array_cache.update(create_array_cache(elem))
+    return array_cache
+
+def create_weak_buffers()

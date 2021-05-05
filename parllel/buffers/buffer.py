@@ -1,6 +1,4 @@
-import ctypes
-import multiprocessing as mp
-from typing import Union, Tuple
+from typing import Union, Tuple, Any
 
 import numpy as np
 
@@ -21,29 +19,18 @@ class Buffer:
     def __init__(self,
         shape: Tuple[int],
         dtype: np.dtype,
-        shared_memory: bool = False,
-        padding: int = 0
-    ):
+        padding: int = 0,
+    ) -> None:
         self._shape = shape
         assert dtype is not np.object_, "Data type should not be object."
         self._dtype = dtype
-        self._shared_memory = shared_memory
         assert padding >= 0, "Padding must not be negative."
         self._padding = padding
 
     def initialize(self):
         # initialize buffer in either local or shared memory
         padded_shape = (self._shape[0] + 2 * self._padding,) + self._shape[1:]
-        if self._shared_memory:
-            size = int(np.prod(padded_shape))
-            nbytes = size * np.dtype(self._dtype).itemsize
-            mp_array = mp.RawArray(ctypes.c_char, nbytes)
-            self._buffer = np.frombuffer(mp_array, dtype=self._dtype, count=size)
-            # assign to shape attribute so that error is raised when data is copied
-            # _buffer.reshape might silently copy the data
-            self._buffer.shape = padded_shape
-        else:
-            self._buffer = np.zeros(shape=padded_shape, dtype=self._dtype)
+        self._buffer = np.zeros(shape=padded_shape, dtype=self._dtype)
         
     def rotate(self):
         """Prepare buffer for collecting next batch.
