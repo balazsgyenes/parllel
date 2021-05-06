@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import enum
 from functools import partial
 import multiprocessing as mp
-from typing import Dict, List, Callable, Any, Union
+from typing import Dict, List, Tuple, Callable, Any, Optional, Union
 
 import numpy as np
 from nptyping import NDArray
@@ -31,26 +31,37 @@ class Message:
     data: Any = None
 
 
+@dataclass
+class ArrayReference:
+    array_id: int
+
+
 class ParallelProcessCage(Cage, mp.Process):
     def __init__(self,
         EnvClass: Callable,
         env_kwargs: Dict,
         TrajInfoCls: Callable,
         traj_info_kwargs: Dict,
-        wait_before_reset: bool = False
+        wait_before_reset: bool = False,
+        arrays_not_to_pipe: Optional[List[str]] = None,
     ) -> None:
         mp.Process.__init__(self)
 
         super().__init__(EnvClass, env_kwargs, TrajInfoCls, traj_info_kwargs,
             wait_before_reset)
+
+        self._names_to_withhold = arrays_not_to_pipe
         
-    def initialize(self, samples_buffer) -> None:
+    def initialize(self, samples_buffer: Optional[NamedArrayTuple]) -> None:
         """Instantiate environment and subprocess, etc.
         """
+        #TODO: ensure support for when pre-allocated samples buffer given
         self._samples_buffer = samples_buffer
         self._buffer_index = create_buffer_index(self._samples_buffer)
 
         self._leader_pipe, self._follower_pipe = mp.Pipe()
+        #TODO: create queue (or separate pipe) for dispatched writes
+
         # start executing `run` method, which also calls super().initialize()
         self.start()
 
@@ -69,18 +80,19 @@ class ParallelProcessCage(Cage, mp.Process):
     def step_async(self, action) -> None:
         assert self._last_command is None
         self._leader_pipe.send(Message(Command.step, action))
-        #TODO: obviously we don't want to send this numpy array through a pipe
+        #TODO: provide option to avoid sending this array over the pipe
+        # is it possible to retrieve the array reference and the indices?
         self._last_command = Command.step
 
     def await_step(self) -> EnvStep:
         assert self._last_command in {Command.step, Command.random_step}
-        array_ids = self._leader_pipe.recv()
+        env_step = self._leader_pipe.recv()
         self._last_command = None
 
-        env_step = EnvStep(WeakBuffer(
-                write_callback=partial(self._write_callback, source_buffer_id=array_id),
-                read_callback=None,  # TODO: add read callback for debugging
-            ) for array_id in array_ids
+        env_step = add_weak_buffers_to_namedtup(
+            namedtup=env_step,
+            write_callback=self._write_callback,
+            read_callback=None,  # TODO: add read callback for debugging
         )
 
         return env_step
@@ -111,8 +123,7 @@ class ParallelProcessCage(Cage, mp.Process):
         # initialize Cage object
         super().initialize()
 
-        _closing = False
-        while not _closing:
+        while True:
             message = self._follower_pipe.recv()
             command = message.command
             data = message.data
@@ -122,30 +133,14 @@ class ParallelProcessCage(Cage, mp.Process):
                 super().step_async(data)
                 env_step = super().await_step()
                 # return must be `EnvStep`
-
-                array_cache = {
-                    id(elem): elem
-                    for elem in env_step
-                }
-
-                self._follower_pipe.send(tuple(array_cache.keys()))
-
-                for _ in range(len(array_cache)):
-                    message = self._follower_pipe.recv()
-                    assert message.command == Command.write_to_buffer
-                    write_call = message.data
-
-                    source_array = array_cache[write_call["source_buffer_id"]]
-                    target_buffer = self._buffer_index[write_call["target_buffer_id"]]
-                    location = write_call["location"]
-                    target_buffer[location] = source_array
+                self.transfer_env_step(env_step)
             
             elif command == Command.random_step:
                 # data must be None
                 super().random_step_async()
                 env_step = super().await_step()
                 # return must be `EnvStep`
-                self._follower_pipe.send(env_step)
+                self.transfer_env_step(env_step)
 
             elif command == Command.collect_completed_trajs:
                 # data must be None
@@ -155,31 +150,79 @@ class ParallelProcessCage(Cage, mp.Process):
 
             elif command == Command.close:
                 super().close()  # close Cage object
-                _closing = True  # TODO: replace with break?
+                break
 
             else:
                 raise ValueError(f"Unhandled command type {command}.")
 
+    def transfer_env_step(self, env_step):
+        env_step, array_cache = withhold_arrays(
+            namedtup=env_step,
+            array_cache={},
+            names_to_withhold=self._names_to_withhold,
+        )
 
-def create_buffer_index(samples_buffer: Union[tuple, NamedArrayTuple, SharedMemoryBuffer]
+        self._follower_pipe.send(env_step)
+
+        for _ in range(len(array_cache)):
+            message = self._follower_pipe.recv()
+            assert message.command == Command.write_to_buffer
+            write_call = message.data
+
+            source_array = array_cache[write_call["source_buffer_id"]]
+            target_buffer = self._buffer_index[write_call["target_buffer_id"]]
+            location = write_call["location"]
+            target_buffer[location] = source_array
+
+
+def create_buffer_index(
+    samples_buffer: Union[None, NamedArrayTuple, SharedMemoryBuffer],
+    index: Dict,
 ) -> Dict[int, SharedMemoryBuffer]:
-    index = {}
-    for elem in samples_buffer:
-        if isinstance(elem, SharedMemoryBuffer):
-            index[elem.unique_id] = elem
-        else:
-            index.update(create_buffer_index(elem))
+    if samples_buffer is None:
+        pass
+    elif isinstance(samples_buffer, SharedMemoryBuffer):
+        index[samples_buffer.unique_id] = samples_buffer
+    else:
+        for elem in samples_buffer:
+            create_buffer_index(elem, index)
     return index
 
 
-def create_array_cache(sample: Union[tuple, NamedTuple, NamedArrayTuple, NDArray]
-) -> Dict[int, NDArray]:
-    array_cache = {}
-    for elem in sample:
-        if isinstance(elem, np.ndarray):
-            array_cache[id(elem)] = elem
-        else:
-            array_cache.update(create_array_cache(elem))
-    return array_cache
+def withhold_arrays(
+    sample: Union[NamedTuple, NDArray, float, bool],
+    array_cache: Dict,
+    names_to_withhold: Optional[List[str]],
+    name: str = "",
+) -> Tuple[NamedTuple, Dict[int, NDArray]]:
+    if not names_to_withhold:
+        return sample, array_cache
+    else:
+        raise NotImplementedError
 
-def create_weak_buffers()
+def add_weak_buffers_to_namedtup(
+    namedtup: Union[NamedTuple, NDArray, ArrayReference],
+    write_callback: Callable,
+    read_callback: Callable,
+) -> Union[NamedTuple, WeakBuffer]:
+    if isinstance(namedtup, np.ndarray):
+        # numpy arrays are iterable but we do not want to change them
+        return namedtup
+    try:
+        iterator = iter(namedtup)
+    except TypeError:
+        # not iterable
+        if isinstance(namedtup, ArrayReference):
+            # convert array references to weak buffers
+            return WeakBuffer(
+                write_callback=partial(write_callback, source_buffer_id=namedtup.array_id),
+                read_callback=read_callback,
+            )
+        else:
+            # otherwise just return the object
+            return namedtup
+    else:
+        # iterable
+        elems = (add_weak_buffers_to_namedtup(elem, write_callback, read_callback)
+            for elem in namedtup)
+        return namedtup._make(elems)

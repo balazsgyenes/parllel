@@ -17,3 +17,12 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - How can we abstract how agents/models are shared across processes? Add a `models()` method to the agent for the handler to access all the models that need to be shared.
 - The rlpyt sampling loop maintains local variables for the most recent, observation, action, reward, etc. These values are then copied one by one into the samples buffer. Is it more efficient to write directly into the samples buffer and provide views of it to read from?
 - Can we support algorithms that are written for processing entire sequence (e.g. COMA), and therefore do not rely on bootstrap values? Can we support buffers with batch index as the leading dimension?
+- Why can't a model be resetted mid-batch? Do we even need to consider wait-reset as an option? The sampler has full control of the rnn_state and can write zeroes/None if env is done
+- Does it make sense to insist on NamedTuples and NamedArrayTuples everywhere, even when dicts might make more sense if the value needs to be modified. In any case, NamedArrayTuple/NamedTuple should have a `__repr__` that returns a dict for debug viewing.
+
+## Ideas
+- Sampler types:
+    - ClassicSampler, which should cover most use cases
+    - AlternatingSampler, which might provide better performance for slow environments
+    - FeedForwardSampler, which is a simpler version that only works for non-recurrent models
+    - FullEpisodeSampler, which returns only completed trajectories every iteration. This is essentially a configuration of the ClassicSampler (cages wait to reset, sampler stops if all envs done, samples buffer allocated with T equal to maximum episode length). Depending on wait-reset semantics, it might not make sense to have a separate class for this.
