@@ -31,6 +31,7 @@ class BaseAgent:
 
         self.ModelCls = ModelCls
         self.model_kwargs = model_kwargs
+        self.initial_model_state_dict = initial_model_state_dict
 
         self._model = None
         self._distribution = None
@@ -45,7 +46,7 @@ class BaseAgent:
     def distribution(self):
         return self._distribution
 
-    def initialize(self, env_spaces, share_memory=False):
+    def initialize(self, env_model_kwargs):
         """
         Instantiates the neural net model(s) according to the environment
         interfaces.  
@@ -63,24 +64,21 @@ class BaseAgent:
             env_spaces: passed to ``make_env_to_model_kwargs()``, typically namedtuple of 'observation' and 'action'.
             share_memory (bool): whether to use shared memory for model parameters.
         """
-        self.env_model_kwargs = self.make_env_to_model_kwargs(env_spaces)
+        self.env_model_kwargs = env_model_kwargs
         self.create_model()
-        self.device = torch.device("cpu")
+        self.load_model_state()
         self.create_distribution()
-        self.env_spaces = env_spaces
-        self.share_memory = share_memory
-
-    def make_env_to_model_kwargs(self, env_spaces):
-        """Generate any keyword args to the model which depend on environment interfaces."""
-        return {}
 
     def create_model(self):
         self.model = self.ModelCls(**self.env_model_kwargs, **self.model_kwargs)
+        self.device = torch.device("cpu")
+
+    def load_model_state(self):
         if self.initial_model_state_dict is not None:
             self.model.load_state_dict(self.initial_model_state_dict)
 
     def create_distribution(self):
-        pass
+        raise NotImplementedError
 
     def to_device(self, cuda_idx=None):
         """Moves the model to the specified cuda device, if not ``None``.  If
@@ -93,13 +91,9 @@ class BaseAgent:
         """
         if cuda_idx is None:
             return
-        if self.shared_model is not None:
-            self.model = self.ModelCls(**self.env_model_kwargs,
-                **self.model_kwargs)
-            self.model.load_state_dict(self.shared_model.state_dict())
         self.device = torch.device("cuda", index=cuda_idx)
         self.model.to(self.device)
-        logger.log(f"Initialized agent model on device: {self.device}.")
+        # logger.log(f"Initialized agent model on device: {self.device}.")
 
     def evaluate(self, observation, prev_action, prev_reward, prev_rnn_state=None):
         """Returns values from model forward pass on training data (i.e. used
@@ -118,10 +112,6 @@ class BaseAgent:
     def state_dict(self):
         """Returns model parameters for saving."""
         return self.model.state_dict()
-
-    def load_state_dict(self, state_dict):
-        """Load model parameters, should expect format returned from ``state_dict()``."""
-        self.model.load_state_dict(state_dict)
 
     def train_mode(self, itr):
         """Go into training mode (e.g. see PyTorch's ``Module.train()``)."""
