@@ -31,12 +31,13 @@ class Cage:
     ) -> None:
         self.EnvClass = EnvClass
         self.env_kwargs = env_kwargs
-        self.TrajInfoCls = TrajInfoCls
+        self.TrajInfoClass = TrajInfoClass
         self.traj_info_kwargs = traj_info_kwargs
         self.wait_before_reset = wait_before_reset
 
     def initialize(self) -> None:
         self._env = self.EnvClass(**self.env_kwargs)
+        self._env.reset()
         self._completed_trajs = []
         self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
         self._done = False
@@ -50,7 +51,7 @@ class Cage:
         self._traj_info.step(obs, action, reward, done, env_info)
         if done:
             self._completed_trajs.append(self._traj_info)
-            self._traj_info = self.TrajInfoCls(**self.traj_info_kwargs)
+            self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
             if self.wait_before_reset:
                 self._done = True
             else:

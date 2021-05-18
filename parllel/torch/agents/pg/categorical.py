@@ -1,23 +1,23 @@
+from dataclasses import dataclass
+from typing import Any, Tuple
 
 import torch
+from nptyping import NDArray
 
-from parllel.torch.agents.agent import AgentStep, BaseAgent, AlternatingRecurrentAgentMixin
-from parllel.agents.pg.base import (AgentInfo, ActorInfo, AgentInfoRnn, ActorInfoRnn,
-    AgentOutputs, AgentOutputsRnn, ActorOutputs, ActorOutputsRnn)
-from parllel.distributions.categorical import Categorical, DistInfo
-from parllel.utils.buffer import buffer_to, buffer_func, buffer_method
-from parllel.utils.collections import NamedArrayTupleSchema
-
-
-ModelOutputs = NamedArrayTupleSchema("ModelOutputs", ["pi", "value"])
-ModelOutputsRnn = NamedArrayTupleSchema(
-    "ModelOutputsRnn", ["pi", "value", "next_rnn_state"])
-ActorModelOutputs = NamedArrayTupleSchema("ModelOutputs", ["pi"])
-ActorModelOutputsRnn = NamedArrayTupleSchema(
-    "ModelOutputsRnn", ["pi", "next_rnn_state"])
+from parllel.torch.agents.agent import AgentStep, Agent
+from parllel.torch.agents.pg.types import AgentInfo, AgentEvaluation
+from parllel.torch.distributions.categorical import Categorical, DistInfo
+from parllel.torch.utils.buffer import buffer_to, buffer_func, buffer_method
 
 
-class CategoricalPgAgent(BaseAgent):
+@dataclass(frozen=True)
+class ModelOutputs:
+    pi: Any
+    value: Any = None
+    next_rnn_state: Any = None
+
+
+class CategoricalPgAgent(Agent):
     """
     Agent for policy gradient algorithm using categorical action distribution.
     Same as ``GausssianPgAgent`` and related classes, except uses
@@ -25,25 +25,47 @@ class CategoricalPgAgent(BaseAgent):
     (model here outputs discrete probabilities in place of means and log_stds,
     while both output the value estimate).
     """
-
-    def __init__(self, *args, recurrent=False, actor_only=False, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, recurrent: bool = True, actor_only: bool = False) -> None:
         self.recurrent = recurrent
-        self.actor_only = actor_only
-        if actor_only:
-            # an actor cannot do value estimation
-            self.InfoCls = ActorInfoRnn if recurrent else ActorInfo
-            self.OutputCls = ActorOutputsRnn if recurrent else ActorOutputs
+        self.actor_only = actor_only  # TODO: where is this needed?
 
-            def value_not_impl(self, observation, prev_action, prev_reward):
-                raise NotImplementedError
+    def initialize(self, model: torch.Module, device: torch.device, distribution: Categorical, example_inputs: Tuple[NDArray, NDArray, NDArray], n_states: int) -> None:
+        super().initialize(model, device, distribution)
+
+        observation, prev_action, prev_reward = example_inputs
+        prev_action = self._distribution.to_onehot(prev_action)
+        model_inputs = buffer_to(
+            (observation, prev_action, prev_reward), device=self.device
+        )
+        if self.recurrent:  # TODO: should we define that all models take 4 parameters?
+            model_inputs += (None,)
+
+        model_outputs = self.model(*model_inputs)
+        dist_info = DistInfo(prob=model_outputs.pi)
+        action = self.distribution.sample(dist_info)
+        value = model_outputs.value
+        rnn_state = model_outputs.next_rnn_state
+        if rnn_state is not None:
             
-            self.value = value_not_impl
-        else:
-            self.InfoCls = AgentInfoRnn if recurrent else AgentInfo
-            self.OutputCls = AgentOutputsRnn if recurrent else AgentOutputs
+            def extend_rnn_state_component(rnn_state_component):
+                """Extend an rnn_state_component to allocate enough space for
+                each env.
+                """
+                # duplicate as many times as requested
+                rnn_state_components = (rnn_state_component) * n_states
+                # concatenate in B dimension (shape should be [N,B,H])
+                return torch.cat(rnn_state_components, dim=1)
 
-    def __call__(self, observation, prev_action, prev_reward, init_rnn_state=None):
+            self._rnn_states = buffer_func(rnn_state, extend_rnn_state_component)
+
+            # Transpose the rnn_state from [N,B,H] --> [B,N,H] for storage.
+            rnn_state = buffer_method(rnn_state, "transpose", 0, 1)
+
+        agent_info = AgentInfo(dist_info=dist_info, value=value, prev_rnn_state=rnn_state)
+        agent_step = AgentStep(action=action, agent_info=agent_info)
+        return buffer_to(agent_step, device="cpu")
+
+    def evaluate(self, observation, prev_action, prev_reward, init_rnn_state=None):
         """Performs forward pass on training data, for algorithm."""
         prev_action = self.distribution.to_onehot(prev_action)
         model_inputs = (observation, prev_action, prev_reward)
@@ -59,11 +81,6 @@ class CategoricalPgAgent(BaseAgent):
         if self.recurrent:  # Leave rnn_state on device
             output += (model_outputs.next_rnn_state,)
         return self.OutputCls(*output)
-
-    def initialize(self, env_spaces, share_memory=False,
-            global_B=1, env_ranks=None):
-        super().initialize(env_spaces, share_memory, global_B=global_B, env_ranks=env_ranks)
-        self.distribution = Categorical(dim=env_spaces.action.n)
 
     @torch.no_grad()
     def step(self, observation, prev_action, prev_reward):
@@ -106,8 +123,3 @@ class CategoricalPgAgent(BaseAgent):
         model_outputs = self.model(*model_inputs)
         value = model_outputs.value
         return buffer_to(value, device="cpu")
-
-
-class AlternatingRecurrentCategoricalPgAgent(AlternatingRecurrentAgentMixin,
-        CategoricalPgAgent):
-    pass
