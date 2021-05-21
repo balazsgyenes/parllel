@@ -32,3 +32,5 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - AlternatingSampler, which might provide better performance for slow environments
     - FeedForwardSampler, which is a simpler version that only works for non-recurrent models
     - FullEpisodeSampler, which returns only completed trajectories every iteration. This is essentially a configuration of the ClassicSampler (cages wait to reset, sampler stops if all envs done, samples buffer allocated with T equal to maximum episode length). Depending on wait-reset semantics, it might not make sense to have a separate class for this.
+- Array types:
+    - AlternatingArray wraps 2 arrays which alternate being written to (by the sampler) and read from (by the algorithm).
