@@ -20,6 +20,12 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Why can't a model be resetted mid-batch? Do we even need to consider wait-reset as an option? The sampler has full control of the rnn_state and can write zeroes/None if env is done
 - Does it make sense to insist on NamedTuples and NamedArrayTuples everywhere, even when dicts might make more sense if the value needs to be modified. In any case, NamedArrayTuple/NamedTuple should have a `__repr__` that returns a dict for debug viewing.
 
+## TODOs
+- Implement (optional) out parameter for agent.step and cage.step methods. This reduces copying but also solves the problem of efficiently handling (parallel) write operations while keeping control in the sampler.
+- Rename buffers to Arrays (or something else). Nomenclature:
+    - Buffer is a (potentially nested) tuple/namedtuple/namedarraytuple of arrays
+    - Arrays are either numpy ndarrays, (or a subclass) or torch tensors
+
 ## Ideas
 - Sampler types:
     - ClassicSampler, which should cover most use cases
