@@ -1,51 +1,40 @@
 import ctypes
 import multiprocessing as mp
-from typing import Union, Tuple
+from typing import Tuple
 
 import numpy as np
 
-from parllel.buffers.buffer import Buffer
-from parllel.buffers.weak import WeakBuffer
+from .array import Array
+from .rotating import RotatingArray
+from .view_aware import ViewAwareArray
 
 
-class SharedMemoryBuffer(Buffer):
-    def __init__(self, shape: Tuple[int], dtype: np.dtype, shared_memory: bool, padding: int):
-        super().__init__(shape, dtype, shared_memory=shared_memory, padding=padding)
+class SharedMemoryArray(Array):
+    def __init__(self, shape: Tuple[int, ...], dtype: np.dtype):
+        super().__init__(shape, dtype)
     
         # create a unique identifier for this buffer
         # since all buffer objects are created in the main process, we can be
         # sure this is unique, even after child processes are started.
-        self._unique_id = id(self)
+        self._unique_id: int = id(self)
 
-    def initialize(self):
+    def initialize(self) -> None:
         # allocate array in OS shared memory
-        padded_shape = (self._shape[0] + 2 * self._padding,) + self._shape[1:]
-        size = int(np.prod(padded_shape))
+        size = int(np.prod(self._shape))
         nbytes = size * np.dtype(self._dtype).itemsize
         mp_array = mp.RawArray(ctypes.c_char, nbytes)
-        self._buffer = np.frombuffer(mp_array, dtype=self._dtype, count=size)
+        array = np.frombuffer(mp_array, dtype=self._dtype, count=size)
         # assign to shape attribute so that error is raised when data is copied
-        # _buffer.reshape might silently copy the data
-        self._buffer.shape = padded_shape
+        # array.reshape might silently copy the data
+        array.shape = self._shape
 
-        # create a lock that will be used to ensure that read/write operations
-        # wait for dispatched writes to finish
-        self._lock = mp.Lock()
-
-    def __getitem__(self, location: Union[int, slice]):
-        self._lock.acquire()
-        item = super().__getitem__(location)
-        self._lock.release()
-        return item
-
-    def __setitem__(self, location: Union[int, slice], value):
-        if isinstance(value, WeakBuffer):
-            self._lock.acquire()
-            value.dispatch_write(target_buffer_id=self.unique_id, location=location)
-            # lock is released by process that completes the dispatched write
-        else:
-            super().__setitem__(location, value)
+        # cast to ViewAwareArray so that indexing operations can be recorded
+        self._array = array.view(ViewAwareArray)
 
     @property
-    def unique_id(self):
+    def unique_id(self) -> int:
         return self._unique_id
+
+
+class RotatingSharedMemoryArray(RotatingArray, SharedMemoryArray):
+    pass

@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Union, List, Tuple, Any
+from typing import Any, List, Tuple, Union
 
 import numpy as np
 from nptyping import NDArray
@@ -28,7 +28,7 @@ class ViewAwareArray(np.ndarray):
             self._view_locations = []
 
     @property
-    def view_locations(self):
+    def view_locations(self) -> Tuple[Tuple[Index, ...], ...]:
         #  return copy of list as a tuple
         return tuple(self._view_locations)
     
@@ -146,7 +146,10 @@ if __name__ == "__main__":
     shape = (10,10,10)
     arr = np.arange(np.prod(shape), dtype=np.int32)
     arr = np.reshape(arr, shape)
-    arr = ViewAwareArray(arr)
+
+    # both methods work for casting to ViewAwareArray
+    # arr = ViewAwareArray(arr)
+    arr = arr.view(ViewAwareArray)
 
     test_cases = [
         [

@@ -1,8 +1,10 @@
-from typing import Union, Tuple, Any
+from typing import Any, Tuple, Union
 
 import numpy as np
+from nptyping import NDArray
 
-from .array import Array
+from .array import Array, Index, Indices
+
 
 class RotatingArray(Array):
     """Abstracts memory management for large arrays.
@@ -18,22 +20,20 @@ class RotatingArray(Array):
         array([[1., 1., 1., 1., 1.]])
     """
     def __init__(self,
-        shape: Tuple[int],
+        shape: Tuple[int, ...],
         dtype: np.dtype,
-        padding: int = 0,
+        padding: int = 1,
     ) -> None:
-        self._shape = shape
-        assert dtype is not np.object_, "Data type should not be object."
-        self._dtype = dtype
+        super().__init__(shape, dtype)
+
         assert padding > 0, "Padding must be positive."
         self._padding = padding
+        self._apparent_shape = shape
 
-    def initialize(self):
-        # initialize array
+        # add padding onto both ends of first dimension
         self._shape = (self._shape[0] + 2 * self._padding,) + self._shape[1:]
-        super().initialize()
 
-    def rotate(self):
+    def rotate(self) -> None:
         """Prepare buffer for collecting next batch. Rotate values stored at
         the end of buffer for the next batch to become previous values for
         upcoming batch (e.g. value_T becomes value_(-1) and value_(T+1) becomes
@@ -43,7 +43,7 @@ class RotatingArray(Array):
         next_previous_values = slice(0, self._padding + 1)
         self._array[next_previous_values] = self._array[final_values]
 
-    def __getitem__(self, location: Union[Union[int, slice, Ellipsis], Tuple[Union[int, slice, Ellipsis]]]):
+    def __getitem__(self, location: Indices) -> NDArray:
         if isinstance(location, Tuple):
             leading, trailing = location[0], location[1:]
         else:
@@ -52,7 +52,7 @@ class RotatingArray(Array):
         leading = shift_index(leading, self._padding)
         return super().__getitem__((leading,) + trailing)
 
-    def __setitem__(self, location: Union[Union[int, slice, Ellipsis], Tuple[Union[int, slice, Ellipsis]]], value: Any):
+    def __setitem__(self, location: Indices, value: Any) -> None:
         if isinstance(location, Tuple):
             leading, trailing = location[0], location[1:]
         else:
@@ -61,7 +61,7 @@ class RotatingArray(Array):
         leading = shift_index(leading, self._padding)
         super().__setitem__((leading,) + trailing, value)
 
-    def __array__(self, dtype = None):
+    def __array__(self, dtype = None) -> NDArray:
         array = self._array[self._padding:-self._padding]
         if dtype is None:
             return array
@@ -69,14 +69,14 @@ class RotatingArray(Array):
             return array.astype(dtype, copy=False)
 
     @property
-    def start(self):
+    def start(self) -> int:
         return -self._padding
 
     @property
-    def end(self):
+    def end(self) -> int:
         return self._shape[0] - self._padding - 1
 
-def shift_index(index: Union[int, slice, Ellipsis], shift: int):
+def shift_index(index: Index, shift: int) -> Union[int, slice]:
     if isinstance(index, int):
         index += shift
     elif isinstance(index, slice):
@@ -90,4 +90,6 @@ def shift_index(index: Union[int, slice, Ellipsis], shift: int):
             start=shift,
             stop=-shift,
         )
+    else:
+        raise ValueError(index)
     return index
