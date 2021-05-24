@@ -32,6 +32,10 @@ class ViewAwareArray(np.ndarray):
         #  return copy of list as a tuple
         return tuple(self._view_locations)
     
+    @view_locations.setter
+    def view_locations(self, view_locations: Tuple[Tuple[Index, ...], ...]) -> None:
+        self._view_locations = list(view_locations)
+
     def __getitem__(self, location: Any) -> Any:
         result = super().__getitem__(location)
         if isinstance(result.base, ViewAwareArray):
