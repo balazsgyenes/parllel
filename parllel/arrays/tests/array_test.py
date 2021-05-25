@@ -13,7 +13,7 @@ class TestArray:
             shape = (4, 4, 4)
             _ = Array(shape=shape, dtype=list)
 
-    def test_initialize_first(self):
+    def test_not_initialized(self):
         with pytest.raises(AttributeError):
             shape = (4, 4, 4)
             array = Array(shape=shape, dtype=np.float32)

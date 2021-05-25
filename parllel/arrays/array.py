@@ -52,4 +52,5 @@ class Array:
         if hasattr(self, "_array"):
             return repr(self._array)
         else:
-            return f"Uninitialized {type(self).__name__} object: " f"shape={self._shape}, dtype={np.dtype(self._dtype).name}."
+            return f"Uninitialized {type(self).__name__} object: " \
+                   f"shape={self._shape}, dtype={np.dtype(self._dtype).name}."

@@ -18,6 +18,9 @@ class RotatingArray(Array):
         >>> a.rotate()  # bring the last element to the front of the array at position -1
         >>> a[-1]  # In contrast to lists, -1 does not refer to the last element in the array, but to the actual -1st element in the array. 
         array([[1., 1., 1., 1., 1.]])
+
+    Todo:
+        - Add a nice __repr__ function to print head, body, and tail of the array. 
     """
     def __init__(self,
         shape: Tuple[int, ...],
