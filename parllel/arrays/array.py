@@ -28,6 +28,7 @@ class Array:
         dtype: np.dtype,
     ) -> None:
         self._shape = shape
+        dtype = np.dtype(dtype)
         assert dtype is not np.object_, "Data type should not be object."
         self._dtype = dtype
 
