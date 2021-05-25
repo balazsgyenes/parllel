@@ -29,7 +29,7 @@ class Array:
     ) -> None:
         self._shape = shape
         dtype = np.dtype(dtype)
-        assert dtype is not np.object_, "Data type should not be object."
+        assert dtype != np.object_, "Data type should not be object."
         self._dtype = dtype
 
     def initialize(self) -> None:
