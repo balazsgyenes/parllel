@@ -13,7 +13,7 @@ class RotatingArray(Array):
     When reusing the buffer, this allows *looking into the past* by indexing out of the regular bounds of the array's shape. 
 
     Examples:
-        >>> a = Buffer(shape=(4, 5), dtype=np.int, padding=1)
+        >>> a = RotatingArray(shape=(4, 5), dtype=np.int, padding=1)
         >>> a[4, :] = np.ones((1, 5))  # access the last element
         >>> a.rotate()  # bring the last element to the front of the array at position -1
         >>> a[-1]  # In contrast to lists, -1 does not refer to the last element in the array, but to the actual -1st element in the array. 
@@ -83,14 +83,14 @@ def shift_index(index: Index, shift: int) -> Union[int, slice]:
         index += shift
     elif isinstance(index, slice):
         index = slice(
-            start=index.start + shift,
-            stop=index.stop + shift,
-            step=index.step,
+            index.start + shift,
+            index.stop + shift,
+            index.step,
         )
     elif index is Ellipsis:
         index = slice(
-            start=shift,
-            stop=-shift,
+            shift,
+            -shift,
         )
     else:
         raise ValueError(index)
