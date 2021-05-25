@@ -52,8 +52,8 @@ class RotatingArray(Array):
         else:
             leading, trailing = location, ()
 
-        leading = shift_index(leading, self._padding)
-        return super().__getitem__((leading,) + trailing)
+        leading = shift_index(leading, self._padding, self._apparent_shape[0])
+        return super().__getitem__(leading + trailing)
 
     def __setitem__(self, location: Indices, value: Any) -> None:
         if isinstance(location, Tuple):
@@ -61,8 +61,8 @@ class RotatingArray(Array):
         else:
             leading, trailing = location, ()
 
-        leading = shift_index(leading, self._padding)
-        super().__setitem__((leading,) + trailing, value)
+        leading = shift_index(leading, self._padding, self._apparent_shape[0])
+        super().__setitem__(leading + trailing, value)
 
     def __array__(self, dtype = None) -> NDArray:
         array = self._array[self._padding:-self._padding]
@@ -79,22 +79,22 @@ class RotatingArray(Array):
     def end(self) -> int:
         return self._shape[0] - self._padding - 1
 
-def shift_index(index: Index, shift: int) -> Union[int, slice]:
+    def __repr__(self) -> str:
+        return repr(self._array[self._padding:-self._padding])
+
+
+def shift_index(index: Index, shift: int, apparent_length: int) -> Tuple[Index, ...]:
     """Shifts an array index up by an integer value.
     """
     if isinstance(index, int):
-        index += shift
-    elif isinstance(index, slice):
-        index = slice(
-            index.start + shift,
-            index.stop + shift,
-            index.step,
-        )
-    elif index is Ellipsis:
-        index = slice(
-            shift,
-            -shift,
-        )
-    else:
-        raise ValueError(index)
-    return index
+        return (index + shift,)
+    if isinstance(index, slice):
+        start, stop, step = index.indices(apparent_length)
+        return (slice(
+            start + shift,
+            stop + shift,
+            step,
+        ),)
+    if index is Ellipsis:
+        return (slice(shift, -shift), Ellipsis)
+    raise ValueError(index)
