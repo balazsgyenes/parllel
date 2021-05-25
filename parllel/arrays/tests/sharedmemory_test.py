@@ -24,11 +24,8 @@ def test_sharedmemory_array():
     p.start()
     p.join()
 
-    same_values = np.ones((5, 5), dtype=np.int32)
-    same_values[:] = 5
-
-    assert np.all(array == same_values), "Values in SharedMemoryArray differ from what was expected"
-
+    array = np.asarray(array)
+    assert np.all(array == 5)
 
 def fill_array_in_subprocess(array: SharedMemoryArray):
     local_array = array
