@@ -3,11 +3,11 @@ processes. All messages are sent by the parent process (without blocking)
 before any are received by the child process.
 """
 
-
 import multiprocessing as mp
 import time
 
-def f(pipe: mp.Pipe):
+
+def print_messages(pipe: mp.Pipe):
     time.sleep(1)
 
     while pipe.poll(timeout=0.01):
@@ -16,12 +16,12 @@ def f(pipe: mp.Pipe):
 
 def main():
     parent_conn, child_conn = mp.Pipe()
-    p = mp.Process(target=f, args=(child_conn,))
+    p = mp.Process(target=print_messages, args=(child_conn,))
     p.start()
 
     for i in range(100):
         parent_conn.send(i)
-    print("all messages sent")
+    print("all messages sent by parent process")
     p.join()
 
 if __name__ == "__main__":
