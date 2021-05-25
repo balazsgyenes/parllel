@@ -10,6 +10,7 @@ TEST_REQUIRES = [
     'pytest', 'coverage', 'pytest-cov',
     # unmandatory dependencies of the package itself
     'atari_py', 'opencv-python', 'psutil', 'pyprind',  # TODO: update
+    'numpy', 'nptyping'
 ]
 
 with open("README.md", "r", encoding="utf-8") as fh:
