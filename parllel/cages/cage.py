@@ -13,16 +13,17 @@ class Cage:
 
     Args:
         EnvClass (Callable): TODO
-        env_kwargs (Dict): Key word arguments that should be passed to the `__init__` of `EnvClass`
+        env_kwargs (Dict): Key word arguments that should be passed to the
+            `__init__` of `EnvClass`
         TrajInfoClass (Callable): TODO
-        traj_info_kwargs (Dict): Key word arguments that should be passed to the `__init__` of `TrajInfoClass`
+        traj_info_kwargs (Dict): Key word arguments that should be passed to
+            the `__init__` of `TrajInfoClass`
         wait_before_reset (bool): TODO
 
-    TODO: this class will need to own a buffer object of some kind so it can
-    write into it. Otherwise there is no way except to pass numpy arrays
-    through pipes.
-    TODO: is there a way to prevent calls to agent.step() for environments that
-    are done and waiting to be reset?
+    TODO: prevent calls to agent.step() for environments that are done and waiting to be reset
+    TODO: add public already_done property for sampler to use to save unnecessary calls
+    TODO: move reset call to a private method to be overriden by children
+    TODO: add public property for env_spaces
     """
     def __init__(self,
         EnvClass: Callable,
@@ -49,8 +50,10 @@ class Cage:
         out_obs: NDArray = None,
         out_reward: NDArray = None,
         out_done: NDArray = None,
-        out_info: NDArray = None
+        out_info: NDArray = None,
     ) -> None:
+        """If any out parameter is given, they must all be given. 
+        """
         if self._done:
             # leave self._step_result unchanged and continue to return it
             # for the rest of the batch. this ensures that the last observation
@@ -59,7 +62,7 @@ class Cage:
                 # leave other values unchanged, since they are ignored anyway
                 out_done[:] = True
             else:
-                self._step_result = self._traj_end_step_result
+                self._step_result = self._after_reset_step_result
             return
 
         obs, reward, done, env_info = self._env.step(action)
@@ -75,7 +78,7 @@ class Cage:
             if self.wait_before_reset:
                 # store done state and last env step in trajectory
                 self._done = True
-                self._traj_end_step_result = EnvStep(obs, reward, done, env_info)
+                self._after_reset_step_result = EnvStep(obs, reward, done, env_info)
     
         if out_obs is not None:
             out_obs[:] = obs

@@ -1,10 +1,17 @@
 from functools import reduce
 from typing import List, Tuple
 
+from parllel.cages.cage import Cage
 from parllel.types.traj_info import TrajInfo
 from .collections import Samples
 
 class ClassicSampler:
+    """
+    TODO: prev_action and prev_reward should be zeroes for start of trajectory
+    This probably requires some additional local variables for temporary storage
+    TODO: prevent calls to agent.step for environments that are done and waiting to be reset
+    TODO: request reset obs from cage at the end of batch
+    """
     def __init__(self,
         batch_T: int,
         batch_B: int,
@@ -16,7 +23,7 @@ class ClassicSampler:
         self.get_bootstrap_value = get_bootstrap_value
         self.break_if_all_done = break_if_all_done
 
-    def initialize(self, agent, envs, batch_buffer: Samples) -> None:
+    def initialize(self, agent, envs: List[Cage], batch_buffer: Samples) -> None:
         self.agent = agent
         self.envs = envs
         assert len(envs) == self.batch_B
@@ -51,7 +58,7 @@ class ClassicSampler:
             # agent observes environment and outputs actions
             action[t], agent_info[t], rnn_state[t+1] = self.agent.step(
                 observation[t], action[t-1], reward[t-1], rnn_state[t])
-            
+
             for b, env in enumerate(self.envs):
                 env.step_async(action[t, b])
 
@@ -67,18 +74,8 @@ class ClassicSampler:
                 # all done
                 break
         
-        #TODO: must ensure that observations for next batch are written to T+1,
-        # even if trajectory is finished early
-
-        """
-        IDEA: create wait reset sampler with break_if_all_done functionality
-        done property is stored by cage and used by sampler to filter, preventing calls to done cages
-        reset obs is explictly requested from each cage at the end of the batch
-        """
-
         # get bootstrap value if requested
         if self.get_bootstrap_value:
-            # TODO: replace with agent.step()? Sampler chooses if rnn_state is advanced
             self.batch_buffer.agent.bootstrap_value[:] = self.agent.value(
                 observation[t+1], action[t], reward[t])
 

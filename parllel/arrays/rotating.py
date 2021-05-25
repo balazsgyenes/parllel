@@ -77,12 +77,14 @@ class RotatingArray(Array):
         return self._shape[0] - self._padding - 1
 
 def shift_index(index: Index, shift: int) -> Union[int, slice]:
+    """Shifts an array index up by an integer value.
+    """
     if isinstance(index, int):
         index += shift
     elif isinstance(index, slice):
         index = slice(
             start=index.start + shift,
-            stop=index + shift,
+            stop=index.stop + shift,
             step=index.step,
         )
     elif index is Ellipsis:
