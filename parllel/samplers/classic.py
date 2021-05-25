@@ -4,7 +4,7 @@ from typing import List, Tuple
 from parllel.types.traj_info import TrajInfo
 from .collections import Samples
 
-class Sampler:
+class ClassicSampler:
     def __init__(self,
         batch_T: int,
         batch_B: int,
@@ -70,6 +70,12 @@ class Sampler:
         #TODO: must ensure that observations for next batch are written to T+1,
         # even if trajectory is finished early
 
+        """
+        IDEA: create wait reset sampler with break_if_all_done functionality
+        done property is stored by cage and used by sampler to filter, preventing calls to done cages
+        reset obs is explictly requested from each cage at the end of the batch
+        """
+
         # get bootstrap value if requested
         if self.get_bootstrap_value:
             # TODO: replace with agent.step()? Sampler chooses if rnn_state is advanced
@@ -78,9 +84,8 @@ class Sampler:
 
         # collect all completed trajectories from envs
         completed_trajectories = reduce(
-            function = lambda l, env: l.extend(env.collect_completed_trajs()),
-            iterable = self.envs,
-            initializer = [])
+            lambda l, env: l.extend(env.collect_completed_trajs()),
+            self.envs)
 
         return self.batch_buffer, completed_trajectories
 

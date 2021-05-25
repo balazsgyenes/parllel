@@ -1,8 +1,10 @@
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
+from nptyping import NDArray
+import gym
 
-from parllel.envs.collections import EnvStep
+from parllel.envs.collections import EnvStep, EnvSpaces
 from parllel.types.traj_info import TrajInfo
 from parllel.types.named_tuple import NamedTuple
 
@@ -27,7 +29,7 @@ class Cage:
         env_kwargs: Dict,
         TrajInfoClass: Callable,
         traj_info_kwargs: Dict,
-        wait_before_reset: bool = False
+        wait_before_reset: bool = False,
     ) -> None:
         self.EnvClass = EnvClass
         self.env_kwargs = env_kwargs
@@ -36,44 +38,78 @@ class Cage:
         self.wait_before_reset = wait_before_reset
 
     def initialize(self) -> None:
-        self._env = self.EnvClass(**self.env_kwargs)
+        self._env: gym.Env = self.EnvClass(**self.env_kwargs)
         self._env.reset()
         self._completed_trajs = []
         self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
         self._done = False
 
-    def step_async(self, action) -> None:
+    def step_async(self,
+        action: NDArray,
+        out_obs: NDArray = None,
+        out_reward: NDArray = None,
+        out_done: NDArray = None,
+        out_info: NDArray = None
+    ) -> None:
         if self._done:
-            #TODO: do we need any fake values here or can we just ignore them?
-            # ensure that done is True for the rest of the batch
+            # leave self._step_result unchanged and continue to return it
+            # for the rest of the batch. this ensures that the last observation
+            # is the reset observation
+            if out_done is not None:
+                # leave other values unchanged, since they are ignored anyway
+                out_done[:] = True
+            else:
+                self._step_result = self._traj_end_step_result
             return
+
         obs, reward, done, env_info = self._env.step(action)
         self._traj_info.step(obs, action, reward, done, env_info)
+        
         if done:
+            # store finished trajectory and start new one
             self._completed_trajs.append(self._traj_info)
             self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
+            # reset environment and overwrite last observation
+            # TODO: move this reset out of the critical path
+            obs = self._env.reset()
             if self.wait_before_reset:
+                # store done state and last env step in trajectory
                 self._done = True
-            else:
-                obs = self._env.reset()
-        self._step_result = obs, reward, done, env_info
+                self._traj_end_step_result = EnvStep(obs, reward, done, env_info)
+    
+        if out_obs is not None:
+            out_obs[:] = obs
+            out_reward[:] = reward
+            out_done[:] = done
+            out_info[:] = env_info
+        else:
+            self._step_result = EnvStep(obs, reward, done, env_info)
 
-    def await_step(self) -> EnvStep:
-        return self._step_result
+    def await_step(self) -> Optional[EnvStep]:
+        result = self._step_result
+        self._step_result = None
+        return result
 
-    def random_step_async(self):
+    def random_step_async(self,
+        out_obs: NDArray = None,
+        out_reward: NDArray = None,
+        out_done: NDArray = None,
+        out_info: NDArray = None
+    ) -> None:
         """Take a step with a random action from the env's action space.
         """
-        raise NotImplementedError
+        action = self._action_space.sample()
+        wait_before_reset = self.wait_before_reset
+        self.wait_before_reset = False
+        self.step_async(action, out_obs, out_reward, out_done, out_info)
+        self.wait_before_reset = wait_before_reset
 
     def collect_completed_trajs(self) -> List[TrajInfo]:
-        if self._done:
-            obs = self._env.reset()
+        self._done = False
 
         completed_trajs = self._completed_trajs
         self._completed_trajs = []
 
-        # TODO: how should obs be returned??
         return completed_trajs
 
     def close(self) -> None:
