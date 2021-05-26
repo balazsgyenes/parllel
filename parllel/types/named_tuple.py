@@ -1,26 +1,30 @@
+# allows postponed evaluation of annotations, i.e. type hints using a class
+# inside the definition of that class
+from __future__ import annotations
 from collections import OrderedDict
-from inspect import Signature as Sig, Parameter as Param
+from inspect import Signature, Parameter
+from itertools import repeat
 import string
-from typing import Any
+from typing import Any, Iterable, NoReturn, Tuple, Union
 
 import numpy as np
 
 RESERVED_NAMES = ("get", "items")
 
 
-class NamedTupleType:
+class NamedTupleClass:
     """Instances of this class act like a type returned by namedtuple()."""
 
-    def __init__(self, typename, fields):
+    def __init__(self, typename: str, fields: Union[str, Iterable[str]]):
         if not isinstance(typename, str):
             raise TypeError(f"type name must be string, not {type(typename)}")
 
         if isinstance(fields, str):
-            spaces = any([whitespace in fields for whitespace in string.whitespace])
+            spaces = any(whitespace in fields for whitespace in string.whitespace)
             commas = "," in fields
             if spaces and commas:
                 raise ValueError(f"Single string fields={fields} cannot have both spaces and commas.")
-            elif spaces:
+            if spaces:
                 fields = fields.split()
             elif commas:
                 fields = fields.split(",")
@@ -39,24 +43,24 @@ class NamedTupleType:
                 raise ValueError(f"can't name field 'index' or 'count'")
         self.__dict__["_typename"] = typename
         self.__dict__["_fields"] = fields
-        self.__dict__["_signature"] = Sig(Param(field,
-            Param.POSITIONAL_OR_KEYWORD) for field in fields)
+        self.__dict__["_signature"] = Signature(Parameter(field,
+            Parameter.POSITIONAL_OR_KEYWORD) for field in fields)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args: Any, **kwargs: Any) -> NamedTuple:
         """Allows instances to act like `namedtuple` constructors."""
         args = self._signature.bind(*args, **kwargs).args  # Mimic signature.
         return self._make(args)
 
-    def _make(self, iterable):
+    def _make(self, iterable: Iterable[Any]) -> NamedTuple:
         """Allows instances to act like `namedtuple` constructors."""
         return NamedTuple(self._typename, self._fields, iterable)
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: Any) -> NoReturn:
         """Make the type-like object immutable."""
         raise TypeError(f"can't set attributes of '{type(self).__name__}' "
                         "instance")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}({self._typename!r}, {self._fields!r})"
 
 
@@ -82,7 +86,11 @@ class NamedTuple(tuple):
       match.
     """
 
-    def __new__(cls, typename, fields, values):
+    def __new__(cls, typename, fields: Tuple[str], values: Iterable[Any]):
+        """Create a new instance, where each element in values has a
+        corresponding name in fields. `fields` is not copied, but is a tuple,
+        and therefore cannot be modified anyway.
+        """
         result = tuple.__new__(cls, values)
         if len(fields) != len(result):
             raise ValueError(f"Expected {len(fields)} arguments, got "
@@ -91,7 +99,7 @@ class NamedTuple(tuple):
         result.__dict__["_fields"] = fields
         return result
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         """Look in `_fields` when `name` is not in `dir(self)`."""
         try:
             return tuple.__getitem__(self, self._fields.index(name))
@@ -99,41 +107,43 @@ class NamedTuple(tuple):
             raise AttributeError(f"'{self._typename}' object has no attribute "
                                  f"'{name}'")
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: Any) -> NoReturn:
         """Make the object immutable, like a tuple."""
         raise AttributeError(f"can't set attributes of "
                              f"'{type(self).__name__}' instance")
 
-    def _make(self, iterable):
+    def _make(self, iterable: Iterable[Any]) -> NamedTuple:
         """Make a new object of same typename and fields from a sequence or
         iterable."""
         return type(self)(self._typename, self._fields, iterable)
 
-    def _replace(self, **kwargs):
+    def _replace(self, **kwargs: Any) -> NamedTuple:
         """Return a new object of same typename and fields, replacing specified
         fields with new values."""
+        # kwargs.pop(key, default) returns the entry in kwargs each field, or
+        # uses the value from this NamedTuple as a default
         result = self._make(map(kwargs.pop, self._fields, self))
         if kwargs:
             raise ValueError(f"Got unexpected field names: "
                              f"{str(list(kwargs))[1:-1]}")
         return result
 
-    def _asdict(self):
+    def _asdict(self) -> OrderedDict:
         """Return an ordered dictionary mapping field names to their values."""
         return OrderedDict(zip(self._fields, self))
 
-    def __getnewargs__(self):
+    def __getnewargs__(self) -> Tuple[str, Tuple[str], Tuple[Any]]:
         """Returns typename, fields, and values as plain tuple. Used by copy
         and pickle."""
         return self._typename, self._fields, tuple(self)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Return a nicely formatted string showing the typename."""
         return self._typename + '(' + ', '.join(f'{name}={value}'
             for name, value in zip(self._fields, self)) + ')'
 
 
-class NamedArrayTupleType(NamedTupleType):
+class NamedArrayTupleClass(NamedTupleClass):
     """Instances of this class act like a type returned by rlpyt's
     namedarraytuple()."""
 
@@ -143,78 +153,83 @@ class NamedArrayTupleType(NamedTupleType):
             if name in RESERVED_NAMES:
                 raise ValueError(f"Disallowed field name: '{name}'")
 
-    def _make(self, iterable):
+    def _make(self, iterable: Iterable[Any]) -> NamedArrayTuple:
         return NamedArrayTuple(self._typename, self._fields, iterable)
 
 
 class NamedArrayTuple(NamedTuple):
 
-    def __getitem__(self, loc):
+    def __getitem__(self, loc: Any) -> NamedArrayTuple:
         """Return a new object of the same typename and fields containing the
         selected index or slice from each value."""
         try:
-            return self._make(None if s is None else s[loc] for s in self)
+            # make new NamedTupleArray from the result of indexing each item using loc
+            # do not try to index None items, just return them
+            return self._make(None if elem is None else elem[loc] for elem in self)
         except IndexError as e:
-            for j, s in enumerate(self):
-                if s is None:
+            # repeat indexing to find where exception occurred
+            for i, elem in enumerate(self):
+                if elem is None:
                     continue
                 try:
-                    _ = s[loc]
+                    _ = elem[loc]
                 except IndexError:
                     raise Exception(f"Occured in '{self._typename}' at field "
-                                    f"'{self._fields[j]}'.") from e
+                                    f"'{self._fields[i]}'.") from e
 
-    def __setitem__(self, loc, value):
+    def __setitem__(self, loc: Any, value: Any) -> None:
         """
         If input value is the same named[array]tuple type, iterate through its
         fields and assign values into selected index or slice of corresponding
         value.  Else, assign whole of value to selected index or slice of
-        all fields.  Ignore fields that are both None.
-
-        # TODO: add handling of None fields
+        all fields.  Ignore fields where either current value or new value is
+        None.
         """
-        if not (isinstance(value, tuple) and  # Check for matching structure.
-                getattr(value, "_fields", None) == self._fields):
-            # Repeat value for each but respect any None.
-            value = tuple(None if s is None else value for s in self)
+        # if not a NamedTuple or NamedArrayTuple of matching structure
+        if not (isinstance(value, NamedTuple)
+            and getattr(value, "_fields", None) == self._fields):
+            # Repeat value, assigning it to each field
+            # e.g. tup[:] = 0
+            value = repeat(value)
         try:
-            for j, (s, v) in enumerate(zip(self, value)):
-                if s is not None or v is not None:
-                    s[loc] = v
+            for i, (elem, v) in enumerate(zip(self, value)):
+                # do not set if either current value or new value is None
+                if elem is not None and v is not None:
+                    elem[loc] = v
         except (ValueError, IndexError, TypeError) as e:
-            raise Exception(f"Occured in {self.__class__} at field "
-                            f"'{self._fields[j]}'.") from e
+            raise Exception(f"Occured in {type(self).__name__} at field "
+                            f"'{self._fields[i]}'.") from e
 
-    def __contains__(self, key):
+    def __contains__(self, key: str) -> bool:
         """Checks presence of field name (unlike tuple; like dict)."""
         return key in self._fields
 
-    def get(self, index):
+    def get(self, index: str) -> Any:
         """Retrieve value as if indexing into regular tuple."""
         return tuple.__getitem__(self, index)
 
-    def items(self):
+    def items(self) -> Iterable[Tuple[str, Any]]:
         """Iterate ordered (field_name, value) pairs (like OrderedDict)."""
-        for k, v in zip(self._fields, self):
-            yield k, v
+        return zip(self._fields, self)
 
 
-def NamedArrayTupleType_like(example):
-    """Returns a NamedArrayTupleType instance  with the same name and fields
+def NamedArrayTupleClass_like(example: Union[NamedArrayTupleClass,
+    NamedArrayTuple, NamedTupleClass, NamedTuple]) -> NamedArrayTupleClass:
+    """Returns a NamedArrayTupleClass instance  with the same name and fields
     as input, which can be a class or instance of namedtuple or
-    namedarraytuple, or an instance of NamedTupleType, NamedTuple,
-    NamedArrayTupleType, or NamedArrayTuple."""
-    if isinstance(example, NamedArrayTupleType):
+    namedarraytuple, or an instance of NamedTupleClass, NamedTuple,
+    NamedArrayTupleClass, or NamedArrayTuple."""
+    if isinstance(example, NamedArrayTupleClass):
         return example
-    elif isinstance(example, (NamedArrayTuple, NamedTuple, NamedTupleType)):
-        return NamedArrayTupleType(example._typename, example._fields)
+    elif isinstance(example, (NamedArrayTuple, NamedTuple, NamedTupleClass)):
+        return NamedArrayTupleClass(example._typename, example._fields)
     else:
         raise TypeError("Input must be instance of NamedTuple[Type] or "
             f"NamedArrayTuple[Type]. Instead, got {type(example)}.")
 
 
 def dict_to_namedtuple(value: Any, name: str, classes: dict, force_float32: bool = True):
-    #TODO: this method is ridiculous. Take the expected NamedTupleType as input
+    #TODO: this method is ridiculous. Take the expected NamedTupleClass as input
     if isinstance(value, dict):
         NamedTupleCls = classes[name]
         # Disregard unrecognized keys:
