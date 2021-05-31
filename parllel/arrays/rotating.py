@@ -56,6 +56,13 @@ class RotatingArray(Array):
         """
         return self._apparent_shape[0] - 1
 
+    def initialize(self) -> None:
+        super().initialize()
+
+        self._hidden_array: NDArray = np.zeros(shape=self.shape[1:], dtype=self.dtype)
+        self._hidden_index = None
+        self._show_hidden_proxy = ShowHiddenProxyArray(self)
+
     def rotate(self) -> None:
         """Prepare buffer for collecting next batch. Rotate values stored at
         the end of buffer for the next batch to become previous values for
@@ -99,11 +106,31 @@ class RotatingArray(Array):
         leading = shift_index(leading, self._padding, self._apparent_shape[0])
         super().__setitem__(leading + trailing, value)
 
+    @property
+    def temporary(self):
+        return self._show_hidden_proxy
+
     def __array__(self, dtype = None) -> NDArray:
         array = super().__array__(dtype)
         if self._padding > 0:
             array = array[self._padding:-self._padding]
         return array
+
+
+class ShowHiddenProxyArray:
+    def __init__(self, parent: RotatingArray):
+        self._parent = parent
+
+    def __setitem__(self, location: Any, value: Any) -> None:
+        parent: RotatingArray = self._parent
+        if not isinstance(location, tuple):
+            location = (location, )
+        parent._hidden_index = location[0]
+        assert isinstance(parent._hidden_index, int), (
+            "When assigning to temporary array, leading index must be an "
+            "integer."
+        )
+        parent._hidden_array[location[1:]] = value
 
 
 def shift_index(index: Index, shift: int, apparent_length: int) -> Tuple[Index, ...]:
