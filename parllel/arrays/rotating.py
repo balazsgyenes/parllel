@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Tuple, Union
+from typing import Any, Tuple
 
 import numpy as np
 from nptyping import NDArray
@@ -35,7 +35,7 @@ class RotatingArray(Array):
         self._apparent_shape = shape
 
         # add padding onto both ends of first dimension
-        self._shape = (self._shape[0] + 2 * self._padding,) + self._shape[1:]
+        self.shape = (self.shape[0] + 2 * self._padding,) + self.shape[1:]
 
     def rotate(self) -> None:
         """Prepare buffer for collecting next batch. Rotate values stored at
@@ -43,23 +43,30 @@ class RotatingArray(Array):
         upcoming batch (e.g. value_T becomes value_(-1) and value_(T+1) becomes
         value_0).
         """
-        final_values = slice(-(self._padding + 1), None)
-        next_previous_values = slice(0, self._padding + 1)
-        self._array[next_previous_values] = self._array[final_values]
+        if self._padding > 0:
+            final_values = slice(-(self._padding + 1), None)
+            next_previous_values = slice(0, self._padding + 1)
+            self._array[next_previous_values] = self._array[final_values]
 
     def __getitem__(self, location: Indices) -> RotatingArray:
-        if isinstance(location, Tuple):
+        """Index into contained array, applying offset due to padding. The
+        result of this method will always have padding of 0, since the padding
+        is stripped away.
+        """
+        if isinstance(location, tuple):
             leading, trailing = location[0], location[1:]
         else:
             leading, trailing = location, ()
 
         leading = shift_index(leading, self._padding, self._apparent_shape[0])
-        result = super().__getitem__(leading + trailing)
-        # TODO: modify additional instance variables from RotatingArray
+        result: RotatingArray = super().__getitem__(leading + trailing)
+        # modify additional instance variables from RotatingArray
+        result._padding = 0
+        result._apparent_shape = result.shape
         return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
-        if isinstance(location, Tuple):
+        if isinstance(location, tuple):
             leading, trailing = location[0], location[1:]
         else:
             leading, trailing = location, ()
@@ -68,12 +75,12 @@ class RotatingArray(Array):
         super().__setitem__(leading + trailing, value)
 
     def __array__(self, dtype = None) -> NDArray:
-        # TODO: self._array is modified with __getitem__
-        array = self._array[self._padding:-self._padding]
+        array = self._array
+        if self._padding > 0:
+            array = array[self._padding:-self._padding]
         if dtype is None:
             return array
-        else:
-            return array.astype(dtype, copy=False)
+        return array.astype(dtype, copy=False)
 
     @property
     def start(self) -> int:
@@ -81,11 +88,7 @@ class RotatingArray(Array):
 
     @property
     def end(self) -> int:
-        # TODO: shape is modified with __getitem__
-        return self._shape[0] - self._padding - 1
-
-    def __repr__(self) -> str:
-        return repr(self._array[self._padding:-self._padding])
+        return self.shape[0] - self._padding - 1
 
 
 def shift_index(index: Index, shift: int, apparent_length: int) -> Tuple[Index, ...]:

@@ -24,7 +24,7 @@ class TestArray:
         shape = (4, 4, 4)
         array = Array(shape=shape, dtype=np.float32)
         array.initialize()
-        assert np.all(array == np.zeros(shape))
+        assert np.array_equal(array, np.zeros(shape))
 
     def test_setitem(self):
         shape = (4, 4, 4)
@@ -36,16 +36,18 @@ class TestArray:
         same_values = np.ones(shape, dtype=np.float32)
         same_values[:] = 5.0
 
-        assert np.all(array == same_values)
+        assert np.array_equal(array, same_values)
 
     def test_getitem(self):
         shape = (4, 4, 4)
-        array = Array(shape=shape, dtype=np.float32)
+        array = Array(shape=shape, dtype=np.float64)
         array.initialize()
 
         array[1, 2, 3] = 5.0
 
-        assert array[1, 2, 3] == 5.0
+        # Cannot convert Array to ndarray after indexing a single element
+        # Convert to ndarray first and then index the ndarray
+        assert np.all(np.asarray(array)[1, 2, 3] == 5.0)
 
     def test_setitem_slice(self):
         shape = (4, 4, 4)
@@ -57,7 +59,7 @@ class TestArray:
         same_values = np.zeros(shape, dtype=np.float32)
         same_values[:, slice(1, 3), 3] = 5.0
 
-        assert np.all(array == same_values)
+        assert np.array_equal(array, same_values)
 
     def test_getitem_slice(self):
         shape = (4, 4, 4)
@@ -70,4 +72,4 @@ class TestArray:
         array = Array(shape=(4, 4, 4), dtype=np.float32)
         array.initialize()
         array[0, 0, 0] = 5
-        assert type(array[0, 0, 0]) == np.float32
+        assert array[0, 0, 0].dtype == np.float32

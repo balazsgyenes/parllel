@@ -7,7 +7,7 @@ class TestRotatingArray:
         array = RotatingArray(shape=(10, 4, 4, 3), dtype=np.uint8, padding=2)
 
         assert array._apparent_shape == (10, 4, 4, 3)
-        assert array._shape == (14, 4, 4, 3)
+        assert array.shape == (14, 4, 4, 3)
 
     def test_wrong_padding(self):
         with pytest.raises(AssertionError):
@@ -24,10 +24,10 @@ class TestRotatingArray:
         array[-1] = 1
         array[11] = 1
 
-        assert np.all(array[-1] == 1)
-        assert np.all(array[11] == 1)
-        assert np.all(array[10] == 0)
-        assert np.all(array[-2] == 0)
+        assert np.all(np.asarray(array[-1]) == 1)
+        assert np.all(np.asarray(array[11]) == 1)
+        assert np.all(np.asarray(array[10]) == 0)
+        assert np.all(np.asarray(array[-2]) == 0)
 
     def test_out_of_bounds(self):
         with pytest.raises(IndexError):
@@ -40,9 +40,9 @@ class TestRotatingArray:
         array.initialize()
         array[:] = 1
 
-        assert np.all(array[0:10] == 1)
-        assert np.all(array[-1] != 1)
-        assert np.all(array[10] != 1)
+        assert np.all(np.asarray(array[0:10]) == 1)
+        assert np.all(np.asarray(array[-1]) != 1)
+        assert np.all(np.asarray(array[10]) != 1)
 
     def test_ellipsis_slice(self):
         array = RotatingArray(shape=(10, 4, 4, 3), dtype=np.uint8, padding=2)
@@ -52,7 +52,7 @@ class TestRotatingArray:
         comparison = np.zeros(shape=(4,4,3))
         comparison[:, :, 1] = 1
 
-        assert np.all(array[0:10] == comparison)
+        assert np.all(np.asarray(array[0:10]) == comparison)
         assert np.array_equal(array[-1], np.zeros((4,4,3)))
         assert np.array_equal(array[10], np.zeros((4,4,3)))
 

@@ -42,8 +42,10 @@ class Array(Buffer):
     def __getitem__(self, location: Indices) -> Array:
         # index contained nparray to verify that location is well-formed
         nparray = self._array[location]
-        # create shallow copy at first. all attributes that must be deep copied
-        # are handled next
+        # new Array object initialized through a (shallow) copy. Attributes
+        # that differ between self and result are modified next. This allows
+        # subclasses to override and only handle additional attributes that
+        # need to be modified.
         result = copy.copy(self)
         # assign indexed nparray to result
         result._array = nparray
@@ -65,7 +67,7 @@ class Array(Buffer):
 
     def __repr__(self) -> str:
         if hasattr(self, "_array"):
-            return repr(self._array)
+            return repr(self.__array__())
         else:
             return f"Uninitialized {type(self).__name__} object: " \
                    f"shape={self.shape}, dtype={np.dtype(self.dtype).name}."
