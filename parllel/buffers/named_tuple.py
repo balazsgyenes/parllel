@@ -9,6 +9,9 @@ from typing import Any, Iterable, NoReturn, Tuple, Union
 
 import numpy as np
 
+from parllel.buffers.buffer import Buffer
+
+
 RESERVED_NAMES = ("get", "items")
 
 
@@ -157,7 +160,12 @@ class NamedArrayTupleClass(NamedTupleClass):
         return NamedArrayTuple(self._typename, self._fields, iterable)
 
 
-class NamedArrayTuple(NamedTuple):
+class NamedArrayTuple(NamedTuple, Buffer):
+    def __new__(cls, typename, fields: Tuple[str], values: Iterable[Any]):
+        result = super().__new__(cls, typename, fields, values)
+        result.__dict__["_index_history"] = []
+        result.__dict__["_buffer_id"] = id(result)
+        return result
 
     def __getitem__(self, loc: Any) -> NamedArrayTuple:
         """Return a new object of the same typename and fields containing the
@@ -165,7 +173,11 @@ class NamedArrayTuple(NamedTuple):
         try:
             # make new NamedTupleArray from the result of indexing each item using loc
             # do not try to index None items, just return them
-            return self._make(None if elem is None else elem[loc] for elem in self)
+            view = self._make(None if elem is None else elem[loc] for elem in self)
+            view._index_history.extend(self._index_history)
+            view._index_history.append(loc)
+            view.__dict__["_buffer_id"] = self._buffer_id
+            return view
         except IndexError as e:
             # repeat indexing to find where exception occurred
             for i, elem in enumerate(self):
@@ -221,11 +233,10 @@ def NamedArrayTupleClass_like(example: Union[NamedArrayTupleClass,
     NamedArrayTupleClass, or NamedArrayTuple."""
     if isinstance(example, NamedArrayTupleClass):
         return example
-    elif isinstance(example, (NamedArrayTuple, NamedTuple, NamedTupleClass)):
+    if isinstance(example, (NamedArrayTuple, NamedTuple, NamedTupleClass)):
         return NamedArrayTupleClass(example._typename, example._fields)
-    else:
-        raise TypeError("Input must be instance of NamedTuple[Type] or "
-            f"NamedArrayTuple[Type]. Instead, got {type(example)}.")
+    raise TypeError("Input must be instance of NamedTuple[Class] or "
+            f"NamedArrayTuple[Class]. Instead, got {type(example)}.")
 
 
 def dict_to_namedtuple(value: Any, name: str, classes: dict, force_float32: bool = True):

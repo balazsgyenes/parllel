@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+
 from parllel.arrays.array import Array
 
 

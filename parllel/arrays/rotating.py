@@ -1,10 +1,11 @@
+from __future__ import annotations
 from typing import Any, Tuple, Union
 
 import numpy as np
 from nptyping import NDArray
 
-from .array import Array, Index, Indices
-
+from .array import Array
+from parllel.buffers.buffer import Index, Indices
 
 class RotatingArray(Array):
     """Abstracts memory management for large arrays.
@@ -46,14 +47,16 @@ class RotatingArray(Array):
         next_previous_values = slice(0, self._padding + 1)
         self._array[next_previous_values] = self._array[final_values]
 
-    def __getitem__(self, location: Indices) -> NDArray:
+    def __getitem__(self, location: Indices) -> RotatingArray:
         if isinstance(location, Tuple):
             leading, trailing = location[0], location[1:]
         else:
             leading, trailing = location, ()
 
         leading = shift_index(leading, self._padding, self._apparent_shape[0])
-        return super().__getitem__(leading + trailing)
+        result = super().__getitem__(leading + trailing)
+        # TODO: modify additional instance variables from RotatingArray
+        return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
         if isinstance(location, Tuple):
@@ -65,6 +68,7 @@ class RotatingArray(Array):
         super().__setitem__(leading + trailing, value)
 
     def __array__(self, dtype = None) -> NDArray:
+        # TODO: self._array is modified with __getitem__
         array = self._array[self._padding:-self._padding]
         if dtype is None:
             return array
@@ -77,6 +81,7 @@ class RotatingArray(Array):
 
     @property
     def end(self) -> int:
+        # TODO: shape is modified with __getitem__
         return self._shape[0] - self._padding - 1
 
     def __repr__(self) -> str:

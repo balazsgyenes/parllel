@@ -1,14 +1,14 @@
-from typing import Any, Tuple, Union
+from __future__ import annotations
+import copy
+from typing import Any, List, Tuple
 
 import numpy as np
 from nptyping import NDArray
 
-
-Index = Union[int, slice, type(Ellipsis)]
-Indices = Union[Index, Tuple[Index, ...]]
+from parllel.buffers.buffer import Buffer, Indices
 
 
-class Array:
+class Array(Buffer):
     """Abstracts memory management for large arrays.
 
     Arrays must be initialized before using them.
@@ -27,17 +27,32 @@ class Array:
         shape: Tuple[int, ...],
         dtype: np.dtype,
     ) -> None:
-        self._shape = shape
+        self.shape = shape
         dtype = np.dtype(dtype)
         assert dtype != np.object_, "Data type should not be object."
-        self._dtype = dtype
+        self.dtype = dtype
+
+        self._buffer_id: int = id(self)
+        self._index_history: List[Indices] = []
 
     def initialize(self) -> None:
         # initialize numpy array
-        self._array = np.zeros(shape=self._shape, dtype=self._dtype)
+        self._array: NDArray = np.zeros(shape=self.shape, dtype=self.dtype)
 
-    def __getitem__(self, location: Indices) -> NDArray:
-        return self._array[location]
+    def __getitem__(self, location: Indices) -> Array:
+        # index contained nparray to verify that location is well-formed
+        nparray = self._array[location]
+        # create shallow copy at first. all attributes that must be deep copied
+        # are handled next
+        result = copy.copy(self)
+        # assign indexed nparray to result
+        result._array = nparray
+        # assign new shape
+        result.shape = nparray.shape
+        # assign copy of _index_history with additional element for this
+        # indexing operation
+        result._index_history = self._index_history + [location]
+        return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
         self._array[location] = value
@@ -53,4 +68,4 @@ class Array:
             return repr(self._array)
         else:
             return f"Uninitialized {type(self).__name__} object: " \
-                   f"shape={self._shape}, dtype={np.dtype(self._dtype).name}."
+                   f"shape={self.shape}, dtype={np.dtype(self.dtype).name}."
