@@ -46,7 +46,8 @@ class Array(Buffer):
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
         # need to be modified.
-        result = copy.copy(self)
+        result = type(self).__new__(type(self))
+        result.__dict__.update(self.__dict__)
         # assign indexed nparray to result
         result._array = nparray
         # assign new shape
@@ -71,3 +72,9 @@ class Array(Buffer):
         else:
             return f"Uninitialized {type(self).__name__} object: " \
                    f"shape={self.shape}, dtype={np.dtype(self.dtype).name}."
+
+    def __bool__(self) -> bool:
+        return bool(self._array)
+
+    def __eq__(self, o: object) -> NDArray:
+        return self._array == o

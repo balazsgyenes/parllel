@@ -1,6 +1,6 @@
-from parllel.types.named_tuple import NamedTupleType
+from parllel.buffers import NamedTupleClass
 
-EnvStep = NamedTupleType("EnvStep", 
+EnvStep = NamedTupleClass("EnvStep", 
     ["observation", "reward", "done", "env_info"])
-EnvSpaces = NamedTupleType("EnvSpaces",
+EnvSpaces = NamedTupleClass("EnvSpaces",
     ["observation", "action"])

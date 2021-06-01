@@ -16,12 +16,12 @@ class ClassicSampler:
         batch_T: int,
         batch_B: int,
         get_bootstrap_value: bool = False,
-        break_if_all_done: bool = False,
+        wait_before_reset: bool = False,
     ) -> None:
         self.batch_T = batch_T
         self.batch_B = batch_B
         self.get_bootstrap_value = get_bootstrap_value
-        self.break_if_all_done = break_if_all_done
+        self.wait_before_reset = wait_before_reset
 
     def initialize(self, agent, envs: List[Cage], batch_buffer: Samples) -> None:
         self.agent = agent
@@ -32,10 +32,9 @@ class ClassicSampler:
 
     def collect_batch(self, elapsed_steps) -> Tuple[Samples, List[TrajInfo]]:
         # get references to buffer elements
-        action, agent_info, rnn_state = (
+        action, agent_info = (
             self.batch_buffer.agent.action,
             self.batch_buffer.agent.agent_info,
-            self.batch_buffer.agent.rnn_state,
         )
         observation, reward, done, env_info = (
             self.batch_buffer.env.observation,
@@ -48,7 +47,6 @@ class ClassicSampler:
         observation.rotate()
         action.rotate()
         reward.rotate()
-        rnn_state.rotate()
 
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
@@ -56,24 +54,29 @@ class ClassicSampler:
         # main sampling loop
         for t in range(0, self.batch_T):
             # agent observes environment and outputs actions
-            action[t], agent_info[t], rnn_state[t+1] = self.agent.step(
-                observation[t], action[t-1], reward[t-1], rnn_state[t])
+            self.agent.step(observation[t], action[t-1], reward[t-1],
+                env_ids=slice(None), out_action=action[t], out_agent_info=agent_info[t])
 
             for b, env in enumerate(self.envs):
-                env.step_async(action[t, b])
+                env.step_async(action[t, b],
+                    out_obs=observation[t+1, b], out_reward=reward[t, b],
+                    out_done=done[t, b], out_info=env_info[t, b])
 
             for b, env in enumerate(self.envs):
-                next_obs, reward[t, b], next_done, env_info[t, b] = env.await_step()
-                if next_done:
-                    next_obs = env.reset()
-                    self.agent.reset_one(idx=b) # TODO: replace line
-                observation[t+1, b] = next_obs
-                done[t, b] = next_done
+                env.await_step()
+                if not self.wait_before_reset and done[t, b]:
+                    self.agent.reset_one(env_index=b)
 
-            if self.break_if_all_done and all(done[t]):
-                # all done
-                break
+            # if self.wait_before_reset and all(done[t]):
+            #     # all done
+            #     break
         
+        if self.wait_before_reset:
+            for b, env in enumerate(self.envs):
+                if done[self.batch_T, b]:
+                    self.agent.reset_one(env_index=b)
+                    env.collect_reset_obs(out_obs=observation[self.batch_T, b])
+
         # get bootstrap value if requested
         if self.get_bootstrap_value:
             self.batch_buffer.agent.bootstrap_value[:] = self.agent.value(
