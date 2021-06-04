@@ -73,6 +73,10 @@ class Cage:
             else:
                 # leave other values unchanged, since they are ignored anyway
                 out_done[:] = True
+                # TODO: write zeros to other buffers, because zeros are faster to compute with?
+                # out_obs[:] = 0
+                # out_reward[:] = 0
+                # out_info[:] = 0
             return
 
         obs, reward, done, env_info = self._env.step(np.asarray(action))
