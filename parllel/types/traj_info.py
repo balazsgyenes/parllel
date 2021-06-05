@@ -2,10 +2,10 @@ from dataclasses import dataclass
 
 @dataclass
 class TrajInfo:
-    Length: int
-    Return: float
-    NonZeroRewards: int
-    DiscountedReturn: float
+    Length: int = 0
+    Return: float = 0
+    NonzeroRewards: int = 0
+    DiscountedReturn: float = 0
     _current_discount: float = 1.0
     _discount: float = 1.0
 

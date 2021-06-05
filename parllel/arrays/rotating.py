@@ -28,14 +28,15 @@ class RotatingArray(Array):
         dtype: np.dtype,
         padding: int = 1,
     ) -> None:
-        super().__init__(shape, dtype)
 
         assert padding > 0, "Padding must be positive."
         self._padding = padding
         self._apparent_shape = shape
 
         # add padding onto both ends of first dimension
-        self.shape = (self.shape[0] + 2 * self._padding,) + self.shape[1:]
+        shape = (shape[0] + 2 * self._padding,) + shape[1:]
+
+        super().__init__(shape, dtype)
 
     def rotate(self) -> None:
         """Prepare buffer for collecting next batch. Rotate values stored at

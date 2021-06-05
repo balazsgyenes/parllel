@@ -1,7 +1,7 @@
-from parllel.buffers import NamedArrayTupleType
+from parllel.buffers import NamedArrayTupleClass
 
-Samples = NamedArrayTupleType("Samples", ["agent", "env"])
-AgentSamples = NamedArrayTupleType("AgentSamples",
+Samples = NamedArrayTupleClass("Samples", ["agent", "env"])
+AgentSamples = NamedArrayTupleClass("AgentSamples",
     ["action", "agent_info"])
-EnvSamples = NamedArrayTupleType("EnvSamples",
+EnvSamples = NamedArrayTupleClass("EnvSamples",
     ["observation", "reward", "done", "env_info"])

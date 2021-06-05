@@ -66,7 +66,7 @@ class Cage:
         """If any out parameter is given, they must all be given. 
         """
         if self._already_done:
-            if None in {out_obs, out_reward, out_done, out_info}:
+            if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
                 # Nones are ignored by NamedArrayTuple
                 # done must be set to True in all cases though
                 self._step_result = EnvStep(None, None, True, None) 
@@ -95,10 +95,10 @@ class Cage:
                 # reset immediately and overwrite last observation
                 obs = self._env.reset()
     
-        if None in {out_obs, out_reward, out_done, out_info}:
+        if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
             self._step_result = EnvStep(obs, reward, done, env_info)
         else:
-            out_obs[:] = obs
+            out_obs[:] = obs  # TODO: no assignment possible if out_obs is 0D-array
             out_reward[:] = reward
             out_done[:] = done
             out_info[:] = env_info

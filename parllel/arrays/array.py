@@ -32,12 +32,11 @@ class Array(Buffer):
         assert dtype != np.object_, "Data type should not be object."
         self.dtype = dtype
 
-        self._buffer_id: int = id(self)
-        self._index_history: List[Indices] = []
-
-    def initialize(self) -> None:
         # initialize numpy array
         self._array: NDArray = np.zeros(shape=self.shape, dtype=self.dtype)
+
+        self._buffer_id: int = id(self)
+        self._index_history: List[Indices] = []
 
     def __getitem__(self, location: Indices) -> Array:
         # index contained nparray to verify that location is well-formed
@@ -62,9 +61,9 @@ class Array(Buffer):
 
     def __array__(self, dtype=None) -> NDArray:
         if dtype is None:
-            return self._array
+            return np.atleast_1d(self._array)
         else:
-            return self._array.astype(dtype, copy=False)
+            return np.atleast_1d(self._array).astype(dtype, copy=False)
 
     def __repr__(self) -> str:
         if hasattr(self, "_array"):

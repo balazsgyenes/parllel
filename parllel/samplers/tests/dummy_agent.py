@@ -1,24 +1,28 @@
-from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
 from nptyping import NDArray
 
-from parllel.buffers import Buffer
+from parllel.buffers import Buffer, NamedTupleClass
 from parllel.handlers import Agent, AgentStep
 
 
-@dataclass
-class DummyAgentInfo:
-    observation: Buffer
-    previous_action: Buffer
-    previous_reward: Buffer
+DummyAgentInfo = NamedTupleClass("DummyAgentInfo", ["observation", "previous_action", "previous_reward"])
 
 
 class DummyAgent(Agent):
-    def initialize(self, n_states: int) -> None:
+    def initialize(self, example_inputs, n_states: int) -> AgentStep:
         self._n_states = n_states
         self.reset()
+        obs, prev_action, prev_reward = example_inputs
+        return AgentStep(
+            action = 1,
+            agent_info = DummyAgentInfo(
+                observation = obs,
+                previous_action = prev_action,
+                previous_reward = prev_reward,
+            )
+        )
 
     def reset(self) -> None:
         self._rnn_states: NDArray = np.zeros(shape=(self._n_states,), dtype=np.int32)
@@ -26,7 +30,7 @@ class DummyAgent(Agent):
     def reset_one(self, env_index: int) -> None:
         self._rnn_states[env_index] = 0
 
-    def step(self, observation: Buffer, previous_action: Buffer, previous_reward: Buffer, *, env_ids: Union[int, slice]) -> AgentStep:
+    def step(self, observation: Buffer, previous_action: Buffer, previous_reward: Buffer, *, env_ids: Union[int, slice] = slice(None)) -> AgentStep:
         self._rnn_states[env_ids] += 1
         return AgentStep(
             action = self._rnn_states[env_ids].copy(),
@@ -37,7 +41,7 @@ class DummyAgent(Agent):
             ),
         )
 
-    def value(self, observation: Buffer, previous_action: Buffer, previous_reward: Buffer, *, env_ids: Union[int, slice]) -> Buffer:
+    def value(self, observation: Buffer, previous_action: Buffer, previous_reward: Buffer, *, env_ids: Union[int, slice] = slice(None)) -> Buffer:
         return AgentStep(
             action = self._rnn_states[env_ids].copy(),
             agent_info = DummyAgentInfo(

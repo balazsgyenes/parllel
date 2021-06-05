@@ -2,6 +2,7 @@ from parllel.samplers.collections import AgentSamples, EnvSamples, Samples
 from parllel.arrays import Array, RotatingArray
 from parllel.buffers.utils import buffer_from_example
 from parllel.cages import Cage
+from parllel.handlers import Handler
 from parllel.samplers import ClassicSampler
 from parllel.samplers.tests.dummy_agent import DummyAgent
 from parllel.samplers.tests.dummy_env import DummyEnv
@@ -30,11 +31,12 @@ def build_sampler(batch_T: int, batch_B: int, recurrent: bool):
     example_env_output = example_env.await_step()
     obs, reward, done, info = example_env_output
 
+    example_inputs = (obs, prev_action, reward)
+    # instantiate model and agent
+    action, agent_info = agent.initialize(example_inputs=example_inputs, n_states=batch_B)
+
     # discard example env
     example_env.close()
-
-    # instantiate model and agent
-    action, agent_info = agent.initialize(n_states=batch_B)
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_example(obs, (batch_T, batch_B), RotatingArray, padding=1)
@@ -53,15 +55,20 @@ def build_sampler(batch_T: int, batch_B: int, recurrent: bool):
 
     # create cages to manage environments
     episode_lengths = [5 + i for i in range(batch_B)]
-    envs = [Cage(
+    cages = [Cage(
             EnvClass=DummyEnv,
             env_kwargs={"episode_length": episode_length},
             TrajInfoClass=TrajInfo,
             traj_info_kwargs = {},
             wait_before_reset=recurrent)
         for episode_length in episode_lengths]
+    
+    for cage in cages:
+        cage.initialize()
+
+    handler = Handler(agent=agent)
 
     # initialize sampler
-    sampler.initialize(agent=agent, envs=envs, batch_buffer=batch_samples, step_action=step_action, step_reward=step_reward)
+    sampler.initialize(agent=handler, envs=cages, batch_buffer=batch_samples, step_action=step_action, step_reward=step_reward)
 
     return sampler

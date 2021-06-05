@@ -1,13 +1,8 @@
-from dataclasses import dataclass
 from typing import Union
 
-from parllel.buffers import Buffer
+from parllel.buffers import Buffer, NamedTupleClass
 
-
-@dataclass(frozen=True)
-class AgentStep:
-    action: Buffer
-    agent_info: Buffer
+AgentStep = NamedTupleClass("AgentStep", ["action", "agent_info"])
 
 
 class Agent:
