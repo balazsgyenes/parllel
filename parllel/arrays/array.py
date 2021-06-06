@@ -27,43 +27,58 @@ class Array(Buffer):
         shape: Tuple[int, ...],
         dtype: np.dtype,
     ) -> None:
-        self.shape = shape
+        self._base_shape = shape
+        self._indexed_shape = shape
+
         dtype = np.dtype(dtype)
         assert dtype != np.object_, "Data type should not be object."
         self.dtype = dtype
 
         # initialize numpy array
-        self._array: NDArray = np.zeros(shape=self.shape, dtype=self.dtype)
+        self._array: NDArray = np.zeros(shape=self._base_shape, dtype=self.dtype)
 
         self._buffer_id: int = id(self)
         self._index_history: List[Indices] = []
 
+    @property
+    def shape(self):
+        return self._indexed_shape
+
     def __getitem__(self, location: Indices) -> Array:
+        array: NDArray = self._array
+        if self._index_history:
+            # apply last index before indexing again
+            array: NDArray = array[self._index_history[-1]]
+        
         # index contained nparray to verify that location is well-formed
-        nparray = self._array[location]
+        subarray: NDArray = array[location]
         # new Array object initialized through a (shallow) copy. Attributes
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
         # need to be modified.
-        result = type(self).__new__(type(self))
-        result.__dict__.update(self.__dict__)
-        # assign indexed nparray to result
-        result._array = nparray
+        result: Array = copy.copy(self)
+        # assign previous subarray to new result
+        result._array = array
         # assign new shape
-        result.shape = nparray.shape
+        result._indexed_shape = subarray.shape
         # assign copy of _index_history with additional element for this
         # indexing operation
-        result._index_history = self._index_history + [location]
+        result._index_history = copy.copy(result._index_history) + [location]
         return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
+        if location == slice(None) and self._index_history:
+            location = self._index_history[-1]
         self._array[location] = value
 
     def __array__(self, dtype=None) -> NDArray:
-        if dtype is None:
-            return np.atleast_1d(self._array)
-        else:
-            return np.atleast_1d(self._array).astype(dtype, copy=False)
+        array = self._array
+        if self._index_history:
+            array = array[self._index_history[-1]]
+        array = np.atleast_1d(array)
+        if dtype is not None:
+            array = array.astype(dtype, copy=False)
+        return array
 
     def __repr__(self) -> str:
         if hasattr(self, "_array"):
@@ -73,7 +88,58 @@ class Array(Buffer):
                    f"shape={self.shape}, dtype={np.dtype(self.dtype).name}."
 
     def __bool__(self) -> bool:
-        return bool(self._array)
+        return bool(self.__array__())
 
     def __eq__(self, o: object) -> NDArray:
-        return self._array == o
+        return self.__array__() == o
+
+
+def concatenate_indices(full_shape, current_indices: List, new_indices: Tuple):
+    if not isinstance(new_indices, tuple):
+        new_indices = (new_indices,)
+
+    i = 0
+    j = 0
+    while j < len(new_indices):
+        if i >= ndim:
+            raise IndexError
+        if i < len(current_indices):
+            current_index = current_indices[i]
+        else:
+            # TODO: should the default index be None or slice(None)?
+            current_index = None
+            current_indices.append(current_index)
+
+        if isinstance(current_index, int):
+            i += 1
+            continue
+
+        new_index = new_indices[j]
+
+        if current_index == None:
+            current_indices[i] = new_index
+            i += 1
+            j += 1
+            continue
+
+        if isinstance(new_index, int):
+            current_indices[i] = slice_plus_int(current_index, new_index)
+            i += 1
+            j += 1
+            continue
+
+        current_indices[i] = slice_plus_slice(current_index, new_index)
+
+
+def slice_plus_int(s: slice, n: int):
+    s = slice(*s.indices(1))
+    return s.start + n * s.step
+
+def slice_plus_slice(s1: slice, s2: slice, list_length: int):
+    s1 = slice(*s1.indices(1))
+    s2 = slice(*s2.indices(list_length))
+    return slice(
+        s1.start + s2.start * s1.step,  # start
+        s1.start + s2.stop * s1.step,   # stop
+        s1.step * s2.step,              # step
+    )

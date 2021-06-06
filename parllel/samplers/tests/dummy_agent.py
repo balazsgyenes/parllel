@@ -18,9 +18,9 @@ class DummyAgent(Agent):
         return AgentStep(
             action = 1,
             agent_info = DummyAgentInfo(
-                observation = obs,
-                previous_action = prev_action,
-                previous_reward = prev_reward,
+                observation = obs.copy(),
+                previous_action = prev_action.copy(),
+                previous_reward = prev_reward.copy(),
             )
         )
 
@@ -35,9 +35,9 @@ class DummyAgent(Agent):
         return AgentStep(
             action = self._rnn_states[env_ids].copy(),
             agent_info = DummyAgentInfo(
-                observation=observation,
-                previous_action=previous_action,
-                previous_reward=previous_reward,
+                observation=observation.copy(),
+                previous_action=previous_action.copy(),
+                previous_reward=previous_reward.copy(),
             ),
         )
 
@@ -45,8 +45,8 @@ class DummyAgent(Agent):
         return AgentStep(
             action = self._rnn_states[env_ids].copy(),
             agent_info = DummyAgentInfo(
-                observation=observation,
-                previous_action=previous_action,
-                previous_reward=previous_reward,
+                observation=observation.copy(),
+                previous_action=previous_action.copy(),
+                previous_reward=previous_reward.copy(),
             ),
         )

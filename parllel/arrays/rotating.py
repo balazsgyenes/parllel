@@ -67,6 +67,9 @@ class RotatingArray(Array):
         return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
+        if not self._padding:
+            return super().__setitem__(location, value)
+        
         if isinstance(location, tuple):
             leading, trailing = location[0], location[1:]
         else:
@@ -76,12 +79,10 @@ class RotatingArray(Array):
         super().__setitem__(leading + trailing, value)
 
     def __array__(self, dtype = None) -> NDArray:
-        array = self._array
+        array = super().__array__(dtype)
         if self._padding > 0:
             array = array[self._padding:-self._padding]
-        if dtype is None:
-            return array
-        return array.astype(dtype, copy=False)
+        return array
 
     @property
     def start(self) -> int:

@@ -125,9 +125,7 @@ class ClassicSampler:
                     step_reward[b] = 0
 
         # collect all completed trajectories from envs
-        completed_trajectories = reduce(
-            lambda l, env: l.extend(env.collect_completed_trajs()),
-            self.envs)
+        completed_trajectories = [traj for env in self.envs for traj in env.collect_completed_trajs()]
 
         batch_samples = np.asarray(self.batch_buffer[:(t+1)])
 
