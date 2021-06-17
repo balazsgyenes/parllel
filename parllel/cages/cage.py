@@ -8,10 +8,14 @@ from parllel.envs.collections import EnvStep, EnvSpaces
 from parllel.types.traj_info import TrajInfo
 from parllel.buffers import Buffer
 
+
+INVALID_STEP_RESULT = object()
+
+
 class Cage:
     """Cages abstract communication between the sampler and the environments.
 
-    Note: a literal empty tuple `()` is used in place of None where an error
+    Note: a sentinel object is used in place of None where an error
     should be triggered. None is ignored by NamedArrayTuple, causing operations
     to silently fail where we want an error to be thrown.
 
@@ -46,8 +50,8 @@ class Cage:
         self._completed_trajs: List[TrajInfo] = []
         self._traj_info: TrajInfo = self.TrajInfoClass(**self.traj_info_kwargs)
         self._already_done: bool = False
-        self._step_result: Union[EnvStep, tuple] = ()
-        self._reset_obs: Union[NDArray, Tuple] = ()
+        self._step_result: Union[EnvStep, object] = INVALID_STEP_RESULT
+        self._reset_obs: Union[NDArray, object] = INVALID_STEP_RESULT
 
     @property
     def spaces(self) -> EnvSpaces:
@@ -102,10 +106,11 @@ class Cage:
             out_reward[:] = reward
             out_done[:] = done
             out_info[:] = env_info
+            self._step_result = INVALID_STEP_RESULT
 
     def await_step(self) -> Optional[EnvStep]:
         result = self._step_result
-        self._step_result = ()
+        self._step_result = INVALID_STEP_RESULT
         return result
 
     def random_step_async(self, *,
@@ -139,7 +144,7 @@ class Cage:
 
     def collect_reset_obs(self, *, out_obs: Buffer = None) -> Optional[NDArray]:
         result = self._reset_obs
-        self._reset_obs = ()
+        self._reset_obs = INVALID_STEP_RESULT
         if out_obs is not None:
             out_obs[:] = result
         else:
