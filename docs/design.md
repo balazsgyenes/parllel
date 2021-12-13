@@ -35,5 +35,5 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Array types:
     - AlternatingArray wraps 2 arrays which alternate being written to (by the sampler) and read from (by the algorithm).
 - NamedArrayTuples:
-    - create metaclass to override behaviour of type(), so that getting the type of a Named\[Array\]Tuple returns the corresponding Named\[Array\]TupleClass
+    - create metaclass to override behaviour of `type()`, so that getting the type of a Named\[Array\]Tuple returns the corresponding Named\[Array\]TupleClass. This enables code like `type(named_tup)(*iterable)`
 
