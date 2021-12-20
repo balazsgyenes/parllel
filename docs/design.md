@@ -28,12 +28,19 @@ rlpyt is a great piece of software, but there are several pain points when it co
 
 ## Ideas
 - Sampler types:
-    - ClassicSampler, which should cover most use cases
-    - AlternatingSampler, which might provide better performance for slow environments
-    - FeedForwardSampler, which is a simpler version that only works for non-recurrent models
-    - FullEpisodeSampler, which returns only completed trajectories every iteration. This is essentially a configuration of the ClassicSampler (cages wait to reset, sampler stops if all envs done, samples buffer allocated with T equal to maximum episode length). Depending on wait-reset semantics, it might not make sense to have a separate class for this.
+    - RecurrentSampler, which samples `prev_action` and `prev_reward` and waits to reset between batches. This sampler supports training recurrent agents with Pytorch.
+    - FeedForwardSampler, which does not sample previous values and resets on demand. This only supports feed-forward agents but should be a little faster and use less memory.
+    - AlternatingSampler, which alternates stepping half of the envs at a time to provide better performance for slow environments.
+    - FullEpisodeSampler, which returns only completed trajectories every iteration. This is essentially a configuration of the RecurrentSampler (cages wait to reset, sampler stops if all envs done, samples buffer allocated with T equal to maximum episode length). Depending on wait-reset semantics, it might not make sense to have a separate class for this.
+    - StrictlyCorrectSampler (better name required), which saves the final observation in a trajectory and also contains null values for `prev_action` and `prev_reward` for the first steps in a trajectory, even when not at the beginning of a batch.
+        - NOTE: rlpyt sampling does not correctly produce `prev_action` and `prev_reward` if `WaitResetCollector` types are not used. It assumes that these inputs are only used by recurrent agents when using `WaitResetCollectors`, in which case resets only occur at the beginning of a batch.
 - Array types:
     - AlternatingArray wraps 2 arrays which alternate being written to (by the sampler) and read from (by the algorithm).
 - NamedArrayTuples:
     - create metaclass to override behaviour of `type()`, so that getting the type of a Named\[Array\]Tuple returns the corresponding Named\[Array\]TupleClass. This enables code like `type(named_tup)(*iterable)`
-
+        - This keeps NamedArrayTuple picklable, but allows it to behave like a normal type.
+    - dictionaries can be written directly into namedarraytuples, e.g.:
+        ```
+        env_info_buffer[0,5] = env_info_dict
+        ```
+        - this should eliminate the need for an environment wrapper. There may be some asserts required during buffer creation, to ensure that e.g. the reward is the right data type, etc.
