@@ -80,7 +80,7 @@ class NamedTuple(tuple):
 
     * The individual fields don't show up in `dir(obj)`, but they do still
       show up as `hasattr(obj, field) => True`, because of `__getattr__()`.
-    * These objects have a `__dict__` (by ommitting `__slots__ = ()`),
+    * These objects have a `__dict__` (by omitting `__slots__ = ()`),
       intended to hold only the typename and list of field names, which are
       now instance attributes instead of class attributes.
     * Since `property(itemgetter(i))` only works on classes, `__getattr__()`
@@ -104,11 +104,10 @@ class NamedTuple(tuple):
 
     def __getattr__(self, name: str) -> Any:
         """Look in `_fields` when `name` is not in `dir(self)`."""
-        try:
+        if name in self._fields:
             return tuple.__getitem__(self, self._fields.index(name))
-        except ValueError:
-            raise AttributeError(f"'{self._typename}' object has no attribute "
-                                 f"'{name}'")
+        else:
+            return buffer_method(self, name)
 
     def __setattr__(self, name: str, value: Any) -> NoReturn:
         """Make the object immutable, like a tuple."""
@@ -223,6 +222,46 @@ class NamedArrayTuple(NamedTuple, Buffer):
     def items(self) -> Iterable[Tuple[str, Any]]:
         """Iterate ordered (field_name, value) pairs (like OrderedDict)."""
         return zip(self._fields, self)
+
+
+def buffer_method(buffer, method_name, *args, **kwargs):
+    """Call method ``method_name(*args, **kwargs)`` on all contents of
+    ``buffer``, and return the results. ``buffer`` can be an arbitrary
+    structure of tuples, namedtuples, namedarraytuples, NamedTuples, and
+    NamedArrayTuples, and a new, matching structure will be returned.
+    ``None`` fields remain ``None``.
+    """
+    if isinstance(buffer, tuple): # non-leaf node
+        contents = (buffer_method(elem, method_name, *args, **kwargs) for elem in buffer)
+        if type(buffer) is tuple: 
+            return tuple(contents)
+        # buffer: NamedTuple
+        return buffer._make(contents)
+
+    # leaf node
+    if buffer is None:
+        return None
+    return getattr(buffer, method_name)(*args, **kwargs)
+
+
+def buffer_func(func, buffer, *args, **kwargs):
+    """Call function ``func(buf, *args, **kwargs)`` on all contents of
+    ``buffer_``, and return the results.  ``buffer_`` can be an arbitrary
+    structure of tuples, namedtuples, namedarraytuples, NamedTuples, and
+    NamedArrayTuples, and a new, matching structure will be returned.
+    ``None`` fields remain ``None``.
+    """
+    if isinstance(buffer, tuple): # non-leaf node
+        contents = (buffer_func(func, elem, *args, **kwargs) for elem in buffer)
+        if type(buffer) is tuple: 
+            return tuple(contents)
+        # buffer: NamedTuple
+        return buffer._make(contents)
+
+    # leaf node
+    if buffer is None:
+        return None
+    return func(buffer, *args, **kwargs)
 
 
 def NamedArrayTupleClass_like(example: Union[NamedArrayTupleClass,

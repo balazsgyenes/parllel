@@ -10,21 +10,25 @@ rlpyt is a great piece of software, but there are several pain points when it co
 
 - Add dependency injection to increase composability of different types. As much as possible, objects should not be responsible for initializing their dependent objects (e.g. sampler should not have to initialize collectors, agent, etc.). The initialization process is handled in the top-level script, assisted by patterns, functions that act as shortcuts for common use cases.
 - The user should be able to easily control the contents of the sampler buffer. For this reason, the sampler should be kept as simple as possible to facilitate the writing of new sampler classes. Wherever possible, reading and writing data should be transparent (although this may be difficult if it also needs to be parallel).
+- Initialization takes as input an example of the input the object will see during the training loop, and return an example of its output. This allows all objects to pre-allocate memory and data types for efficiency, without hard-coding dependencies.
+- Code for RL and code for optimization should remain separated. Instead of combining these objects through inheritance, one should wrap the other (e.g. Handler wraps Agent instead of handler code being in base class of Agent).
+- Sampler has explicit control of the agent's state to allow for maximum control of sampling schemes. For comparison, rlpyt mandated specialized alternating agents for alternating sampling.
 
 ## Design Issues
 
 - The TrajInfo is currently handled by the cage, where agent info (e.g. value estimates, etc.) are not available. Is this an issue?
 - How can we abstract how agents/models are shared across processes? Add a `models()` method to the agent for the handler to access all the models that need to be shared.
 - The rlpyt sampling loop maintains local variables for the most recent, observation, action, reward, etc. These values are then copied one by one into the samples buffer. Is it more efficient to write directly into the samples buffer and provide views of it to read from?
-- Can we support algorithms that are written for processing entire sequence (e.g. COMA), and therefore do not rely on bootstrap values? Can we support buffers with batch index as the leading dimension?
-- Why can't a model be resetted mid-batch? Do we even need to consider wait-reset as an option? The sampler has full control of the rnn_state and can write zeroes/None if env is done
+- Can we support algorithms that are written for processing entire sequences (e.g. COMA), and therefore do not rely on bootstrap values? Can we support buffers with batch index as the leading dimension?
 - Does it make sense to insist on NamedTuples and NamedArrayTuples everywhere, even when dicts might make more sense if the value needs to be modified. In any case, NamedArrayTuple/NamedTuple should have a `__repr__` that returns a dict for debug viewing.
 
 ## TODOs
 - Implement (optional) out parameter for agent.step and cage.step methods. This reduces copying but also solves the problem of efficiently handling (parallel) write operations while keeping control in the sampler.
-- Rename buffers to Arrays (or something else). Nomenclature:
+- Rename buffers to Arrays (or something else) (look at tree structures in JAX for inspiration). Nomenclature:
     - Buffer is a (potentially nested) tuple/namedtuple/namedarraytuple of arrays
     - Arrays are either numpy ndarrays, (or a subclass) or torch tensors
+- Establish clear interface to Handler/Agent - is the `obs + prev_action` or `obs + prev_action + prev_reward`? This also sort of makes the mini sampler obsolete, unless it hard-codes `(None)` for `prev_action + prev_reward`.
+- Clean up cage logic and remove automatic reset call. Instead, reset is available as sync and async. Use already_done to prevent extra step calls.
 
 ## Ideas
 - Sampler types:
@@ -34,6 +38,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - FullEpisodeSampler, which returns only completed trajectories every iteration. This is essentially a configuration of the RecurrentSampler (cages wait to reset, sampler stops if all envs done, samples buffer allocated with T equal to maximum episode length). Depending on wait-reset semantics, it might not make sense to have a separate class for this.
     - StrictlyCorrectSampler (better name required), which saves the final observation in a trajectory and also contains null values for `prev_action` and `prev_reward` for the first steps in a trajectory, even when not at the beginning of a batch.
         - NOTE: rlpyt sampling does not correctly produce `prev_action` and `prev_reward` if `WaitResetCollector` types are not used. It assumes that these inputs are only used by recurrent agents when using `WaitResetCollectors`, in which case resets only occur at the beginning of a batch.
+    - valid array should be created in sampler, not in algo. This will be part of the env samples buffer, preserving a consistent return structure of the samplers
 - Array types:
     - AlternatingArray wraps 2 arrays which alternate being written to (by the sampler) and read from (by the algorithm).
 - NamedArrayTuples:
@@ -44,3 +49,4 @@ rlpyt is a great piece of software, but there are several pain points when it co
         env_info_buffer[0,5] = env_info_dict
         ```
         - this should eliminate the need for an environment wrapper. There may be some asserts required during buffer creation, to ensure that e.g. the reward is the right data type, etc.
+- Handler is responsible for converting buffer structures to pytorch/jax. Instead of converting at each step, the entire samples buffer is converted on init and indexed into at each step.

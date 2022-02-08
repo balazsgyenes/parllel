@@ -6,6 +6,7 @@ from parllel.buffers import Buffer
 from parllel.arrays import Array
 from .named_tuple import NamedArrayTuple, NamedTuple, NamedArrayTupleClass_like
 
+
 def buffer_from_example(example, leading_dims: Tuple[int, ...], ArrayClass: Array, **kwargs) -> Buffer:
     if example is None:
         return None

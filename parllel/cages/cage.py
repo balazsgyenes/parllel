@@ -9,7 +9,7 @@ from parllel.types.traj_info import TrajInfo
 from parllel.buffers import Buffer
 
 
-INVALID_STEP_RESULT = object()
+INVALID_STEP_RESULT = "This is an invalid step result"
 
 
 class Cage:
@@ -138,6 +138,16 @@ class Cage:
         self._completed_trajs = []
 
         return completed_trajs
+
+    def reset_async(self) -> None:
+        raise NotImplementedError
+
+    def reset(self, out_obs: Buffer = None) -> Optional[Buffer]:
+        _reset_obs = self._env.reset()
+        if out_obs is not None:
+            out_obs[:] = _reset_obs
+        else:
+            return _reset_obs
 
     def _reset_env_async(self) -> None:
         self._reset_obs = self._env.reset()

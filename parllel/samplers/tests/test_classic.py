@@ -8,6 +8,7 @@ from parllel.samplers.tests.dummy_agent import DummyAgent
 from parllel.samplers.tests.dummy_env import DummyEnv
 from parllel.types.traj_info import TrajInfo
 
+
 def build_sampler(batch_T: int, batch_B: int, recurrent: bool):
 
     # create dependencies of runner: sampler, agent, and algorithm
@@ -72,3 +73,16 @@ def build_sampler(batch_T: int, batch_B: int, recurrent: bool):
     sampler.initialize(agent=handler, envs=cages, batch_buffer=batch_samples, step_action=step_action, step_reward=step_reward)
 
     return sampler
+
+
+def test_single_batch():
+    sampler = build_sampler(20, 4, recurrent=False)
+
+    samples, completed_trajectories = sampler.collect_batch(elapsed_steps=0)
+
+    print(samples)
+    print(completed_trajectories)
+
+
+if __name__ == "__main__":
+    test_single_batch()
