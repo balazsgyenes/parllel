@@ -51,9 +51,6 @@ def build_sampler(batch_T: int, batch_B: int, recurrent: bool):
     batch_agent_samples = AgentSamples(batch_action, batch_agent_info)
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
 
-    step_action = buffer_from_example(action, (batch_B,), Array)
-    step_reward = buffer_from_example(reward, (batch_B,), Array)
-
     # create cages to manage environments
     episode_lengths = [5 + i for i in range(batch_B)]
     cages = [Cage(
@@ -70,7 +67,7 @@ def build_sampler(batch_T: int, batch_B: int, recurrent: bool):
     handler = Handler(agent=agent)
 
     # initialize sampler
-    sampler.initialize(agent=handler, envs=cages, batch_buffer=batch_samples, step_action=step_action, step_reward=step_reward)
+    sampler.initialize(agent=handler, envs=cages, batch_buffer=batch_samples)
 
     return sampler
 

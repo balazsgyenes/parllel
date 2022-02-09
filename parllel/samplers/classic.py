@@ -3,7 +3,9 @@ from typing import List, Sequence, Tuple
 
 import numpy as np
 
+from parllel.arrays import Array
 from parllel.buffers import Buffer, buffer_func
+from parllel.buffers.utils import buffer_from_example
 from parllel.cages import Cage
 from parllel.handlers.agent import Agent
 from parllel.types.traj_info import TrajInfo
@@ -32,15 +34,15 @@ class ClassicSampler:
         agent: Agent,
         envs: Sequence[Cage],
         batch_buffer: Samples,
-        step_action: Buffer,
-        step_reward: Buffer,
     ) -> None:
         self.agent = agent
         self.envs = tuple(envs)
         assert len(envs) == self.batch_B
         self.batch_buffer = batch_buffer
-        self.step_action = step_action
-        self.step_reward = step_reward
+
+        # create array to hold "previous action" temporarily
+        # TODO: verify this works
+        self.step_action = buffer_from_example(batch_buffer.agent.action[0], (), Array)
 
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         # get references to buffer elements
