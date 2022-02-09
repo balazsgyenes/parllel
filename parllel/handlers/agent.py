@@ -9,12 +9,12 @@ class Agent:
     def initialize(self) -> None:
         raise NotImplementedError
     
-    def step(self, observation: Buffer, previous_action: Buffer, previous_reward: Buffer, *,
+    def step(self, observation: Buffer, previous_action: Buffer, *,
         env_ids: Union[int, slice] = slice(None)
     ) -> AgentStep:
         raise NotImplementedError
 
-    def value(self, observation: Buffer, previous_action: Buffer, previous_reward: Buffer, *,
+    def value(self, observation: Buffer, previous_action: Buffer, *,
         env_ids: Union[int, slice] = slice(None)
     ) -> Buffer:
         raise NotImplementedError

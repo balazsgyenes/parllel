@@ -1,11 +1,10 @@
-from functools import reduce
 from typing import List, Sequence, Tuple
 
 import numpy as np
 
-from parllel.buffers import Buffer, buffer_func
+from parllel.buffers import buffer_func
 from parllel.cages import Cage
-from parllel.handlers.agent import Agent
+from parllel.handlers import Handler
 from parllel.types.traj_info import TrajInfo
 from .collections import Samples
 
@@ -27,7 +26,7 @@ class MiniSampler:
         self.get_bootstrap_value = get_bootstrap_value
 
     def initialize(self,
-        agent: Agent,
+        agent: Handler,
         envs: Sequence[Cage],
         batch_buffer: Samples,
     ) -> None:
@@ -59,7 +58,7 @@ class MiniSampler:
         for t in range(0, self.batch_T):
             # agent observes environment and outputs actions
             # step_action and step_reward are from previous time step (t-1)
-            self.agent.step(observation[t], out_action=action[t],
+            self.agent.step(observation[t], None, out_action=action[t],
                 out_agent_info=agent_info[t])
 
             for b, env in enumerate(self.envs):
@@ -83,7 +82,7 @@ class MiniSampler:
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
             self.batch_buffer.agent.bootstrap_value[:] = self.agent.value(
-                observation[t+1])
+                observation[t+1], None)
 
         # collect all completed trajectories from envs
         completed_trajectories = [traj for env in self.envs for traj in env.collect_completed_trajs()]

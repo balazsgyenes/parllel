@@ -28,7 +28,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Buffer is a (potentially nested) tuple/namedtuple/namedarraytuple of arrays
     - Arrays are either numpy ndarrays, (or a subclass) or torch tensors
 - Establish clear interface to Handler/Agent - is the `obs + prev_action` or `obs + prev_action + prev_reward`? This also sort of makes the mini sampler obsolete, unless it hard-codes `(None)` for `prev_action + prev_reward`.
-- Clean up cage logic and remove automatic reset call. Instead, reset is available as sync and async. Use already_done to prevent extra step calls.
+- Clean up cage logic. Use already_done to prevent extra step calls. Reset is available as sync and async calls. Add optional auto-reset mode for performance.
 
 ## Ideas
 - Sampler types:

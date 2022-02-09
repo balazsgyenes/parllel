@@ -32,7 +32,7 @@ def build_sampler(batch_T: int, batch_B: int, recurrent: bool):
     example_env_output = example_env.await_step()
     obs, reward, done, info = example_env_output
 
-    example_inputs = (obs,)
+    example_inputs = (obs, None)
     # instantiate model and agent
     action, agent_info = agent.initialize(example_inputs=example_inputs, n_states=batch_B)
 
