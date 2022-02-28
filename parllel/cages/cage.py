@@ -44,7 +44,7 @@ class Cage:
         self.traj_info_kwargs = traj_info_kwargs
         self.wait_before_reset = wait_before_reset
 
-    def initialize(self) -> None:
+    def initialize(self) -> EnvStep:
         self._env: gym.Env = self.EnvClass(**self.env_kwargs)
         self._env.reset()
         self._completed_trajs: List[TrajInfo] = []
@@ -52,6 +52,10 @@ class Cage:
         self._already_done: bool = False
         self._step_result: Union[EnvStep, object] = INVALID_STEP_RESULT
         self._reset_obs: Union[NDArray, object] = INVALID_STEP_RESULT
+
+        # get example of env step output
+        sample_action = self._env.action_space.sample()
+        obs, reward, done, env_info = self._env.step(sample_action)
 
     @property
     def spaces(self) -> EnvSpaces:

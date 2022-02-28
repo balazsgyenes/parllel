@@ -8,17 +8,18 @@ from .array import Array
 from parllel.buffers.buffer import Index, Indices
 
 class RotatingArray(Array):
-    """Abstracts memory management for large arrays.
-
-    Optional padding can be used to extend the first dimension of the array symmetrically on both ends.
-    When reusing the buffer, this allows *looking into the past* by indexing out of the regular bounds of the array's shape. 
-
-    Examples:
-        >>> a = RotatingArray(shape=(4, 5), dtype=np.int, padding=1)
-        >>> a[4, :] = np.ones((1, 5))  # access the last element
-        >>> a.rotate()  # bring the last element to the front of the array at position -1
-        >>> a[-1]  # In contrast to lists, -1 does not refer to the last element in the array, but to the actual -1st element in the array. 
-        array([[1., 1., 1., 1., 1.]])
+    """An array with padding at both edges of the leading dimension. Calling
+    `rotate` copies the data from the padding at the end to the padding at the
+    beginning.
+    
+    Use this array for values like observations, where the last value of the
+    previous batch becomes the first value of the next batch. See example:
+        >>> T, B = 4, 5
+        >>> arr = RotatingArray(shape=(T, B), dtype=int, padding=1)
+        >>> arr[T] = np.ones((B,))  # write to last row
+        >>> arr.rotate()  # bring the last row to the front of array
+        >>> print(arr[0])
+        array([1, 1, 1, 1, 1])
 
     Todo:
         - Add a nice __repr__ function to print head, body, and tail of the array. 

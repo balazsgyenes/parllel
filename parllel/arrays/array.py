@@ -9,9 +9,9 @@ from parllel.buffers.buffer import Buffer, Indices
 
 
 class Array(Buffer):
-    """Abstracts memory management for large arrays.
-
-    Arrays must be initialized before using them.
+    """An object wrapping a numpy array for use in sampling. An Array remembers
+    indexing operations used to get subarrays. Math operations are generally
+    not supported, use `np.asarray(arr)` to get the underlying numpy array.
 
     Example:
         >>> array = Array(shape=(4, 4, 4), dtype=np.float32)
@@ -34,11 +34,13 @@ class Array(Buffer):
         assert dtype != np.object_, "Data type should not be object."
         self.dtype = dtype
 
-        # initialize numpy array
-        self._array: NDArray = np.zeros(shape=self._base_shape, dtype=self.dtype)
-
+        self._allocate()
         self._buffer_id: int = id(self)
         self._index_history: List[Indices] = []
+
+    def _allocate(self) -> None:
+        # initialize numpy array
+        self._array: NDArray = np.zeros(shape=self._base_shape, dtype=self.dtype)
 
     @property
     def shape(self):
@@ -81,11 +83,7 @@ class Array(Buffer):
         return array
 
     def __repr__(self) -> str:
-        if hasattr(self, "_array"):
-            return repr(self.__array__())
-        else:
-            return f"Uninitialized {type(self).__name__} object: " \
-                   f"shape={self.shape}, dtype={np.dtype(self.dtype).name}."
+        return repr(self.__array__())
 
     def __bool__(self) -> bool:
         return bool(self.__array__())

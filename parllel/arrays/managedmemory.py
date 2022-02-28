@@ -8,25 +8,23 @@ import numpy as np
 from .array import Array
 from .rotating import RotatingArray
 
-class SharedMemoryArray(Array):
-    """An array in OS shared memory that can be shared between processes on
-    process startup only (i.e. process inheritance). Starting processes with
-    the `spawn` method is also supported.
+class ManagedMemoryArray(Array):
+    """An array in OS shared memory that can be shared between processes at any
+    time.
     """
     def _allocate(self) -> None:
         # allocate array in OS shared memory
         size = int(np.prod(self.shape))
         nbytes = size * np.dtype(self.dtype).itemsize
-        # mp.RawArray can be safely passed between processes on startup, even
-        # when using the "spawn" start method. However, it cannot be sent
-        # through a Pipe or Queue
-        self._raw_array = mp.RawArray(ctypes.c_char, nbytes)
+        # SharedMemory is given a unique name that other processes can use to
+        # attach to it.
+        self._raw_array = mp.shared_memory.SharedMemory(create=True, size=nbytes)
 
         self._wrap_raw_array()
         
     def _wrap_raw_array(self) -> None:
         size = int(np.prod(self.shape))
-        self._array = np.frombuffer(self._raw_array, dtype=self.dtype, count=size)
+        self._array = np.frombuffer(self._raw_array.buf, dtype=self.dtype, count=size)
 
         # assign to shape attribute so that error is raised when data is copied
         # array.reshape might silently copy the data
@@ -34,16 +32,28 @@ class SharedMemoryArray(Array):
 
     def __getstate__(self) -> Dict:
         state = self.__dict__.copy()
-        # remove this numpy array which cannot be pickled
+        # remove arrays which cannot be pickled
         del state["_array"]
+        del state["_raw_array"]
+        state["_memory_name"] = self._raw_array.name
         return state
 
     def __setstate__(self, state: Dict) -> None:
         # restore state dict entries
+        name = state.pop("_memory_name")
         self.__dict__.update(state)
+
+        self._raw_array = mp.shared_memory.SharedMemory(name=name)
+
         # restore numpy array
         self._wrap_raw_array()
 
+    def close(self):
+        self._raw_array.close()
 
-class RotatingSharedMemoryArray(RotatingArray, SharedMemoryArray):
+    def unlink(self):
+        self._raw_array.unlink()
+
+
+class RotatingManagedMemoryArray(RotatingArray, ManagedMemoryArray):
     pass

@@ -9,12 +9,8 @@ from parllel.types.traj_info import TrajInfo
 from .collections import Samples
 
 class MiniSampler:
-    """
-    TODO: prevent calls to agent.step for environments that are done and waiting to be reset
-    TODO: we need the step buffers (step_reward and step_action) only because after resets,
-    we want to show the agent a different previous reward and previous action (zeros) than
-    what we save into the samples buffer (the real last reward and action from the traj)
-    Can we make this nicer?
+    """Generates a batch of samples, where environments that are done are reset
+    immediately. Use this sampler for non-recurrent agents.
     """
     def __init__(self,
         batch_T: int,
@@ -29,11 +25,24 @@ class MiniSampler:
         agent: Handler,
         envs: Sequence[Cage],
         batch_buffer: Samples,
-    ) -> None:
+    ) -> Tuple[Samples, List[TrajInfo]]:
         self.agent = agent
         self.envs = tuple(envs)
         assert len(envs) == self.batch_B
         self.batch_buffer = batch_buffer
+
+        # t = batch_T + 1 will become the observation for the first action
+        # ensure that it is properly zeroed
+        self.batch_buffer.env.observation[self.batch_T] = 0
+        
+        # get example of a batch of samples
+        # TODO: is this necessary? could just return random Samples buffer
+        example_batch = self.collect_batch(0)
+
+        # randomly step environments so they are not all synced up
+        self.decorrelate_environments()
+
+        return example_batch
 
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         # get references to buffer elements
@@ -90,6 +99,10 @@ class MiniSampler:
         batch_samples = buffer_func(np.asarray, self.batch_buffer[:(t+1)])
 
         return batch_samples, completed_trajectories
+
+    def decorrelate_environments(self) -> None:
+        # TODO: model this off of sampling loop
+        pass
 
     def close(self):
         pass

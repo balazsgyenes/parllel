@@ -2,7 +2,7 @@ import torch
 
 from parllel.cages.cage import Cage
 from parllel.runners.onpolicy_runner import OnPolicyRunner
-from parllel.samplers.serial import Sampler
+from parllel.samplers import MiniSampler
 from parllel.torch.agents.pg.categorical import CategoricalPgAgent
 from parllel.torch.algos.pg.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
@@ -24,7 +24,7 @@ def train():
     runner = OnPolicyRunner(n_steps = 5e6)
     
     # create dependencies of runner: sampler, agent, and algorithm
-    sampler = Sampler(batch_T=batch_T, batch_B=batch_B, get_bootstrap_value=True)
+    sampler = MiniSampler(batch_T=batch_T, batch_B=batch_B, get_bootstrap_value=True)
     agent = CategoricalPgAgent()
     algorithm = PPO()
 
