@@ -13,14 +13,16 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Initialization takes as input an example of the input the object will see during the training loop, and return an example of its output. This allows all objects to pre-allocate memory and data types for efficiency, without hard-coding dependencies.
 - Code for RL and code for optimization should remain separated. Instead of combining these objects through inheritance, one should wrap the other (e.g. Handler wraps Agent instead of handler code being in base class of Agent).
 - Sampler has explicit control of the agent's state to allow for maximum control of sampling schemes. For comparison, rlpyt mandated specialized alternating agents for alternating sampling.
+- Functionality from various locations in the codebase (e.g. collectors, algorithms, models) that carry out simple transformations on the data should be consolidated into the sampler, where it can potentially be parallelized. 
 
 ## Design Issues
 
 - The TrajInfo is currently handled by the cage, where agent info (e.g. value estimates, etc.) are not available. Is this an issue?
+    - The purpose of TrajInfo is just to be able to collect episodic information, which is not available from the samples buffer (because episodes are interrupted by batch boundaries)
 - How can we abstract how agents/models are shared across processes? Add a `models()` method to the agent for the handler to access all the models that need to be shared.
-- The rlpyt sampling loop maintains local variables for the most recent, observation, action, reward, etc. These values are then copied one by one into the samples buffer. Is it more efficient to write directly into the samples buffer and provide views of it to read from?
-- Can we support algorithms that are written for processing entire sequences (e.g. COMA), and therefore do not rely on bootstrap values? Can we support buffers with batch index as the leading dimension?
-- Does it make sense to insist on NamedTuples and NamedArrayTuples everywhere, even when dicts might make more sense if the value needs to be modified. In any case, NamedArrayTuple/NamedTuple should have a `__repr__` that returns a dict for debug viewing.
+- On reset, the `previous_action` and `previous_reward` seen by the agent (e.g. zeroes) is not the same as what is saved into the samples buffer (e.g. the last action and reward of the previous episode). This is not the case for the observation, where the last observation "after" the episode is simply overwritten by the reset observation of the next episode. For this reason, we need to maintain dedicated "step" variables for action and reward, which are copied into the samples buffer. Can we solve this in a way that is cleaner/nicer?
+    In rlpyt, as a result of this, the rlpyt samples buffer is not strictly correct after resets, because the `previous_action` and `previous_reward` are not zeroed out. However, this does not matter because only recurrent agents use these previous values, and these agents do not reset mid-batch.
+- Buffer registration and reduction is very similar to `mp.shared_memory.SharedMemory`. If looking up SharedMemory in the global registry is not too slow, could we just rely on this functionality instead? However, the benefit of the buffer registry is that deeply nested namedarraytuples are recovered in a single step.
 
 ## TODOs
 - Implement (optional) out parameter for agent.step and cage.step methods. This reduces copying but also solves the problem of efficiently handling (parallel) write operations while keeping control in the sampler.
@@ -29,6 +31,9 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Arrays are either numpy ndarrays, (or a subclass) or torch tensors
 - Establish clear interface to Handler/Agent - is the `obs + prev_action` or `obs + prev_action + prev_reward`? This also sort of makes the mini sampler obsolete, unless it hard-codes `(None)` for `prev_action + prev_reward`.
 - Clean up cage logic. Use already_done to prevent extra step calls. Reset is available as sync and async calls. Add optional auto-reset mode for performance.
+- Samples transformations, e.g. reward normalization, observation normalization, advantage estimation (jitted), creation of `valid` array
+- NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
+- Add simple interface to Stable Baselines in the form of a gym wrapper that looks like the parallel vector wrapper but preallocates memory.
 
 ## Ideas
 - Sampler types:

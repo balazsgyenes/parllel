@@ -91,6 +91,12 @@ class Array(Buffer):
     def __eq__(self, o: object) -> NDArray:
         return self.__array__() == o
 
+    def close(self):
+        pass
+
+    def destroy(self):
+        pass
+
 
 def concatenate_indices(full_shape, current_indices: List, new_indices: Tuple):
     if not isinstance(new_indices, tuple):

@@ -1,5 +1,4 @@
 from __future__ import annotations
-import ctypes
 import multiprocessing as mp
 from typing import Dict
 
@@ -49,9 +48,12 @@ class ManagedMemoryArray(Array):
         self._wrap_raw_array()
 
     def close(self):
+        # close must be called by each instance (i.e. each process) on cleanup
         self._raw_array.close()
 
-    def unlink(self):
+    def destroy(self):
+        # unlink must be called once and only once to release shared memory
+        # TODO: make sure this called properly
         self._raw_array.unlink()
 
 
