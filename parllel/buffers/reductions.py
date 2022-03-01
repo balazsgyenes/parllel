@@ -48,4 +48,6 @@ def register_buffer_pickler(ctx = None):
     if ctx is None:
         ctx = mp.get_context()
     for t in (SharedMemoryArray, RotatingSharedMemoryArray, NamedArrayTuple):
+        # not needed for ManagedMemoryArray because it can always be pickled by
+        # looking it up by name
         ctx.reducer.register(t, reduce_buffer)

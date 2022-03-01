@@ -1,28 +1,26 @@
 from dataclasses import dataclass
 import enum
-from functools import partial
 import multiprocessing as mp
-from typing import Dict, List, Tuple, Callable, Any, Optional, Union
-
-import numpy as np
-from nptyping import NDArray
+from threading import Thread
+from typing import List, Tuple, Any, Optional, Union
 
 from parllel.buffers import Buffer
 from parllel.buffers.reductions import register_buffer_pickler, register_shared_memory_buffer
-# from parllel.buffers.weak import WeakBuffer
 from parllel.envs.collections import EnvStep, EnvSpaces
-# from parllel.types.named_tuple import NamedArrayTuple, NamedTuple
 from parllel.types.traj_info import TrajInfo
 from .cage import Cage
 
 
 class Command(enum.Enum):
     """Commands for communicating with the subprocess"""
-    step = 1
-    random_step = 2
-    collect_completed_trajs = 3
-    close = 4
-    write_to_buffer = 5
+    get_example_output = 0
+    set_sample_buffer = 1
+    step = 2
+    collect_deferred_reset = 3
+    collect_completed_trajs = 4
+    random_step = 5
+    reset_async = 6
+    close = 7
 
 
 @dataclass
@@ -33,41 +31,45 @@ class Message:
 
 
 class ParallelProcessCage(Cage, mp.Process):
-    def __init__(self,
-        EnvClass: Callable,
-        env_kwargs: Dict,
-        TrajInfoCls: Callable,
-        traj_info_kwargs: Dict,
-        wait_before_reset: bool = False,
+    def __init__(self, *args,
+        samples_buffer: Optional[Buffer] = None,
+        **kwargs,
     ) -> None:
         mp.Process.__init__(self)
 
-        super().__init__(EnvClass, env_kwargs, TrajInfoCls, traj_info_kwargs,
-            wait_before_reset)
-
-    def initialize(self, samples_buffer: Optional[Buffer]) -> None:
-        """Instantiate environment and subprocess, etc.
-        """
-        #TODO: possible to support case where no pre-allocated samples_buffer given?
+        super().__init__(*args, **kwargs)
         self._samples_buffer = samples_buffer
 
+        # pipe is used for communication between main and child processes
         self._leader_pipe, self._follower_pipe = mp.Pipe()
 
         # start executing `run` method, which also calls super().initialize()
         self.start()
 
+        # register custom methods for sending buffer objects between processes
         register_buffer_pickler()
+        # enable receiving buffers derived from samples buffer
         register_shared_memory_buffer(self._samples_buffer)
 
+        # get env spaces from child process
         self._spaces: EnvSpaces = self._leader_pipe.recv()
 
         # a simple locking mechanism on the caller side
         # ensures that `step` is always followed by `await_step`
         self._last_command = None
 
-    @Cage.spaces.getter
-    def spaces(self) -> EnvSpaces:
-        return self._spaces
+    def _create_env(self, ) -> None:
+        # don't create the env yet, we'll do it in the child process
+        pass
+
+    def get_example_output(self) -> EnvStep:
+        assert self._last_command is None
+        self._leader_pipe.send(Message(Command.get_example_output))
+        return self._leader_pipe.recv()
+
+    def set_samples_buffer(self, samples_buffer: Buffer) -> None:
+        """Pass reference to samples buffer after process start."""
+        raise NotImplementedError
 
     def step_async(self,
         action: Buffer, *,
@@ -81,24 +83,44 @@ class ParallelProcessCage(Cage, mp.Process):
             (action, out_obs, out_reward, out_done, out_info)))
         self._last_command = Command.step
 
-    def await_step(self) -> EnvStep:
-        assert self._last_command in {Command.step, Command.random_step}
-        env_step = self._leader_pipe.recv()
-        self._last_command = None
-        return env_step
+    def _defer_env_reset(self) -> None:
+        self._reset_thread = Thread(target = super()._defer_env_reset)
+        self._reset_thread.start()
 
-    def random_step_async(self):
-        """Take a step with a random action from the env's action space.
-        """
-        assert self._last_command is None
-        self._leader_pipe.send(Message(Command.random_step))
-        self._last_command = Command.random_step
+    def await_step(self) -> Union[EnvStep, Tuple[Buffer, EnvStep], Buffer]:
+        assert self._last_command in {Command.step, Command.random_step, Command.reset_async}
+        self._last_command = None
+        return self._leader_pipe.recv()
+
+    def collect_deferred_reset(self, *, out_obs: Buffer = None) -> Optional[Buffer]:
+        assert self._last_command is None and self.wait_before_reset
+        self._leader_pipe.send(Message(Command.collect_deferred_reset, out_obs))
+        self._last_command = Command.collect_deferred_reset
     
     def collect_completed_trajs(self) -> List[TrajInfo]:
         assert self._last_command is None
         self._leader_pipe.send(Message(Command.collect_completed_trajs))
         trajs = self._leader_pipe.recv()
         return trajs
+    
+    def random_step_async(self, *,
+        out_action: Buffer = None,
+        out_obs: Buffer = None,
+        out_reward: Buffer = None,
+        out_done: Buffer = None,
+        out_info: Buffer = None
+    ) -> None:
+        """Take a step with a random action from the env's action space.
+        """
+        assert self._last_command is None
+        self._leader_pipe.send(Message(Command.random_step,
+            (out_action, out_obs, out_reward, out_done, out_info)))
+        self._last_command = Command.random_step
+    
+    def reset_async(self, out_obs: Buffer = None) -> None:
+        assert self._last_command is None
+        self._leader_pipe.send(Message(Command.reset_async, out_obs))
+        self._last_command = Command.reset_async
 
     def close(self) -> None:
         assert self._last_command is None
@@ -110,39 +132,62 @@ class ParallelProcessCage(Cage, mp.Process):
         """This method runs in a child process. It receives messages through
         follower_pipe, and sends back results.
         """
-        # initialize Cage object
-        super().initialize()
+        super()._create_env() # create env, traj info, etc.
 
+        # do the identical setup in child process as in parent
         register_buffer_pickler()
         register_shared_memory_buffer(self._samples_buffer)
 
+        # send env spaces back to parent
+        # parent process can receive gym Space objects because gym is imported
         self._follower_pipe.send(EnvSpaces(
             observation=self._env.observation_space,
             action=self._env.action_space,
         ))
 
         while True:
-            message = self._follower_pipe.recv()
-            command = message.command
-            data = message.data
+            message: Message = self._follower_pipe.recv()
+            command: Command = message.command
+            data: Any = message.data
 
-            if command == Command.step:
+            if command == Command.get_example_output:
+                # data must be None
+                env_step: EnvStep = super().get_example_output()
+                self._follower_pipe.send(env_step)
+
+            elif command == Command.set_sample_buffer:
+                raise NotImplementedError
+
+            elif command == Command.step:
                 action, out_obs, out_reward, out_done, out_info = data
-                super().step_async(action, out_obs=out_obs, out_reward=out_reward, out_done=out_done, out_info=out_info)
-                step_result: Union[EnvStep, object] = super().await_step()
+                super().step_async(action, out_obs=out_obs, out_reward=out_reward,
+                    out_done=out_done, out_info=out_info)
+                step_result: EnvStep = super().await_step()
                 self._follower_pipe.send(step_result)
 
-            elif command == Command.random_step:
-                out_obs, out_reward, out_done, out_info = data
-                super().random_step_async(out_obs=out_obs, out_reward=out_reward, out_done=out_done, out_info=out_info)
-                step_result: Union[EnvStep, object] = super().await_step()
-                self._follower_pipe.send(step_result)
+            elif command == Command.collect_deferred_reset:
+                out_obs = data
+                self._reset_thread.join()
+                reset_obs: Buffer = super().collect_deferred_reset(out_obs=out_obs)
+                self._follower_pipe.send(reset_obs)
 
             elif command == Command.collect_completed_trajs:
                 # data must be None
-                trajs = super().collect_completed_trajs()
-                # trajs must be List[TrajInfo]
+                trajs: List[TrajInfo] = super().collect_completed_trajs()
                 self._follower_pipe.send(trajs)
+
+            elif command == Command.random_step:
+                out_action, out_obs, out_reward, out_done, out_info = data
+                super().random_step_async(out_action=out_action, out_obs=out_obs,
+                    out_reward=out_reward, out_done=out_done, out_info=out_info)
+                step_result: Tuple[Buffer, EnvStep] = super().await_step()
+                self._follower_pipe.send(step_result)
+
+            elif command == Command.reset_async:
+                out_obs = data
+                super().reset_async(out_obs=out_obs)
+                reset_obs: Buffer = super().await_step()
+                self._follower_pipe.send(reset_obs)
 
             elif command == Command.close:
                 super().close()  # close Cage object

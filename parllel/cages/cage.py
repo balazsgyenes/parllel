@@ -1,15 +1,14 @@
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from nptyping import NDArray
 import gym
 
+from parllel.buffers import Buffer, buffer_func
 from parllel.envs.collections import EnvStep, EnvSpaces
 from parllel.types.traj_info import TrajInfo
-from parllel.buffers import Buffer
 
 
-INVALID_STEP_RESULT = "This is an invalid step result"
+INVALID_STEP_RESULT: str = "This is an invalid step result"
 
 
 class Cage:
@@ -28,8 +27,9 @@ class Cage:
             the `__init__` of `TrajInfoClass`
         wait_before_reset (bool): TODO
 
-    TODO: prevent calls to agent.step() for environments that are done and waiting to be reset
-    TODO: can we assume that the cage will not be called if it is already done? Can the code be more streamlined for this case?
+    TODO: merge collect_deferred_reset and reset_async. The fact that the reset
+    has already been done in one of these cases is an internal implementation
+    detail
     """
     def __init__(self,
         EnvClass: Callable,
@@ -44,25 +44,37 @@ class Cage:
         self.traj_info_kwargs = traj_info_kwargs
         self.wait_before_reset = wait_before_reset
 
-    def initialize(self) -> EnvStep:
-        self._env: gym.Env = self.EnvClass(**self.env_kwargs)
-        self._env.reset()
+        self._already_done: bool = False
+        self._create_env()
+
+    def _create_env(self) -> None:
         self._completed_trajs: List[TrajInfo] = []
         self._traj_info: TrajInfo = self.TrajInfoClass(**self.traj_info_kwargs)
-        self._already_done: bool = False
-        self._step_result: Union[EnvStep, object] = INVALID_STEP_RESULT
-        self._reset_obs: Union[NDArray, object] = INVALID_STEP_RESULT
+        self._step_result: Union[EnvStep, str] = INVALID_STEP_RESULT
+        self._reset_obs: Union[Buffer, str] = INVALID_STEP_RESULT
 
-        # get example of env step output
-        sample_action = self._env.action_space.sample()
-        obs, reward, done, env_info = self._env.step(sample_action)
+        self._env: gym.Env = self.EnvClass(**self.env_kwargs)
+        self._env.reset()
 
-    @property
-    def spaces(self) -> EnvSpaces:
-        return EnvSpaces(
+        self._spaces = EnvSpaces(
             observation=self._env.observation_space,
             action=self._env.action_space,
         )
+
+    def get_example_output(self) -> EnvStep:
+        # get example of env step output
+        sample_action = self._env.action_space.sample()
+        env_step = EnvStep(*self._env.step(sample_action))
+        self._env.reset()
+        return env_step
+
+    @property
+    def spaces(self) -> EnvSpaces:
+        return self._spaces
+
+    @property
+    def already_done(self) -> bool:
+        return self._already_done
 
     def step_async(self,
         action: Buffer, *,
@@ -73,21 +85,8 @@ class Cage:
     ) -> None:
         """If any out parameter is given, they must all be given. 
         """
-        if self._already_done:
-            if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
-                # Nones are ignored by NamedArrayTuple
-                # done must be set to True in all cases though
-                self._step_result = EnvStep(None, None, True, None) 
-            else:
-                # leave other values unchanged, since they are ignored anyway
-                out_done[:] = True
-                # TODO: write zeros to other buffers, because zeros are faster to compute with?
-                # out_obs[:] = 0
-                # out_reward[:] = 0
-                # out_info[:] = 0
-            return
-
-        obs, reward, done, env_info = self._env.step(np.asarray(action))
+        np_action = buffer_func(np.asarray, action)
+        obs, reward, done, env_info = self._env.step(np_action)
         self._traj_info.step(obs, action, reward, done, env_info)
         
         if done:
@@ -95,8 +94,8 @@ class Cage:
             self._completed_trajs.append(self._traj_info)
             self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
             if self.wait_before_reset:
-                # start environment reset, maybe asynchronously
-                self._reset_env_async()
+                # start environment reset asynchronously
+                self._defer_env_reset()
                 # store done state
                 self._already_done = True
             else:
@@ -106,18 +105,36 @@ class Cage:
         if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
             self._step_result = EnvStep(obs, reward, done, env_info)
         else:
-            out_obs[:] = obs  # TODO: no assignment possible if out_obs is 0D-array
+            out_obs[:] = obs
             out_reward[:] = reward
             out_done[:] = done
             out_info[:] = env_info
             self._step_result = INVALID_STEP_RESULT
 
-    def await_step(self) -> Optional[EnvStep]:
+    def _defer_env_reset(self) -> None:
+        self._reset_obs = self._env.reset()
+
+    def await_step(self) -> Union[EnvStep, Tuple[Buffer, EnvStep], Buffer]:
         result = self._step_result
         self._step_result = INVALID_STEP_RESULT
         return result
 
+    def collect_deferred_reset(self, *, out_obs: Buffer = None) -> Optional[Buffer]:
+        result = self._reset_obs
+        self._already_done = False
+        self._reset_obs = INVALID_STEP_RESULT
+        if out_obs is not None:
+            out_obs[:] = result
+        else:
+            return result
+
+    def collect_completed_trajs(self) -> List[TrajInfo]:
+        completed_trajs = self._completed_trajs
+        self._completed_trajs = []
+        return completed_trajs
+
     def random_step_async(self, *,
+        out_action: Buffer = None,
         out_obs: Buffer = None,
         out_reward: Buffer = None,
         out_done: Buffer = None,
@@ -131,38 +148,19 @@ class Cage:
         self.step_async(action, out_obs, out_reward, out_done, out_info)
         self.wait_before_reset = wait_before_reset
 
-    @property
-    def already_done(self) -> bool:
-        return self._already_done
+        if self._step_result is not INVALID_STEP_RESULT:
+            self._step_result = (action, self._step_result)
+        else:
+            out_action[:] = action
 
-    def collect_completed_trajs(self) -> List[TrajInfo]:
-        self._already_done = False
-
-        completed_trajs = self._completed_trajs
-        self._completed_trajs = []
-
-        return completed_trajs
-
-    def reset_async(self) -> None:
-        raise NotImplementedError
-
-    def reset(self, out_obs: Buffer = None) -> Optional[Buffer]:
+    def reset_async(self, out_obs: Buffer = None) -> None:
         _reset_obs = self._env.reset()
-        if out_obs is not None:
+        self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
+
+        if out_obs is None:
+            self._step_result = _reset_obs
+        else:
             out_obs[:] = _reset_obs
-        else:
-            return _reset_obs
-
-    def _reset_env_async(self) -> None:
-        self._reset_obs = self._env.reset()
-
-    def collect_reset_obs(self, *, out_obs: Buffer = None) -> Optional[NDArray]:
-        result = self._reset_obs
-        self._reset_obs = INVALID_STEP_RESULT
-        if out_obs is not None:
-            out_obs[:] = result
-        else:
-            return result
 
     def close(self) -> None:
         self._env.close()

@@ -34,6 +34,8 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Samples transformations, e.g. reward normalization, observation normalization, advantage estimation (jitted), creation of `valid` array
 - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
 - Add simple interface to Stable Baselines in the form of a gym wrapper that looks like the parallel vector wrapper but preallocates memory.
+- Add argument to `ParallelProcessCage` to choose between process creation methods
+- Prevent calls to `agent.step()` for environments that are done and waiting for be reset. The speedup from this might not be significant.
 
 ## Ideas
 - Sampler types:
