@@ -7,11 +7,13 @@ from parllel.buffers import Buffer, NamedArrayTuple
 from parllel.arrays import SharedMemoryArray, RotatingSharedMemoryArray
 
 
+"""Process-global registry of buffers. Any registered buffers can be sent quickly
+between processes by buffer_id.
+"""
 _buffer_registry: Dict[int, Buffer] = {}
 
 
 def rebuild_buffer(buffer_id, index_history):
-    # print(f"Rebuilding unregistered buffer {buffer_id}")
     try:
         base = _buffer_registry[buffer_id]
     except KeyError as e:
@@ -24,10 +26,13 @@ def rebuild_buffer(buffer_id, index_history):
 def reduce_buffer(buffer: Buffer):
     try:
         _ = _buffer_registry[buffer.buffer_id]
-        # print(f"Reducing registered buffer {buffer.buffer_id}")
         return rebuild_buffer, (buffer.buffer_id, buffer.index_history)
-    except KeyError as e:
-        raise RuntimeError(f"Cannot pickle unregistered buffer with id '{buffer.buffer_id}.") from e
+    except KeyError:
+        # for unregistered buffers, fall back to default behaviour. this might
+        # be expensive (or even silly), but it should not happen often
+        if isinstance(buffer, NamedArrayTuple):
+            return NamedArrayTuple.__new__, buffer.__getnewargs__()
+        return buffer.__reduce__()
 
 
 def register_shared_memory_buffer(buffer: Buffer):
@@ -35,7 +40,6 @@ def register_shared_memory_buffer(buffer: Buffer):
     compatibility with both fork and spawn, call in each process after process
     start.
     """
-    # print(f"Registering buffer {buffer.buffer_id}.")
     _buffer_registry[buffer.buffer_id] = buffer
     if isinstance(buffer, tuple):
         for element in buffer:

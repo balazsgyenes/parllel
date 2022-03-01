@@ -1,5 +1,5 @@
 from __future__ import annotations
-import multiprocessing as mp
+from multiprocessing import shared_memory
 from typing import Dict
 
 import numpy as np
@@ -17,7 +17,7 @@ class ManagedMemoryArray(Array):
         nbytes = size * np.dtype(self.dtype).itemsize
         # SharedMemory is given a unique name that other processes can use to
         # attach to it.
-        self._raw_array = mp.shared_memory.SharedMemory(create=True, size=nbytes)
+        self._raw_array = shared_memory.SharedMemory(create=True, size=nbytes)
 
         self._wrap_raw_array()
         
@@ -42,7 +42,7 @@ class ManagedMemoryArray(Array):
         name = state.pop("_memory_name")
         self.__dict__.update(state)
 
-        self._raw_array = mp.shared_memory.SharedMemory(name=name)
+        self._raw_array = shared_memory.SharedMemory(name=name)
 
         # restore numpy array
         self._wrap_raw_array()
