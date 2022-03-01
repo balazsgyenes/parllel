@@ -104,10 +104,11 @@ class NamedTuple(tuple):
 
     def __getattr__(self, name: str) -> Any:
         """Look in `_fields` when `name` is not in `dir(self)`."""
-        if name in self._fields:
+        try:
             return tuple.__getitem__(self, self._fields.index(name))
-        else:
-            return buffer_method(self, name)
+        except ValueError:
+            raise AttributeError(f"'{self._typename}' object has no attribute "
+                                 f"'{name}'")
 
     def __setattr__(self, name: str, value: Any) -> NoReturn:
         """Make the object immutable, like a tuple."""
