@@ -15,30 +15,52 @@ class MiniSampler:
     def __init__(self,
         batch_T: int,
         batch_B: int,
+        envs: Sequence[Cage],
+        agent: Handler,
+        batch_buffer: Samples,
         get_bootstrap_value: bool = False,
     ) -> None:
         self.batch_T = batch_T
         self.batch_B = batch_B
         self.get_bootstrap_value = get_bootstrap_value
 
-    def initialize(self,
-        agent: Handler,
-        envs: Sequence[Cage],
-        batch_buffer: Samples,
-    ) -> Tuple[Samples, List[TrajInfo]]:
         self.agent = agent
         self.envs = tuple(envs)
         assert len(envs) == self.batch_B
         self.batch_buffer = batch_buffer
 
+        # bring all environments into a known state
         self.reset_all()
 
-        # get example of a batch of samples
-        example_batch = self.collect_batch(0)
+    def reset_all(self) -> None:
+        """Reset all environments and save to beginning of observation
+        buffer.
+        """
+        observation = self.batch_buffer.env.observation
+        for b, env in enumerate(self.envs):
+            # save reset observation to the end of buffer, since it will be 
+            # rotated to the beginning
+            env.reset_async(out_obs=observation[observation.end, b])
+
+        for b, env in enumerate(self.envs):
+            env.await_step()
+            # TODO: add reset_all method
+            self.agent.reset_one(env_index=b)
+
+    def get_example_output(self) -> Samples:
+        """Get example of a batch of samples."""
+        # we can't guarantee that there will be any completed trajectories, so
+        # we just ignore them
+        example_batch, _ = self.collect_batch(0)
 
         self.reset_all()
 
         return example_batch
+
+    def decorrelate_environments(self) -> None:
+        """Randomly step environments so they are not all synced up."""
+        # TODO: model this off of sampling loop
+        pass
 
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         # get references to buffer elements
@@ -92,23 +114,6 @@ class MiniSampler:
         batch_samples = buffer_func(np.asarray, self.batch_buffer)
 
         return batch_samples, completed_trajectories
-
-    def reset_all(self) -> None:
-        """Reset all environments and save to beginning of observation
-        buffer.
-        """
-        observation = self.batch_buffer.env.observation
-        for b, env in enumerate(self.envs):
-            # save reset observation to the end of buffer, since it will be 
-            # rotated to the beginning
-            env.reset(out_obs=observation[observation.end, b])
-            # TODO: add reset_all method
-            self.agent.reset_one(env_index=b)
-
-    def decorrelate_environments(self) -> None:
-        """Randomly step environments so they are not all synced up."""
-        # TODO: model this off of sampling loop
-        pass
 
     def close(self):
         pass
