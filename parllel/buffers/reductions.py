@@ -31,7 +31,7 @@ def reduce_buffer(buffer: Buffer):
         # for unregistered buffers, fall back to default behaviour. this might
         # be expensive (or even silly), but it should not happen often
         if isinstance(buffer, NamedArrayTuple):
-            return NamedArrayTuple.__new__, buffer.__getnewargs__()
+            return NamedArrayTuple.__new__, (NamedArrayTuple, *buffer.__getnewargs__())
         return buffer.__reduce__()
 
 
