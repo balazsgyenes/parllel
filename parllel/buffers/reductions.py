@@ -1,6 +1,5 @@
 from functools import reduce
 import multiprocessing as mp
-from parllel.arrays.sharedmemory import SharedMemoryArray
 from typing import Dict
 
 from parllel.buffers import Buffer, NamedArrayTuple
