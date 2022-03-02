@@ -5,7 +5,7 @@ from threading import Thread
 from typing import List, Tuple, Any, Optional, Union
 
 from parllel.buffers import Buffer
-from parllel.buffers.reductions import register_buffer_pickler, register_shared_memory_buffer
+from parllel.buffers.pipe import BufferPipe
 from parllel.envs.collections import EnvStep, EnvSpaces
 from parllel.types.traj_info import TrajInfo
 from .cage import Cage
@@ -43,14 +43,16 @@ class ParallelProcessCage(Cage, mp.Process):
         # pipe is used for communication between main and child processes
         self._parent_pipe, self._child_pipe = mp.Pipe()
 
-        # start executing `run` method, which also calls super().initialize()
-        self.start()
-
-        # register custom methods for sending buffer objects between processes
-        register_buffer_pickler()
+        # wrap pipe to send buffer objects by reference instead of value
+        self._parent_pipe = BufferPipe(self._parent_pipe)
+        self._child_pipe = BufferPipe(self._child_pipe)
         if self._samples_buffer is not None:
             # enable receiving buffers derived from samples buffer
-            register_shared_memory_buffer(self._samples_buffer)
+            self._parent_pipe.register_buffer(self._samples_buffer)
+            self._child_pipe.register_buffer(self._samples_buffer)
+
+        # start executing `run` method, which also calls super().initialize()
+        self.start()
 
         # get env spaces from child process
         self._spaces: EnvSpaces = self._parent_pipe.recv()
@@ -73,8 +75,8 @@ class ParallelProcessCage(Cage, mp.Process):
         assert self._last_command is None
         self._samples_buffer = samples_buffer
 
+        # automatically registers buffer on first send
         self._parent_pipe.send(Message(Command.set_sample_buffer, samples_buffer))
-        register_shared_memory_buffer(self._samples_buffer) # register on parent side
         self._parent_pipe.recv() # block until finished
 
     def step_async(self,
@@ -141,11 +143,6 @@ class ParallelProcessCage(Cage, mp.Process):
         """
         super()._create_env() # create env, traj info, etc.
 
-        # do the identical setup in child process as in parent
-        register_buffer_pickler()
-        if self._samples_buffer is not None:
-            register_shared_memory_buffer(self._samples_buffer)
-
         # send env spaces back to parent
         # parent process can receive gym Space objects because gym is imported
         self._child_pipe.send(EnvSpaces(
@@ -164,8 +161,7 @@ class ParallelProcessCage(Cage, mp.Process):
                 self._child_pipe.send(env_step)
 
             elif command == Command.set_sample_buffer:
-                self._samples_buffer = data
-                register_shared_memory_buffer(self._samples_buffer)
+                # buffers have already been registered on first receive
                 self._child_pipe.send(None)
 
             elif command == Command.step:
