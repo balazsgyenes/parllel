@@ -161,7 +161,8 @@ class ParallelProcessCage(Cage, mp.Process):
                 self._child_pipe.send(env_step)
 
             elif command == Command.set_sample_buffer:
-                # buffers have already been registered on first receive
+                self._samples_buffer = data
+                self._child_pipe.register_buffer(self._samples_buffer)
                 self._child_pipe.send(None)
 
             elif command == Command.step:
