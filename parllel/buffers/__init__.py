@@ -13,9 +13,3 @@ __all__ = [
     buffer_func, buffer_method,
     buffer_from_example
 ]
-
-"""
-TODO: most array functions need to be defined at the buffer level, so calls like
-observation.rotate() do not fail if observation happens to be a namedarraytuple
-instead of a single Array
-"""

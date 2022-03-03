@@ -27,8 +27,9 @@ class Array(Buffer):
         shape: Tuple[int, ...],
         dtype: np.dtype,
     ) -> None:
+        assert shape, "Non-empty shape required."
         self._base_shape = shape
-        self._indexed_shape = shape
+        self._apparent_shape = shape
 
         dtype = np.dtype(dtype)
         assert dtype != np.object_, "Data type should not be object."
@@ -44,7 +45,7 @@ class Array(Buffer):
 
     @property
     def shape(self):
-        return self._indexed_shape
+        return self._apparent_shape
 
     def __getitem__(self, location: Indices) -> Array:
         array: NDArray = self._array
@@ -58,22 +59,30 @@ class Array(Buffer):
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
         # need to be modified.
-        # TODO: this calls __getstate__ and __setstate__, which repeated all
+        # TODO: this calls __getstate__ and __setstate__, which repeats all
         # indexing operations in the history. Can this be more efficient?
         result: Array = copy.copy(self)
         # assign previous subarray to new result
         result._array = array
         # assign new shape
-        result._indexed_shape = subarray.shape
+        result._apparent_shape = subarray.shape
         # assign copy of _index_history with additional element for this
         # indexing operation
         result._index_history = copy.copy(result._index_history) + [location]
         return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
-        if location == slice(None) and self._index_history:
-            location = self._index_history[-1]
-        self._array[location] = value
+        # Need to avoid item assignment on a scalar (0-D) array, so we defer
+        # the most recent indexing operation until we need it
+        current_array = self._array
+        if self._apparent_shape == ():
+            assert location == slice(None), "Cannot take slice of 0-D array."
+            location = self._index_history[-1] # in this case, there must be an index history
+        elif self._index_history:
+            # apply last index before item assignment
+            current_array = current_array[self._index_history[-1]]
+
+        current_array[location] = value
 
     def __array__(self, dtype=None) -> NDArray:
         array = self._array

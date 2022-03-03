@@ -1,11 +1,12 @@
 from __future__ import annotations
-from typing import Any, Tuple
+import copy
+from typing import Any, List, Tuple
 
 import numpy as np
 from nptyping import NDArray
 
 from .array import Array
-from parllel.buffers.buffer import Index, Indices
+from parllel.buffers.buffer import Buffer, Index, Indices
 
 class RotatingArray(Array):
     """An array with padding at both edges of the leading dimension. Calling
@@ -32,12 +33,28 @@ class RotatingArray(Array):
 
         assert padding > 0, "Padding must be positive."
         self._padding = padding
-        self._apparent_shape = shape
 
         # add padding onto both ends of first dimension
-        shape = (shape[0] + 2 * self._padding,) + shape[1:]
+        assert shape, "Non-empty shape required."
+        padded_shape = (shape[0] + 2 * self._padding,) + shape[1:]
 
-        super().__init__(shape, dtype)
+        super().__init__(padded_shape, dtype)
+        self._apparent_shape = shape # padding is not part of apparent shape
+
+        self._apparent_index_history: List[Indices] = []
+
+    @Buffer.index_history.getter
+    def index_history(self) -> Tuple[Tuple[Index, ...], ...]:
+        """For external use, return the index history before shifting. The base
+        class index history records indices after shifting.
+        """
+        return self._apparent_index_history
+
+    @property
+    def end(self) -> int:
+        """The index of the final element in the array, not including padding.
+        """
+        return self._apparent_shape[0] - 1
 
     def rotate(self) -> None:
         """Prepare buffer for collecting next batch. Rotate values stored at
@@ -64,9 +81,10 @@ class RotatingArray(Array):
         result: RotatingArray = super().__getitem__(leading + trailing)
         # modify additional instance variables from RotatingArray
         result._padding = 0 # padding is no longer available after indexing
-        result._apparent_shape = result.shape
-        # base class saved the shifted indices, so we need to correct
-        result._index_history[-1] = location
+        # assign copy of _index_history with additional element for this
+        # indexing operation
+        result._apparent_index_history = copy.copy(
+            result._apparent_index_history) + [location]
         return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
@@ -86,16 +104,6 @@ class RotatingArray(Array):
         if self._padding > 0:
             array = array[self._padding:-self._padding]
         return array
-
-    # @property
-    # def start(self) -> int:
-    #     return -self._padding
-
-    @property
-    def end(self) -> int:
-        """The index of the final element in the array, not including padding.
-        """
-        return self._apparent_shape[0] - 1
 
 
 def shift_index(index: Index, shift: int, apparent_length: int) -> Tuple[Index, ...]:
