@@ -227,46 +227,6 @@ class NamedArrayTuple(NamedTuple, Buffer):
         return zip(self._fields, self)
 
 
-def buffer_method(buffer, method_name, *args, **kwargs):
-    """Call method ``method_name(*args, **kwargs)`` on all contents of
-    ``buffer``, and return the results. ``buffer`` can be an arbitrary
-    structure of tuples, namedtuples, namedarraytuples, NamedTuples, and
-    NamedArrayTuples, and a new, matching structure will be returned.
-    ``None`` fields remain ``None``.
-    """
-    if isinstance(buffer, tuple): # non-leaf node
-        contents = (buffer_method(elem, method_name, *args, **kwargs) for elem in buffer)
-        if type(buffer) is tuple: 
-            return tuple(contents)
-        # buffer: NamedTuple
-        return buffer._make(contents)
-
-    # leaf node
-    if buffer is None:
-        return None
-    return getattr(buffer, method_name)(*args, **kwargs)
-
-
-def buffer_func(func, buffer, *args, **kwargs):
-    """Call function ``func(buf, *args, **kwargs)`` on all contents of
-    ``buffer_``, and return the results.  ``buffer_`` can be an arbitrary
-    structure of tuples, namedtuples, namedarraytuples, NamedTuples, and
-    NamedArrayTuples, and a new, matching structure will be returned.
-    ``None`` fields remain ``None``.
-    """
-    if isinstance(buffer, tuple): # non-leaf node
-        contents = (buffer_func(func, elem, *args, **kwargs) for elem in buffer)
-        if type(buffer) is tuple: 
-            return tuple(contents)
-        # buffer: NamedTuple
-        return buffer._make(contents)
-
-    # leaf node
-    if buffer is None:
-        return None
-    return func(buffer, *args, **kwargs)
-
-
 def NamedArrayTupleClass_like(example: Union[NamedArrayTupleClass,
     NamedArrayTuple, NamedTupleClass, NamedTuple]) -> NamedArrayTupleClass:
     """Returns a NamedArrayTupleClass instance  with the same name and fields

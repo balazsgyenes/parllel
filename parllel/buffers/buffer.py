@@ -16,8 +16,6 @@ class Buffer(ABC, Generic[LeafType]):
     either tuples, NamedTuples, or NamedArrayTuples, and the leaf nodes are
     Array objects, numpy arrays, torch tensors, etc.
     """
-    # TODO: these methods don't belong here, because no actual buffer type is
-    # guaranteed to implement them
     @property
     def index_history(self) -> Tuple[Tuple[Index, ...], ...]:
         # return a copy of the list as a tuple, not the list itself
