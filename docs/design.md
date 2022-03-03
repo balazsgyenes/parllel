@@ -31,11 +31,13 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Arrays are either numpy ndarrays, (or a subclass) or torch tensors
 - Establish clear interface to Handler/Agent - is the `obs + prev_action` or `obs + prev_action + prev_reward`? This also sort of makes the mini sampler obsolete, unless it hard-codes `(None)` for `prev_action + prev_reward`.
 - Clean up cage logic. Use already_done to prevent extra step calls. Reset is available as sync and async calls. Add optional auto-reset mode for performance.
+    - Merge `collect_deferred_reset` and `reset_async`.
 - Samples transformations, e.g. reward normalization, observation normalization, advantage estimation (jitted), creation of `valid` array
 - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
 - Add simple interface to Stable Baselines in the form of a gym wrapper that looks like the parallel vector wrapper but preallocates memory.
 - Add argument to `ParallelProcessCage` to choose between process creation methods
 - Prevent calls to `agent.step()` for environments that are done and waiting for be reset. The speedup from this might not be significant.
+- BUG: fix array indexing logic. Is the wrapped array indexed when the Array object is indexed? How can this indexed array state be reconstructed when unpickling? Ensure this is correct in all cases, including rotating arrays.
 
 ## Ideas
 - Sampler types:

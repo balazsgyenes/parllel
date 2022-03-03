@@ -1,6 +1,6 @@
 from parllel.samplers.collections import AgentSamples, EnvSamples, Samples
 from parllel.arrays import ManagedMemoryArray, RotatingManagedMemoryArray
-from parllel.buffers.utils import buffer_from_example
+from parllel.buffers import buffer_from_example, buffer_method
 from parllel.cages import ParallelProcessCage
 from parllel.handlers import Handler
 from parllel.samplers import MiniSampler
@@ -65,6 +65,9 @@ def test_single_batch():
 
     print(samples)
     print(completed_trajectories)
+
+    buffer_method(sampler.batch_buffer, "close")
+    buffer_method(sampler.batch_buffer, "destroy")
 
 
 if __name__ == "__main__":

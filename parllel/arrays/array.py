@@ -34,9 +34,9 @@ class Array(Buffer):
         assert dtype != np.object_, "Data type should not be object."
         self.dtype = dtype
 
-        self._allocate()
         self._buffer_id: int = id(self)
         self._index_history: List[Indices] = []
+        self._allocate()
 
     def _allocate(self) -> None:
         # initialize numpy array

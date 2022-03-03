@@ -40,7 +40,7 @@ class MiniSampler:
         for b, env in enumerate(self.envs):
             # save reset observation to the end of buffer, since it will be 
             # rotated to the beginning
-            env.reset_async(out_obs=observation[observation.end, b])
+            env.reset_async(out_obs=observation[observation.end + 1, b])
 
         for b, env in enumerate(self.envs):
             env.await_step()

@@ -4,7 +4,7 @@ import multiprocessing as mp
 from threading import Thread
 from typing import List, Tuple, Any, Optional, Union
 
-from parllel.buffers import Buffer
+from parllel.buffers import Buffer, buffer_method
 from parllel.buffers.pipe import BufferPipe
 from parllel.envs.collections import EnvStep, EnvSpaces
 from parllel.types.traj_info import TrajInfo
@@ -73,10 +73,9 @@ class ParallelProcessCage(Cage, mp.Process):
     def set_samples_buffer(self, samples_buffer: Buffer) -> None:
         """Pass reference to samples buffer after process start."""
         assert self._last_command is None
-        self._samples_buffer = samples_buffer
-
-        # automatically registers buffer on first send
         self._parent_pipe.send(Message(Command.set_sample_buffer, samples_buffer))
+        self._parent_pipe.register_buffer(samples_buffer)
+        self._samples_buffer = samples_buffer
         self._parent_pipe.recv() # block until finished
 
     def step_async(self,
@@ -197,6 +196,7 @@ class ParallelProcessCage(Cage, mp.Process):
                 self._child_pipe.send(reset_obs)
 
             elif command == Command.close:
+                buffer_method(self._samples_buffer, "close")
                 super().close()  # close Cage object
                 break
 

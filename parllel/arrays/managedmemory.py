@@ -1,4 +1,5 @@
 from __future__ import annotations
+from functools import reduce
 from multiprocessing import shared_memory
 from typing import Dict
 
@@ -13,7 +14,7 @@ class ManagedMemoryArray(Array):
     """
     def _allocate(self) -> None:
         # allocate array in OS shared memory
-        size = int(np.prod(self.shape))
+        size = int(np.prod(self._base_shape))
         nbytes = size * np.dtype(self.dtype).itemsize
         # SharedMemory is given a unique name that other processes can use to
         # attach to it.
@@ -22,12 +23,19 @@ class ManagedMemoryArray(Array):
         self._wrap_raw_array()
         
     def _wrap_raw_array(self) -> None:
-        size = int(np.prod(self.shape))
+        size = int(np.prod(self._base_shape))
         self._array = np.frombuffer(self._raw_array.buf, dtype=self.dtype, count=size)
 
         # assign to shape attribute so that error is raised when data is copied
         # array.reshape might silently copy the data
-        self._array.shape = self.shape
+        self._array.shape = self._base_shape
+
+        if self._index_history:
+            if len(self._index_history) > 1:
+                # TODO: not correct for rotating arrays
+                raise NotImplementedError
+            self._array = reduce(lambda buf, index: buf[index],
+                                 self._index_history[:-1], self._array)
 
     def __getstate__(self) -> Dict:
         state = self.__dict__.copy()

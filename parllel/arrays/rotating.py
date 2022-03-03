@@ -63,8 +63,10 @@ class RotatingArray(Array):
         leading = shift_index(leading, self._padding, self._apparent_shape[0])
         result: RotatingArray = super().__getitem__(leading + trailing)
         # modify additional instance variables from RotatingArray
-        result._padding = 0
+        result._padding = 0 # padding is no longer available after indexing
         result._apparent_shape = result.shape
+        # base class saved the shifted indices, so we need to correct
+        result._index_history[-1] = location
         return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
@@ -85,13 +87,15 @@ class RotatingArray(Array):
             array = array[self._padding:-self._padding]
         return array
 
-    @property
-    def start(self) -> int:
-        return -self._padding
+    # @property
+    # def start(self) -> int:
+    #     return -self._padding
 
     @property
     def end(self) -> int:
-        return self.shape[0] - self._padding - 1
+        """The index of the final element in the array, not including padding.
+        """
+        return self._apparent_shape[0] - 1
 
 
 def shift_index(index: Index, shift: int, apparent_length: int) -> Tuple[Index, ...]:
