@@ -198,7 +198,11 @@ class NamedArrayTuple(NamedTuple, Buffer):
         None.
         """
         # if not a NamedTuple or NamedArrayTuple of matching structure
-        if not (isinstance(value, NamedTuple)
+        if isinstance(value, dict):
+            d = value
+            # set up generator that orders dictionary items according to _fields
+            value = (d[field] for field in self._fields)
+        elif not (isinstance(value, NamedTuple)
             and getattr(value, "_fields", None) == self._fields):
             # Repeat value, assigning it to each field
             # e.g. tup[:] = 0
