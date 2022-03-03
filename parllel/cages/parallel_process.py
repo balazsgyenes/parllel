@@ -6,9 +6,10 @@ from typing import List, Tuple, Any, Optional, Union
 
 from parllel.buffers import Buffer, buffer_method
 from parllel.buffers.pipe import BufferPipe
-from parllel.envs.collections import EnvStep, EnvSpaces
 from parllel.types.traj_info import TrajInfo
+
 from .cage import Cage
+from .collections import EnvStep, EnvSpaces
 
 
 class Command(enum.Enum):

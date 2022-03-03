@@ -2,10 +2,13 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import gym
+from gym.wrappers import TimeLimit as GymTimeLimit
 
 from parllel.buffers import Buffer, buffer_func
-from parllel.envs.collections import EnvStep, EnvSpaces
+from parllel.buffers.named_tuple import namedtuple_to_dict
 from parllel.types.traj_info import TrajInfo
+
+from .collections import EnvStep, EnvSpaces
 
 
 INVALID_STEP_RESULT: str = "This is an invalid step result"
@@ -56,6 +59,13 @@ class Cage:
         self._env: gym.Env = self.EnvClass(**self.env_kwargs)
         self._env.reset()
 
+        # determine if environment also wrapped with gym's TimeLimit
+        env_unwrapped = self._env
+        self._time_limit = isinstance(env_unwrapped, GymTimeLimit)
+        while not self._time_limit and hasattr(env_unwrapped, "env"):
+            env_unwrapped = env_unwrapped.env
+            self._time_limit = isinstance(env_unwrapped, GymTimeLimit)
+
         self._spaces = EnvSpaces(
             observation=self._env.observation_space,
             action=self._env.action_space,
@@ -63,10 +73,16 @@ class Cage:
 
     def get_example_output(self) -> EnvStep:
         # get example of env step output
-        sample_action = self._env.action_space.sample()
-        env_step = EnvStep(*self._env.step(sample_action))
         self._env.reset()
-        return env_step
+        sample_action = self._env.action_space.sample()
+        obs, reward, done, info = self._env.step(sample_action)
+
+        if self._time_limit:
+            # we will be using this example to allocate a buffer, so all fields
+            # that could be present need to be present
+            info["timeout"] = info.pop("TimeLimit.truncated", False)
+
+        return EnvStep(obs, reward, done, info)
 
     @property
     def spaces(self) -> EnvSpaces:
@@ -85,10 +101,16 @@ class Cage:
     ) -> None:
         """If any out parameter is given, they must all be given. 
         """
-        np_action = buffer_func(np.asarray, action)
-        obs, reward, done, env_info = self._env.step(np_action)
+        # get underlying numpy arrays and convert to dict if needed
+        action = buffer_func(np.asarray, action)
+        action = namedtuple_to_dict(action)
+
+        obs, reward, done, env_info = self._env.step(action)
         self._traj_info.step(obs, action, reward, done, env_info)
         
+        if self._time_limit:
+            env_info["timeout"] = env_info.pop("TimeLimit.truncated", False)
+
         if done:
             # store finished trajectory and start new one
             self._completed_trajs.append(self._traj_info)

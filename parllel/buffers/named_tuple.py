@@ -5,9 +5,7 @@ from collections import OrderedDict
 from inspect import Signature, Parameter
 from itertools import repeat
 import string
-from typing import Any, Iterable, NoReturn, Tuple, Union
-
-import numpy as np
+from typing import Any, Dict, Iterable, NoReturn, Tuple, Union
 
 from parllel.buffers.buffer import Buffer
 
@@ -283,20 +281,13 @@ def NamedArrayTupleClass_like(example: Union[NamedArrayTupleClass,
             f"NamedArrayTuple[Class]. Instead, got {type(example)}.")
 
 
-def dict_to_namedtuple(value: Any, name: str, classes: dict, force_float32: bool = True):
-    #TODO: this method is ridiculous. Take the expected NamedTupleClass as input
+def dict_to_namedtuple(value: Dict, name: str):
     if isinstance(value, dict):
-        NamedTupleCls = classes[name]
-        # Disregard unrecognized keys:
-        values = {k: dict_to_namedtuple(v, "_".join([name, k]), classes)
-                  for k, v in value.items() if k in NamedTupleCls._fields}
-        # Can catch some missing values (doesn't nest):
-        values.update({k: 0 for k in NamedTupleCls._fields if k not in values})
-        return NamedTupleCls(**values)
-    elif isinstance(value, np.ndarray) and value.dtype == np.float64 and force_float32:
-        return np.asanyarray(value, dtype=np.float32)
-    else:
-        return value
+        values = tuple(dict_to_namedtuple(v, "_".join([name, k]))
+                         for k, v in value.items())
+        NamedTuple.__new__(NamedTuple, name, value.keys(), values)
+
+    return value
 
 
 def namedtuple_to_dict(value):
