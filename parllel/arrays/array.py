@@ -88,7 +88,7 @@ class Array(Buffer):
         array = self._array
         if self._index_history:
             array = array[self._index_history[-1]]
-        array = np.atleast_1d(array)
+        array = np.asarray(array)  # promote scalars to 0d arrays
         if dtype is not None:
             array = array.astype(dtype, copy=False)
         return array

@@ -15,26 +15,26 @@ def buffer_from_example(example, leading_dims: Tuple[int, ...], ArrayClass: Arra
         return buffer_type(*(buffer_from_example(elem, leading_dims, ArrayClass)
                              for elem in example))
     else:
-        np_example = np.asarray(example)
+        np_example = np.asarray(example)  # promote scalars to 0d arrays
         shape = leading_dims + np_example.shape
         dtype = np_example.dtype 
         return ArrayClass(shape=shape, dtype=dtype, **kwargs)
 
 
 def buffer_from_dict_example(example, leading_dims: Tuple[int, ...], ArrayClass: Array,
-                             force_float32: bool = False, **kwargs) -> Buffer:
+                             *, name: str, force_float32: bool = False, **kwargs) -> Buffer:
     """Create a samples buffer from an example which may be a dictionary (or
     just a single value). The samples buffer will be a NamedArrayTuple with a
     matching structure.
     """
     
     # first, convert dictionary to a namedtuple
-    example = dict_to_namedtuple(example)
+    example = dict_to_namedtuple(example, name)
 
     # convert any Python values to numpy
     example = buffer_func(np.asanyarray, example)
 
-    # demote any 1d scalar arrays to 0d arrays (not scalars)
+    # demote any 1d scalar arrays to actual scalars
     # this ensures that the final buffer with leading dimensions is the right size
     def to_numpy_scalar(arr):
         if arr.shape == (1,):

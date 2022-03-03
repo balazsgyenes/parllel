@@ -283,9 +283,9 @@ def NamedArrayTupleClass_like(example: Union[NamedArrayTupleClass,
 
 def dict_to_namedtuple(value: Dict, name: str):
     if isinstance(value, dict):
-        values = tuple(dict_to_namedtuple(v, "_".join([name, k]))
-                         for k, v in value.items())
-        NamedTuple.__new__(NamedTuple, name, value.keys(), values)
+        values = tuple(dict_to_namedtuple(v, name = "_".join([name, k]))
+                       for k, v in value.items())
+        return NamedTuple.__new__(NamedTuple, name, tuple(value.keys()), values)
 
     return value
 
