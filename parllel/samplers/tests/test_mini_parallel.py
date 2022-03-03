@@ -9,7 +9,12 @@ from parllel.samplers.tests.dummy_env import DummyEnv
 from parllel.types.traj_info import TrajInfo
 
 
-def build_sampler(batch_T: int, batch_B: int, recurrent: bool):
+batch_T = 256
+batch_B = 8
+recurrent = False
+
+
+def test_single_batch():
 
     # create cages to manage environments
     episode_lengths = [5 + i for i in range(batch_B)]
@@ -55,19 +60,19 @@ def build_sampler(batch_T: int, batch_B: int, recurrent: bool):
     sampler = MiniSampler(batch_T=batch_T, batch_B=batch_B, envs=cages, agent=handler,
         batch_buffer=batch_samples, get_bootstrap_value=False)
 
-    return sampler
-
-
-def test_single_batch():
-    sampler = build_sampler(20, 4, recurrent=False)
 
     samples, completed_trajectories = sampler.collect_batch(elapsed_steps=0)
 
     print(samples)
     print(completed_trajectories)
 
-    buffer_method(sampler.batch_buffer, "close")
-    buffer_method(sampler.batch_buffer, "destroy")
+    # cleanup
+    cages, handler, batch_samples = sampler.close()
+    agent.close()
+    for cage in cages:
+        cage.close()
+    buffer_method(batch_samples, "close")
+    buffer_method(batch_samples, "destroy")
 
 
 if __name__ == "__main__":

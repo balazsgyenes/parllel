@@ -38,6 +38,11 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Add argument to `ParallelProcessCage` to choose between process creation methods
 - Prevent calls to `agent.step()` for environments that are done and waiting for be reset. The speedup from this might not be significant.
 - BUG: fix array indexing logic. Is the wrapped array indexed when the Array object is indexed? How can this indexed array state be reconstructed when unpickling? Ensure this is correct in all cases, including rotating arrays.
+    - add second index history to rotating array. The public interface returns the unshifted indicies for use by the unpickler in reconstructing the array. The private index history tracks the shifted index history for use by `__setstate__` in reconstructing the numpy array
+    - removing `__getstate__` and `__setstate__` might solve this problem as well as result in a performance boost, since they are called by `copy.copy` each time the array is indexed. Can the numpy arrays simply be sent through the pipe?
+- BUG: fix circular important between Arrays and Buffers (Array depends on Buffer, which also imports Arrays; Buffer must be imported first)
+- `build` methods (if they exist) should also return a cleanup function which takes the runner(?) and does all required cleanup.
+- With complete control of the pipe and pickler, we should be able to make buffer registration a lot more seamless. Can we implement pytorch's approach, where arrays are automatically copied into shared memory (and registered) the first time they are moved between processes?
 
 ## Ideas
 - Sampler types:

@@ -37,7 +37,7 @@ class SharedMemoryArray(Array):
             if len(self._index_history) > 1:
                 # TODO: not correct for rotating arrays
                 raise NotImplementedError
-            self._array = reduce(lambda buf, index: buf[index],
+            self._array = reduce(lambda arr, index: arr[index],
                                  self._index_history[:-1], self._array)
 
     def __getstate__(self) -> Dict:

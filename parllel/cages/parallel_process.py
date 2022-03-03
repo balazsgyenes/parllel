@@ -41,11 +41,8 @@ class ParallelProcessCage(Cage, mp.Process):
         self._samples_buffer = samples_buffer
 
         # pipe is used for communication between main and child processes
-        self._parent_pipe, self._child_pipe = mp.Pipe()
+        self._parent_pipe, self._child_pipe = BufferPipe()
 
-        # wrap pipe to send buffer objects by reference instead of value
-        self._parent_pipe = BufferPipe(self._parent_pipe)
-        self._child_pipe = BufferPipe(self._child_pipe)
         if self._samples_buffer is not None:
             # enable receiving buffers derived from samples buffer
             self._parent_pipe.register_buffer(self._samples_buffer)

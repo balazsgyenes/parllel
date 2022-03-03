@@ -115,5 +115,5 @@ class MiniSampler:
 
         return batch_samples, completed_trajectories
 
-    def close(self):
-        pass
+    def close(self) -> Tuple[Sequence[Cage], Handler, Samples]:
+        return self.envs, self.agent, self.batch_buffer

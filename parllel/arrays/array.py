@@ -58,6 +58,8 @@ class Array(Buffer):
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
         # need to be modified.
+        # TODO: this calls __getstate__ and __setstate__, which repeated all
+        # indexing operations in the history. Can this be more efficient?
         result: Array = copy.copy(self)
         # assign previous subarray to new result
         result._array = array

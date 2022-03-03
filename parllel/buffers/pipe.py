@@ -1,15 +1,14 @@
-from dataclasses import dataclass
-from functools import reduce
 import io
-import pickle
+import multiprocessing as mp
 from multiprocessing.connection import Connection
-from typing import Any, Dict, Tuple
+import pickle
+from typing import Any, Dict
 
-from parllel.buffers import Buffer, Indices
+from parllel.buffers import Buffer
 from parllel.arrays import SharedMemoryArray, ManagedMemoryArray
 from .pickler import BufferPickler, BufferUnpickler
 
-class BufferPipe:
+class BufferConnection:
     def __init__(self, pipe: Connection) -> None:
         self._pipe = pipe
         self._buffer_registry: Dict[int, Buffer] = {}
@@ -39,3 +38,8 @@ class BufferPipe:
             return getattr(self._pipe, name)
         raise AttributeError("'{}' object has no attribute '{}'".format(
             type(self).__name__, '_pipe'))
+
+
+def BufferPipe(*args, **kwargs):
+    parent_pipe, child_pipe = mp.Pipe(*args, **kwargs)
+    return BufferConnection(parent_pipe), BufferConnection(child_pipe)
