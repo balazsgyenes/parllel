@@ -1,10 +1,10 @@
-from typing import Any, Iterable, Union
+from typing import Iterable, Union
 
 import torch
 
-from parllel.buffers import Buffer
+from parllel.buffers.buffer import Buffer
 from parllel.handlers import Agent, AgentStep
-from parllel.torch.distributions.distribution import Distribution
+from parllel.torch.distributions.base import Distribution
 
 
 class TorchAgent(Agent):
@@ -20,11 +20,19 @@ class TorchAgent(Agent):
     def distribution(self):
         return self._distribution
 
-    def initialize(self, model: torch.Module, device: torch.device, distribution: Distribution) -> AgentStep:
+    def __init__(self, model: torch.Module, distribution: Distribution, device: torch.device = None) -> AgentStep:
         self._model = model
-        self.device = device
         self._distribution = distribution
+
+        # possibly move model to GPU
+        if device is None:
+            device = torch.device("cpu")
+        if device != torch.device("cpu"):
+            self.model.to(self.device)
+        self._device = device
+
         self._mode = None
+
         # subclass must override and create whatever state it needs
         self._rnn_states = None
 
@@ -37,15 +45,10 @@ class TorchAgent(Agent):
             # rnn_states are of shape [N, B, H]
             self._rnn_states[:, env_index] = 0
 
-    @torch.no_grad()
-    def step(self, observation: Buffer, prev_action: Buffer, prev_reward: Buffer, env_ids: Union[int, slice]) -> AgentStep:
-        """Returns selected actions for environment instances in sampler."""
-        raise NotImplementedError
-
-    def evaluate(self, observation: Buffer, prev_action: Buffer, prev_reward: Buffer, prev_rnn_state: Buffer = None) -> Any:
-        """Returns values from model forward pass on training data (i.e. used
-        in algorithm)."""
-        raise NotImplementedError
+    def advance_rnn_states(self, next_rnn_states: Buffer, env_indices: Union[int, slice]):
+        if self._rnn_states is not None:
+            # rnn_states are of shape [N, B, H]
+            self._rnn_states[:, env_indices] = next_rnn_states
 
     def parameters(self) -> Iterable[torch.Tensor]:
         """Parameters to be optimized (overwrite in subclass if multiple models)."""

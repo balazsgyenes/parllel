@@ -1,17 +1,15 @@
-from dataclasses import dataclass
-from typing import Any
-
-# TODO: should these be NamedTuples?
-
-@dataclass(frozen=True)
-class AgentInfo:
-    dist_info: Any
-    value: Any = None
-    prev_rnn_state: Any = None
+from parllel.buffers import NamedArrayTupleClass
 
 
-@dataclass(frozen=True)
-class AgentEvaluation:
-    dist_info: Any
-    value: Any = None
-    next_rnn_state: Any = None
+AgentInfo = NamedArrayTupleClass("PgAgentInfo", [
+    "dist_info",
+    "value",
+    "prev_rnn_state",
+])
+
+
+AgentPrediction = NamedArrayTupleClass("PgAgentPrediction", [
+    "dist_info",
+    "value",
+    "next_rnn_state",
+])

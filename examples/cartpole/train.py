@@ -1,72 +1,113 @@
 import torch
 
-from parllel.cages.cage import Cage
-from parllel.runners.onpolicy_runner import OnPolicyRunner
+from parllel.buffers import buffer_from_example, buffer_from_dict_example
+from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
+from parllel.cages import Cage, ParallelProcessCage
+# from parllel.runners.onpolicy_runner import OnPolicyRunner
 from parllel.samplers import MiniSampler
+from parllel.samplers.collections import Samples, AgentSamples, EnvSamples
 from parllel.torch.agents.pg.categorical import CategoricalPgAgent
-from parllel.torch.algos.pg.ppo import PPO
+# from parllel.torch.algos.pg.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
-from parllel.torch.handlers.handler import Handler
-from parllel.torch.models.classic import ClassicControlFfModel
+from parllel.torch.handler import TorchHandler
+# from parllel.torch.models.classic import ClassicControlFfModel
 from parllel.types.traj_info import TrajInfo
 
 from build.make_env import make_env
 
 
-def train():
-
-    # TODO: seeding
+def build():
 
     batch_B = 8
     batch_T = 64
+    parallel = False
+    EnvClass=make_env
+    env_kwargs={}
+    TrajInfoClass=TrajInfo
+    traj_info_kwargs={}
+    wait_before_reset=False
 
-    # create runner
-    runner = OnPolicyRunner(n_steps = 5e6)
-    
-    # create dependencies of runner: sampler, agent, and algorithm
-    sampler = MiniSampler(batch_T=batch_T, batch_B=batch_B, get_bootstrap_value=True)
-    agent = CategoricalPgAgent()
-    algorithm = PPO()
+    if parallel:
+        CageCls = ParallelProcessCage
+        ArrayCls = ManagedMemoryArray
+        RotatingArrayCls = RotatingManagedMemoryArray
+    else:
+        CageCls = Cage
+        ArrayCls = Array
+        RotatingArrayCls = RotatingArray
 
     # create cages to manage environments
-    envs = [Cage(
-            EnvClass=make_env,
-            env_kwargs={},
-            TrajInfoClass=TrajInfo,
-            traj_info_kwargs = {},
-            wait_before_reset=False)
-        for _ in range(batch_B)]
+    cages = [
+        CageCls(
+            EnvClass = EnvClass,
+            env_kwargs = env_kwargs,
+            TrajInfoClass = TrajInfoClass,
+            traj_info_kwargs = traj_info_kwargs,
+            wait_before_reset = wait_before_reset,
+        )
+        for _ in range(batch_B)
+    ]
 
-    # create a cage without pre-allocated buffer for example generation
-    example_env = Cage(EnvClass=make_env, env_kwargs={}, TrajInfoClass=None, traj_info_kwargs={})
-    example_env.initialize()
-
-    # TODO: make obs and action spaces available via the cage
-    obs_space, action_space = example_env.spaces
-
-    # get example output from both env and agent
-    prev_action = action_space.sample()
-    example_env.step_async(prev_action)
-    example_env_output = example_env.await_step()
+    # get example output from env
+    example_env_output = cages[0].get_example_output()
     obs, reward, done, info = example_env_output
 
+    # allocate batch buffer based on examples
+    batch_observation = buffer_from_dict_example(obs, (batch_T, batch_B), RotatingArrayCls, name="obs", padding=1)
+    batch_reward = buffer_from_dict_example(reward, (batch_T, batch_B), ArrayCls, name="reward", force_float32=True)
+    batch_done = buffer_from_dict_example(done, (batch_T, batch_B), ArrayCls, name="done")
+    batch_info = buffer_from_dict_example(info, (batch_T, batch_B), ArrayCls, name="envinfo")
+    batch_env_samples = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
+
+    # write dict into namedarraytuple and read it back out. this ensures the
+    # example is in a standard format (i.e. namedarraytuple).
+    batch_env_samples[0, 0] = example_env_output
+    example_env_output = batch_env_samples[0, 0]
+
+    obs_space, action_space = cages[0].spaces
     # instantiate model and agent
     model = ClassicControlFfModel(
-        observation_shape=obs_space.shape[0],
+        observation_shape=obs_space.shape,
         output_size=action_space.n,
         hidden_sizes=[64, 64],
         hidden_nonlinearity=torch.nn.Tanh,
         )
     distribution = Categorical(dim=action_space.n)
     device = torch.device("cuda")
-    action, agent_info = agent.initialize(model=model, device=device, distribution=distribution, n_states=batch_B)
+
+    # instantiate model and agent
+    agent = CategoricalPgAgent(model=model, distribution=distribution, device=device)
+    handler = TorchHandler(agent=agent)
+
+    # get example output from agent
+    example_obs, _, _, _ = example_env_output
+    example_inputs = (example_obs,)
+    action, agent_info = agent.dry_run(n_states=batch_B, *example_inputs)
 
     # allocate batch buffer based on examples
+    batch_action = buffer_from_example(action, (batch_T, batch_B), ArrayCls, name="action")
+    batch_agent_info = buffer_from_example(agent_info, (batch_T, batch_B), ArrayCls, name="agentinfo")
+    batch_agent_samples = AgentSamples(batch_action, batch_agent_info)
 
-    sampler.initialize(agent=agent, envs=envs, batch_buffer=batch_buffer)
+    batch_samples = Samples(batch_agent_samples, batch_env_samples)
 
-    algorithm.initialize()
+    # TODO: move into sampler init
+    if parallel:
+        for cage in cages:
+            cage.set_samples_buffer(batch_samples)
 
-    runner.initialize(sampler, agent, algorithm)
+    sampler = MiniSampler(batch_T=batch_T, batch_B=batch_B, envs=cages, agent=handler,
+                          batch_buffer=batch_samples, get_bootstrap_value=False)
 
+    # create algorithm
+    algorithm = PPO()
+
+    # create runner
+    runner = OnPolicyRunner(sampler=sampler, agent=handler, algorithm=algorithm,
+                            n_steps = 5e6)
+    
+    return runner
+
+if __name__ == "__main__":
+    runner = build()
     runner.run()

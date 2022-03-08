@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Union
 
 from parllel.buffers import Buffer, NamedTupleClass
@@ -5,25 +6,21 @@ from parllel.buffers import Buffer, NamedTupleClass
 AgentStep = NamedTupleClass("AgentStep", ["action", "agent_info"])
 
 
-class Agent:
-    def initialize(self) -> None:
-        raise NotImplementedError
-    
+class Agent(ABC):
+    @abstractmethod
     def step(self, observation: Buffer, previous_action: Buffer, *,
-        env_ids: Union[int, slice] = slice(None)
+        env_indices: Union[int, slice] = ...,
     ) -> AgentStep:
         raise NotImplementedError
 
-    def value(self, observation: Buffer, previous_action: Buffer, *,
-        env_ids: Union[int, slice] = slice(None)
-    ) -> Buffer:
+    def value(self, observation: Buffer, previous_action: Buffer) -> Buffer:
         raise NotImplementedError
 
     def reset(self) -> None:
-        raise NotImplementedError
+        pass
 
     def reset_one(self, env_index: int) -> None:
-        raise NotImplementedError
+        pass
 
     def sample_mode(self, elapsed_steps: int) -> None:
         pass

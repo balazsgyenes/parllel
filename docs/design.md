@@ -25,6 +25,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Buffer registration and reduction is very similar to `mp.shared_memory.SharedMemory`. If looking up SharedMemory in the global registry is not too slow, could we just rely on this functionality instead? However, the benefit of the buffer registry is that deeply nested namedarraytuples are recovered in a single step.
 
 ## TODOs
+- Seeding!
 - Implement (optional) out parameter for agent.step and cage.step methods. This reduces copying but also solves the problem of efficiently handling (parallel) write operations while keeping control in the sampler.
 - Rename buffers to Arrays (or something else) (look at tree structures in JAX for inspiration). Nomenclature:
     - Buffer is a (potentially nested) tuple/namedtuple/namedarraytuple of arrays
@@ -32,7 +33,10 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Establish clear interface to Handler/Agent - is the `obs + prev_action` or `obs + prev_action + prev_reward`? This also sort of makes the mini sampler obsolete, unless it hard-codes `(None)` for `prev_action + prev_reward`.
 - Clean up cage logic. Use already_done to prevent extra step calls. Reset is available as sync and async calls. Add optional auto-reset mode for performance.
     - Merge `collect_deferred_reset` and `reset_async`.
-- Samples transformations, e.g. reward normalization, observation normalization, advantage estimation (jitted), creation of `valid` array
+- Add `__getattr__`, `__setattr__`, and `env_method` methods to Cage, allowing direct access to env
+- Add calling `set_samples_buffer` on cages to sampler `__init__` method. In parallel sampler, the samples buffer needs to be alternated every batch, so this can be set at each batch.
+- Samples transformations, e.g. reward normalization, advantage estimation (jitted), creation of `valid` array
+- Step transformations, e.g. observation normalization, image translation
 - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
 - Add simple interface to Stable Baselines in the form of a gym wrapper that looks like the parallel vector wrapper but preallocates memory.
 - Add argument to `ParallelProcessCage` to choose between process creation methods

@@ -42,10 +42,12 @@ class MiniSampler:
             # rotated to the beginning
             env.reset_async(out_obs=observation[observation.end + 1, b])
 
+        # reset RNN state of agent, if any
+        self.agent.reset()
+
+        # wait for envs to finish reset
         for b, env in enumerate(self.envs):
             env.await_step()
-            # TODO: add reset_all method
-            self.agent.reset_one(env_index=b)
 
     def get_example_output(self) -> Samples:
         """Get example of a batch of samples."""

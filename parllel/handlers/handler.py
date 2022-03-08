@@ -10,20 +10,14 @@ class Handler:
     def __init__(self, agent: Agent) -> None:
         self._agent = agent
 
-    def step(self, observation: Buffer, previous_action: Optional[Buffer], *,
-             env_ids: Union[int, slice] = slice(None), out_action: Buffer = None, out_agent_info: Buffer = None,
+    def step(self, observation: Buffer, previous_action: Optional[Buffer] = None, *,
+             env_indices: Union[int, slice] = ..., out_action: Buffer = None, out_agent_info: Buffer = None,
              ) -> Optional[AgentStep]:
-        """TODO: should the number of arguments be flexible here? It makes the code less readable.
 
-        alternate implementation for this case:
-        *(buffer_func(np.asarray, agent_input) for agent_input in agent_inputs),
-        """
+        observation, previous_action = buffer_func(np.asarray((observation, previous_action)))
 
-        agent_step: AgentStep = self._agent.step(
-            buffer_func(np.asarray, observation),
-            buffer_func(np.asarray, previous_action),
-            env_ids=env_ids,
-        )
+        agent_step: AgentStep = self._agent.step(observation, previous_action, env_indices)
+
         if any(out is None for out in (out_action, out_agent_info)):
             return agent_step
         else:
@@ -32,12 +26,12 @@ class Handler:
             out_agent_info[:] = agent_info
 
     def value(self, observation: Buffer, previous_action: Optional[Buffer], *,
-              env_ids: Union[int, slice] = slice(None), out_value: Buffer = None,
+              env_indices: Union[int, slice] = ..., out_value: Buffer = None,
               ) -> Optional[Buffer]:
         val: Buffer = self._agent.value(
             buffer_func(np.asarray, observation),
             buffer_func(np.asarray, previous_action),
-            env_ids=env_ids,
+            env_indices=env_indices,
         )
         if out_value is None:
             return val
