@@ -24,14 +24,16 @@ class BufferConnection:
         return BufferUnpickler(buf, buffer_registry=self._buffer_registry).load()
 
     def register_buffer(self, buffer: Buffer):
-        self._buffer_registry[buffer.buffer_id] = buffer
         if isinstance(buffer, tuple):
             for element in buffer:
                 self.register_buffer(element)
         else:
+            if buffer is None:
+                return
             assert isinstance(buffer, (SharedMemoryArray, ManagedMemoryArray)), (
                 "Only arrays in shared memory (or managed shared memory) can "
                 "be moved between processes.")
+            self._buffer_registry[buffer.buffer_id] = buffer
 
     def __getattr__(self, name: str) -> Any:
         if '_pipe' in self.__dict__:

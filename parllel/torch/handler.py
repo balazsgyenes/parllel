@@ -13,14 +13,18 @@ class TorchHandler(Handler):
         # TODO: preallocate a torch tensor version of the samples buffer
         # at runtime, just index into torch samples buffer instead of calling
         # from_numpy repeatedly, which might be slow
+        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
+        observation, previous_action = torchify_buffer((observation, previous_action))
+
         example = self._agent.dry_run(n_states, observation, previous_action)
+
         return numpify_buffer(example)
 
     def step(self, observation: Buffer, previous_action: Optional[Buffer], *,
              env_indices: Union[int, slice] = ..., out_action: Buffer = None,
              out_agent_info: Buffer = None) -> Optional[AgentStep]:
 
-        observation, previous_action = buffer_func(np.asarray((observation, previous_action)))
+        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
         observation, previous_action = torchify_buffer((observation, previous_action))
 
         agent_step: AgentStep = self._agent.step(observation, previous_action, env_indices)

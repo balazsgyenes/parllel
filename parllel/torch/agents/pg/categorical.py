@@ -31,10 +31,11 @@ class CategoricalPgAgent(TorchAgent):
             and may include rnn_states as an optional argument (in this order)
         - return type is the ModelOutputs dataclass defined in this module
     """
-    def __init__(self, model: torch.Module, distribution: Categorical, device: torch.device = None) -> None:
+    def __init__(self, model: torch.nn.Module, distribution: Categorical, device: torch.device = None) -> None:
         super().__init__(model, distribution, device)
         self.recurrent = False
 
+    @torch.no_grad()
     def dry_run(self, n_states: int, observation: Buffer, previous_action: Optional[Buffer] = None) -> Buffer:
         model_inputs = (observation,)
 

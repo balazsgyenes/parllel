@@ -4,7 +4,7 @@ import numpy as np
 
 from parllel.buffers import Buffer
 from parllel.arrays import Array
-from .named_tuple import NamedArrayTuple, NamedTuple, NamedArrayTupleClass_like, buffer_func, dict_to_namedtuple
+from .named_tuple import NamedArrayTuple, NamedTuple, NamedArrayTupleClass_like, dict_to_namedtuple
 
 
 def buffer_method(buffer, method_name, *args, **kwargs):

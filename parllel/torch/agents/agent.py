@@ -20,7 +20,11 @@ class TorchAgent(Agent):
     def distribution(self):
         return self._distribution
 
-    def __init__(self, model: torch.Module, distribution: Distribution, device: torch.device = None) -> AgentStep:
+    @property
+    def device(self):
+        return self._device
+
+    def __init__(self, model: torch.nn.Module, distribution: Distribution, device: torch.device = None) -> AgentStep:
         self._model = model
         self._distribution = distribution
 
@@ -28,7 +32,7 @@ class TorchAgent(Agent):
         if device is None:
             device = torch.device("cpu")
         if device != torch.device("cpu"):
-            self.model.to(self.device)
+            self.model.to(device)
         self._device = device
 
         self._mode = None

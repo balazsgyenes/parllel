@@ -1,6 +1,8 @@
+from contextlib import contextmanager
+
 import torch
 
-from parllel.buffers import buffer_from_example, buffer_from_dict_example
+from parllel.buffers import buffer_from_example, buffer_from_dict_example, buffer_method
 from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.cages import Cage, ParallelProcessCage
 # from parllel.runners.onpolicy_runner import OnPolicyRunner
@@ -10,17 +12,18 @@ from parllel.torch.agents.pg.categorical import CategoricalPgAgent
 # from parllel.torch.algos.pg.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
-# from parllel.torch.models.classic import ClassicControlFfModel
 from parllel.types.traj_info import TrajInfo
 
 from build.make_env import make_env
+from build.model import CartPoleFfCategoricalPgModel
 
 
+@contextmanager
 def build():
 
     batch_B = 8
     batch_T = 64
-    parallel = False
+    parallel = True
     EnvClass=make_env
     env_kwargs={}
     TrajInfoClass=TrajInfo
@@ -66,14 +69,14 @@ def build():
 
     obs_space, action_space = cages[0].spaces
     # instantiate model and agent
-    model = ClassicControlFfModel(
-        observation_shape=obs_space.shape,
-        output_size=action_space.n,
+    model = CartPoleFfCategoricalPgModel(
+        obs_space=obs_space,
+        action_space=action_space,
         hidden_sizes=[64, 64],
         hidden_nonlinearity=torch.nn.Tanh,
         )
     distribution = Categorical(dim=action_space.n)
-    device = torch.device("cuda")
+    device = torch.device("cpu")
 
     # instantiate model and agent
     agent = CategoricalPgAgent(model=model, distribution=distribution, device=device)
@@ -81,12 +84,11 @@ def build():
 
     # get example output from agent
     example_obs, _, _, _ = example_env_output
-    example_inputs = (example_obs,)
-    action, agent_info = agent.dry_run(n_states=batch_B, *example_inputs)
+    action, agent_info = handler.dry_run(n_states=batch_B, observation=example_obs)
 
     # allocate batch buffer based on examples
-    batch_action = buffer_from_example(action, (batch_T, batch_B), ArrayCls, name="action")
-    batch_agent_info = buffer_from_example(agent_info, (batch_T, batch_B), ArrayCls, name="agentinfo")
+    batch_action = buffer_from_example(action, (batch_T, batch_B), ArrayCls)
+    batch_agent_info = buffer_from_example(agent_info, (batch_T, batch_B), ArrayCls)
     batch_agent_samples = AgentSamples(batch_action, batch_agent_info)
 
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
@@ -99,15 +101,27 @@ def build():
     sampler = MiniSampler(batch_T=batch_T, batch_B=batch_B, envs=cages, agent=handler,
                           batch_buffer=batch_samples, get_bootstrap_value=False)
 
-    # create algorithm
-    algorithm = PPO()
+    try:
+        yield sampler
 
-    # create runner
-    runner = OnPolicyRunner(sampler=sampler, agent=handler, algorithm=algorithm,
-                            n_steps = 5e6)
+        # create algorithm
+        # algorithm = PPO()
+
+        # create runner
+        # runner = OnPolicyRunner(sampler=sampler, agent=handler, algorithm=algorithm,
+        #                         n_steps = 5e6)
+    finally:
+        cages, handler, batch_samples = sampler.close()
+        agent.close()
+        for cage in cages:
+            cage.close()
+        buffer_method(batch_samples, "close")
+        buffer_method(batch_samples, "destroy")
     
-    return runner
 
 if __name__ == "__main__":
-    runner = build()
-    runner.run()
+    with build() as sampler:
+        samples, completed_trajectories = sampler.collect_batch(elapsed_steps=0)
+
+        print(samples)
+        print(completed_trajectories)
