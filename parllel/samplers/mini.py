@@ -5,6 +5,7 @@ import numpy as np
 from parllel.buffers import buffer_func
 from parllel.cages import Cage
 from parllel.handlers import Handler
+from parllel.transforms import Transform
 from parllel.types.traj_info import TrajInfo
 from .collections import Samples
 
@@ -19,10 +20,15 @@ class MiniSampler:
         agent: Handler,
         batch_buffer: Samples,
         get_bootstrap_value: bool = False,
+        batch_transform: Transform = None,
     ) -> None:
         self.batch_T = batch_T
         self.batch_B = batch_B
         self.get_bootstrap_value = get_bootstrap_value
+        
+        if batch_transform is None:
+            batch_transform = lambda x: x
+        self.batch_transform = batch_transform
 
         self.agent = agent
         self.envs = tuple(envs)
@@ -114,6 +120,8 @@ class MiniSampler:
 
         # convert to underlying numpy array
         batch_samples = buffer_func(np.asarray, self.batch_buffer)
+
+        batch_samples = self.batch_transform(batch_samples)
 
         return batch_samples, completed_trajectories
 

@@ -40,7 +40,7 @@ class TorchHandler(Handler):
 
     def value(self, observation: Buffer, previous_action: Optional[Buffer], *,
               out_value: Buffer = None) -> Optional[Buffer]:
-        observation, previous_action = buffer_func(np.asarray((observation, previous_action)))
+        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
         observation, previous_action = torchify_buffer((observation, previous_action))
 
         value: Buffer = self._agent.value(observation, previous_action)

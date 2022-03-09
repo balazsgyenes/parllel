@@ -39,7 +39,7 @@ class CartPoleFfCategoricalPgModel(nn.Module):
         lead_dim, T, B, _ = infer_leading_dims(observation, 1)
 
         pi = F.softmax(self.pi(observation.view(T * B, -1)), dim=-1)
-        value = self.value(observation.view(T * B, -1))
+        value = self.value(observation.view(T * B, -1)).squeeze(-1)
 
         pi, value = restore_leading_dims((pi, value), lead_dim, T, B)
 

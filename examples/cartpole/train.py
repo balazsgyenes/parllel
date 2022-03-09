@@ -7,11 +7,12 @@ from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingMan
 from parllel.cages import Cage, ParallelProcessCage
 # from parllel.runners.onpolicy_runner import OnPolicyRunner
 from parllel.samplers import MiniSampler
-from parllel.samplers.collections import Samples, AgentSamples, EnvSamples
+from parllel.samplers.collections import Samples, AgentSamplesWBootstrap, EnvSamples
 from parllel.torch.agents.categorical import CategoricalPgAgent
 # from parllel.torch.algos.pg.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
+from parllel.transforms.advantage import GeneralizedAdvantageEstimator
 from parllel.types.traj_info import TrajInfo
 
 from build.make_env import make_env
@@ -23,12 +24,14 @@ def build():
 
     batch_B = 8
     batch_T = 64
-    parallel = True
+    parallel = False
     EnvClass=make_env
     env_kwargs={}
     TrajInfoClass=TrajInfo
     traj_info_kwargs={}
     wait_before_reset=False
+    discount = 0.99
+    gae_lambda = 0.95
 
     if parallel:
         CageCls = ParallelProcessCage
@@ -89,7 +92,8 @@ def build():
     # allocate batch buffer based on examples
     batch_action = buffer_from_example(action, (batch_T, batch_B), ArrayCls)
     batch_agent_info = buffer_from_example(agent_info, (batch_T, batch_B), ArrayCls)
-    batch_agent_samples = AgentSamples(batch_action, batch_agent_info)
+    batch_bootstrap_value = buffer_from_example(agent_info.value, (batch_B,), ArrayCls)
+    batch_agent_samples = AgentSamplesWBootstrap(batch_action, batch_agent_info, batch_bootstrap_value)
 
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
 
@@ -98,12 +102,19 @@ def build():
         for cage in cages:
             cage.set_samples_buffer(batch_samples)
 
-    sampler = MiniSampler(batch_T=batch_T, batch_B=batch_B, envs=cages, agent=handler,
-                          batch_buffer=batch_samples, get_bootstrap_value=False)
+    sampler = MiniSampler(batch_T=batch_T, batch_B=batch_B,
+                          envs=cages,
+                          agent=handler,
+                          batch_buffer=batch_samples,
+                          get_bootstrap_value=True,
+                          batch_transform=GeneralizedAdvantageEstimator(
+                            discount=discount, gae_lambda=gae_lambda
+                            ),
+                          )
 
     try:
         yield sampler
-
+    
         # create algorithm
         # algorithm = PPO()
 
