@@ -11,5 +11,4 @@ AgentInfo = NamedArrayTupleClass("PgAgentInfo", [
 AgentPrediction = NamedArrayTupleClass("PgAgentPrediction", [
     "dist_info",
     "value",
-    "next_rnn_state",
 ])

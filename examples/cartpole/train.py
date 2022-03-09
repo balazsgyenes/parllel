@@ -6,17 +6,15 @@ import torch
 from parllel.buffers import buffer_from_example, buffer_from_dict_example, buffer_method
 from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.cages import Cage, ParallelProcessCage
-# from parllel.runners.onpolicy_runner import OnPolicyRunner
+from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers import MiniSampler
 from parllel.samplers.collections import Samples, AgentSamplesWBootstrap, EnvSamples
 from parllel.torch.agents.categorical import CategoricalPgAgent
-# from parllel.torch.algos.pg.ppo import PPO
+from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
-from parllel.transforms.transform import Compose
 from parllel.transforms.advantage import GeneralizedAdvantageEstimator
-from parllel.transforms.valid import ValidFromDone
-from parllel.types.traj_info import TrajInfo
+from parllel.types import BatchSpec, TrajInfo
 
 from build.make_env import make_env
 from build.model import CartPoleFfCategoricalPgModel
@@ -35,6 +33,10 @@ def build():
     wait_before_reset=False
     discount = 0.99
     gae_lambda = 0.95
+    learning_rate = 0.001
+    n_steps = 200 * batch_B * batch_T
+
+    batch_spec = BatchSpec(batch_T, batch_B)
 
     if parallel:
         CageCls = ParallelProcessCage
@@ -100,15 +102,12 @@ def build():
 
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
 
-    # TODO: move into sampler init
     if parallel:
         for cage in cages:
             cage.set_samples_buffer(batch_samples)
 
-    batch_transform = Compose(transforms=[
-        GeneralizedAdvantageEstimator(discount=discount, gae_lambda=gae_lambda),
-        ValidFromDone(),
-    ])
+    batch_transform = GeneralizedAdvantageEstimator(
+        discount=discount, gae_lambda=gae_lambda)
 
     sampler = MiniSampler(batch_T=batch_T, batch_B=batch_B,
                           envs=cages,
@@ -118,15 +117,25 @@ def build():
                           batch_transform=batch_transform,
                           )
 
-    try:
-        yield sampler
+    optimizer = torch.optim.Adam(
+        agent.parameters(),
+        lr=learning_rate,
+    )
     
-        # create algorithm
-        # algorithm = PPO()
+    # create algorithm
+    algorithm = PPO(
+        batch_spec=batch_spec,
+        agent=handler,
+        optimizer=optimizer,
+    )
 
-        # create runner
-        # runner = OnPolicyRunner(sampler=sampler, agent=handler, algorithm=algorithm,
-        #                         n_steps = 5e6)
+    # create runner
+    runner = OnPolicyRunner(sampler=sampler, agent=handler, algorithm=algorithm,
+                            n_steps = n_steps, batch_spec=batch_spec)
+
+    try:
+        yield runner
+    
     finally:
         cages, handler, batch_samples = sampler.close()
         agent.close()
@@ -138,8 +147,5 @@ def build():
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
-    with build() as sampler:
-        samples, completed_trajectories = sampler.collect_batch(elapsed_steps=0)
-
-        print(samples)
-        print(completed_trajectories)
+    with build() as runner:
+        runner.run()

@@ -3,9 +3,9 @@ from typing import Optional, Union
 
 import torch
 
+from parllel.buffers import Buffer, buffer_func, buffer_method
 from parllel.handlers.agent import AgentStep
 from parllel.torch.distributions.categorical import Categorical, DistInfo
-from parllel.buffers import Buffer, buffer_func, buffer_method
 from parllel.torch.utils import buffer_to_device
 
 from .agent import TorchAgent
@@ -140,10 +140,15 @@ class CategoricalPgAgent(TorchAgent):
             previous_action = self._distribution.to_onehot(previous_action)
             model_inputs += (previous_action,)
         if self.recurrent:
-            model_inputs += (init_rnn_states,)  # already on device
+            # rnn_states were saved into the samples buffer as [B,N,H]
+            # transform back [B,N,H] --> [N,B,H].
+            init_rnn_state = buffer_method(init_rnn_state, "transpose", 0, 1)
+            init_rnn_state = buffer_method(init_rnn_state, "contiguous")
+            model_inputs += (init_rnn_states,)
         model_inputs = buffer_to_device(model_inputs, device=self.device)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         dist_info = DistInfo(prob=model_outputs.pi)
         value = model_outputs.value
-        output = buffer_to_device((dist_info, value), device="cpu")
-        return AgentPrediction(*output)
+        prediction = AgentPrediction(dist_info, value)
+        # prediction = buffer_to_device(prediction, device="cpu")
+        return prediction
