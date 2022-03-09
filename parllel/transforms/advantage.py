@@ -8,8 +8,7 @@ from parllel.samplers import Samples, EnvSamples
 from parllel.transforms import Transform
 
 
-@njit
-def generalized_advantage_estimation(
+def _generalized_advantage_estimation(
         reward: Buffer[NDArray[np.float32]],
         value: Buffer[NDArray[np.float32]],
         done: Buffer[NDArray[np.bool_]],
@@ -26,11 +25,13 @@ def generalized_advantage_estimation(
     not_done = 1 - done
     not_done = not_done.astype(reward.dtype)
     advantage[-1] = reward[-1] + discount * bootstrap_value * not_done[-1] - value[-1]
-    # reversed(range(len(reward) - 1)), but numba doesn't support reversed
+    # for t in reversed(range(len(reward) - 1)): # but numba doesn't support reversed
     for t in range(len(reward) - 2, -1, -1): # iterate backwards through time
         delta = reward[t] + discount * value[t + 1] * not_done[t] - value[t]
         advantage[t] = delta + discount * gae_lambda * not_done[t] * advantage[t + 1]
     return_[:] = advantage + value
+
+generalized_advantage_estimation = njit()(_generalized_advantage_estimation)
 
 
 class GeneralizedAdvantageEstimator(Transform):
