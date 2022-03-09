@@ -15,4 +15,4 @@ class Compose(Transform):
         self.transforms: Tuple[Callable[[Buffer], Buffer]] = tuple(transforms)
 
     def __call__(self, samples: Buffer) -> Buffer:
-        return reduce(lambda f, buf: f(buf), self.transforms, samples)
+        return reduce(lambda buf, f: f(buf), self.transforms, samples)

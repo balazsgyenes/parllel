@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import multiprocessing as mp
 
 import torch
 
@@ -12,7 +13,9 @@ from parllel.torch.agents.categorical import CategoricalPgAgent
 # from parllel.torch.algos.pg.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
+from parllel.transforms.transform import Compose
 from parllel.transforms.advantage import GeneralizedAdvantageEstimator
+from parllel.transforms.valid import ValidFromDone
 from parllel.types.traj_info import TrajInfo
 
 from build.make_env import make_env
@@ -24,7 +27,7 @@ def build():
 
     batch_B = 8
     batch_T = 64
-    parallel = True
+    parallel = False
     EnvClass=make_env
     env_kwargs={}
     TrajInfoClass=TrajInfo
@@ -102,14 +105,17 @@ def build():
         for cage in cages:
             cage.set_samples_buffer(batch_samples)
 
+    batch_transform = Compose(transforms=[
+        GeneralizedAdvantageEstimator(discount=discount, gae_lambda=gae_lambda),
+        ValidFromDone(),
+    ])
+
     sampler = MiniSampler(batch_T=batch_T, batch_B=batch_B,
                           envs=cages,
                           agent=handler,
                           batch_buffer=batch_samples,
                           get_bootstrap_value=True,
-                          batch_transform=GeneralizedAdvantageEstimator(
-                            discount=discount, gae_lambda=gae_lambda
-                            ),
+                          batch_transform=batch_transform,
                           )
 
     try:
@@ -131,6 +137,7 @@ def build():
     
 
 if __name__ == "__main__":
+    mp.set_start_method("spawn")
     with build() as sampler:
         samples, completed_trajectories = sampler.collect_batch(elapsed_steps=0)
 

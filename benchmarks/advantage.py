@@ -1,10 +1,32 @@
 import time
-from numpy.random import default_rng
 
-import numpy as np
 from numba import njit
+import numpy as np
+from numpy.random import default_rng
+from nptyping import NDArray
 
-from parllel.transforms.advantage import _generalized_advantage_estimation
+
+def generalized_advantage_estimation(
+        reward: NDArray[np.float32],
+        value: NDArray[np.float32],
+        done: NDArray[np.bool_],
+        bootstrap_value: NDArray[np.float32],
+        discount: float,
+        gae_lambda: float,
+        out_advantage: NDArray[np.float32],
+        out_return: NDArray[np.float32],
+    ) -> None:
+    """Time-major inputs, optional other dimensions: [T], [T,B], etc.  Similar
+    to `discount_return()` but using Generalized Advantage Estimation to
+    compute advantages and returns."""
+    advantage, return_ = out_advantage, out_return
+    not_done = np.logical_not(done)
+    advantage[-1] = reward[-1] + discount * bootstrap_value * not_done[-1] - value[-1]
+    # for t in reversed(range(len(reward) - 1)): # numba doesn't support reversed
+    for t in range(len(reward) - 2, -1, -1): # iterate backwards through time
+        delta = reward[t] + discount * value[t + 1] * not_done[t] - value[t]
+        advantage[t] = delta + discount * gae_lambda * not_done[t] * advantage[t + 1]
+    return_[:] = advantage + value
 
 
 n_repeat = 100
@@ -59,20 +81,20 @@ if __name__ == "__main__":
 
     print("Benchmarking Python function")
     rng = default_rng(seed)
-    func = _generalized_advantage_estimation
+    func = generalized_advantage_estimation
     benchmark(func, rng)
 
     print("Benchmarking njit")
     rng = default_rng(seed)
-    func = njit()(_generalized_advantage_estimation)
+    func = njit()(generalized_advantage_estimation)
     benchmark(func, rng)
 
     print("Benchmarking njit(fastmath=True)")
     rng = default_rng(seed)
-    func = njit(fastmath=True)(_generalized_advantage_estimation)
+    func = njit(fastmath=True)(generalized_advantage_estimation)
     benchmark(func, rng)
 
     print("Benchmarking njit(parallel=True, fastmath=True)")
     rng = default_rng(seed)
-    func = njit(parallel=True, fastmath=True)(_generalized_advantage_estimation)
+    func = njit(parallel=True, fastmath=True)(generalized_advantage_estimation)
     benchmark(func, rng)
