@@ -10,13 +10,23 @@ class Handler:
     def __init__(self, agent: Agent) -> None:
         self._agent = agent
 
-    def step(self, observation: Buffer, previous_action: Optional[Buffer] = None, *,
-             env_indices: Union[int, slice] = ..., out_action: Buffer = None, out_agent_info: Buffer = None,
+    def dry_run(self, n_states: int, observation: Buffer, previous_action: Optional[Buffer] = None,
+                ) -> AgentStep:
+        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
+
+        example = self._agent.dry_run(n_states, observation, previous_action)
+
+        return example
+
+    def step(self, observation: Buffer, previous_action: Optional[Buffer] = None,
+             *, env_indices: Union[int, slice] = ..., out_action: Buffer = None,
+             out_agent_info: Buffer = None,
              ) -> Optional[AgentStep]:
 
-        observation, previous_action = buffer_func(np.asarray((observation, previous_action)))
+        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
 
-        agent_step: AgentStep = self._agent.step(observation, previous_action, env_indices)
+        agent_step: AgentStep = self._agent.step(observation, previous_action,
+                                                 env_indices=env_indices)
 
         if any(out is None for out in (out_action, out_agent_info)):
             return agent_step
@@ -25,18 +35,17 @@ class Handler:
             out_action[:] = action
             out_agent_info[:] = agent_info
 
-    def value(self, observation: Buffer, previous_action: Optional[Buffer], *,
-              env_indices: Union[int, slice] = ..., out_value: Buffer = None,
+    def value(self, observation: Buffer, previous_action: Optional[Buffer] = None,
+              *, out_value: Buffer = None,
               ) -> Optional[Buffer]:
-        val: Buffer = self._agent.value(
-            buffer_func(np.asarray, observation),
-            buffer_func(np.asarray, previous_action),
-            env_indices=env_indices,
-        )
+        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
+
+        value: Buffer = self._agent.value(observation, previous_action)
+
         if out_value is None:
-            return val
+            return value
         else:
-            out_value[:] = val
+            out_value[:] = value
 
     def __getattr__(self, name: str) -> Any:
         if "_agent" in self.__dict__:

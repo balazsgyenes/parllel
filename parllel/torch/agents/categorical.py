@@ -32,12 +32,15 @@ class CategoricalPgAgent(TorchAgent):
             and may include rnn_states as an optional argument (in this order)
         - return type is the ModelOutputs dataclass defined in this module
     """
-    def __init__(self, model: torch.nn.Module, distribution: Categorical, device: torch.device = None) -> None:
+    def __init__(self, model: torch.nn.Module, distribution: Categorical,
+                 device: torch.device = None,
+                 ) -> None:
         super().__init__(model, distribution, device)
         self.recurrent = False
 
     @torch.no_grad()
-    def dry_run(self, n_states: int, observation: Buffer, previous_action: Optional[Buffer] = None) -> Buffer:
+    def dry_run(self, n_states: int, observation: Buffer, previous_action: Optional[Buffer] = None,
+                ) -> AgentStep:
         model_inputs = (observation,)
 
         if previous_action is not None:
@@ -75,13 +78,17 @@ class CategoricalPgAgent(TorchAgent):
 
             # TODO: verify leading dimensions of rnn_state, is the batch dimension empty?
             raise NotImplementedError
+        else:
+            self._rnn_states = None
 
         agent_info = AgentInfo(dist_info=dist_info, value=value, prev_rnn_state=example_rnn_state)
         agent_step = AgentStep(action=action, agent_info=agent_info)
         return buffer_to_device(agent_step, device="cpu")
 
     @torch.no_grad()
-    def step(self, observation: Buffer, previous_action: Buffer = None, env_indices: Union[int, slice] = ...):
+    def step(self, observation: Buffer, previous_action: Optional[Buffer] = None,
+             *, env_indices: Union[int, slice] = ...,
+             ) -> AgentStep:
         model_inputs = (observation,)
         if previous_action is not None:
             previous_action = self._distribution.to_onehot(previous_action)
@@ -111,7 +118,8 @@ class CategoricalPgAgent(TorchAgent):
         return buffer_to_device(agent_step, device="cpu")
 
     @torch.no_grad()
-    def value(self, observation: Buffer, previous_action: Buffer = None):
+    def value(self, observation: Buffer, previous_action: Optional[Buffer] = None,
+             ) -> Buffer:
         model_inputs = (observation,)
         if previous_action is not None:
             previous_action = self._distribution.to_onehot(previous_action)
@@ -123,7 +131,9 @@ class CategoricalPgAgent(TorchAgent):
         value = model_outputs.value
         return buffer_to_device(value, device="cpu")
 
-    def predict(self, observation: Buffer, previous_action: Buffer = None, init_rnn_states: Buffer = None):
+    def predict(self, observation: Buffer, previous_action: Optional[Buffer] = None,
+                init_rnn_states: Buffer = None,
+                ) -> AgentPrediction:
         """Performs forward pass on training data, for algorithm."""
         model_inputs = (observation,)
         if previous_action is not None:

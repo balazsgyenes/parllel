@@ -1,4 +1,4 @@
-from typing import Iterable, Union
+from typing import Iterable, Tuple, Union
 
 import torch
 
@@ -37,9 +37,6 @@ class TorchAgent(Agent):
 
         self._mode = None
 
-        # subclass must override and create whatever state it needs
-        self._rnn_states = None
-
     def reset(self) -> None:
         if self._rnn_states is not None:
             self._rnn_states[:] = 0
@@ -76,3 +73,6 @@ class TorchAgent(Agent):
         """Go into evaluation mode.  Example use could be to adjust epsilon-greedy."""
         self.model.eval()
         self._mode = "eval"
+
+    def close(self) -> Tuple[torch.nn.Module, Distribution, torch.device]:
+        return self._model, self._distribution, self._device

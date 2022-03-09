@@ -24,7 +24,7 @@ def build():
 
     batch_B = 8
     batch_T = 64
-    parallel = False
+    parallel = True
     EnvClass=make_env
     env_kwargs={}
     TrajInfoClass=TrajInfo
