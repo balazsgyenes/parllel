@@ -4,11 +4,12 @@ from typing import Optional, Union
 import torch
 
 from parllel.handlers.agent import AgentStep
-from parllel.torch.agents.agent import TorchAgent
-from parllel.torch.agents.pg.types import AgentInfo, AgentPrediction
 from parllel.torch.distributions.categorical import Categorical, DistInfo
 from parllel.buffers import Buffer, buffer_func, buffer_method
 from parllel.torch.utils import buffer_to_device
+
+from .agent import TorchAgent
+from .pg import AgentInfo, AgentPrediction
 
 
 @dataclass(frozen=True)

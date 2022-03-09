@@ -4,7 +4,7 @@ from gym import spaces
 from torch import nn
 import torch.nn.functional as F
 
-from parllel.torch.agents.pg.categorical import ModelOutputs
+from parllel.torch.agents.categorical import ModelOutputs
 from parllel.torch.models import MlpModel
 from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 

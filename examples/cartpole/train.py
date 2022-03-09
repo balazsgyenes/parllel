@@ -8,7 +8,7 @@ from parllel.cages import Cage, ParallelProcessCage
 # from parllel.runners.onpolicy_runner import OnPolicyRunner
 from parllel.samplers import MiniSampler
 from parllel.samplers.collections import Samples, AgentSamples, EnvSamples
-from parllel.torch.agents.pg.categorical import CategoricalPgAgent
+from parllel.torch.agents.categorical import CategoricalPgAgent
 # from parllel.torch.algos.pg.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
