@@ -104,9 +104,8 @@ def build():
 
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
 
-    if parallel:
-        for cage in cages:
-            cage.set_samples_buffer(batch_samples)
+    for cage in cages:
+        cage.register_samples_buffer(batch_samples)
 
     batch_transform = GeneralizedAdvantageEstimator(
         discount=discount, gae_lambda=gae_lambda)

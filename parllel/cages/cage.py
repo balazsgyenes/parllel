@@ -92,6 +92,9 @@ class Cage:
     def already_done(self) -> bool:
         return self._already_done
 
+    def register_samples_buffer(self, samples_buffer: Buffer) -> None:
+        pass
+
     def step_async(self,
         action: Buffer, *,
         out_obs: Buffer = None,

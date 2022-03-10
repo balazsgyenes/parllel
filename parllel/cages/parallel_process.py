@@ -15,7 +15,7 @@ from .collections import EnvStep, EnvSpaces
 class Command(enum.Enum):
     """Commands for communicating with the subprocess"""
     get_example_output = 0
-    set_sample_buffer = 1
+    register_sample_buffer = 1
     step = 2
     collect_deferred_reset = 3
     collect_completed_trajs = 4
@@ -39,15 +39,14 @@ class ParallelProcessCage(Cage, mp.Process):
         mp.Process.__init__(self)
 
         super().__init__(*args, **kwargs)
-        self._samples_buffer = samples_buffer
 
         # pipe is used for communication between main and child processes
         self._parent_pipe, self._child_pipe = BufferPipe()
 
-        if self._samples_buffer is not None:
+        if samples_buffer is not None:
             # enable receiving buffers derived from samples buffer
-            self._parent_pipe.register_buffer(self._samples_buffer)
-            self._child_pipe.register_buffer(self._samples_buffer)
+            self._parent_pipe.register_buffer(samples_buffer)
+            self._child_pipe.register_buffer(samples_buffer)
 
         # start executing `run` method, which also calls super().initialize()
         self.start()
@@ -68,13 +67,12 @@ class ParallelProcessCage(Cage, mp.Process):
         self._parent_pipe.send(Message(Command.get_example_output))
         return self._parent_pipe.recv()
 
-    def set_samples_buffer(self, samples_buffer: Buffer) -> None:
+    def register_samples_buffer(self, samples_buffer: Buffer) -> None:
         """Pass reference to samples buffer after process start."""
         assert self._last_command is None
-        self._parent_pipe.send(Message(Command.set_sample_buffer, samples_buffer))
+        self._parent_pipe.send(Message(Command.register_sample_buffer, samples_buffer))
         self._parent_pipe.register_buffer(samples_buffer)
-        self._samples_buffer = samples_buffer
-        self._parent_pipe.recv() # block until finished
+        self._parent_pipe.recv() # blocsk until finished
 
     def step_async(self,
         action: Buffer, *,
@@ -90,6 +88,7 @@ class ParallelProcessCage(Cage, mp.Process):
 
     def _defer_env_reset(self) -> None:
         # execute reset in a separate thread so as not to block batch collection
+        assert self._reset_thread is None
         self._reset_thread = Thread(target = super()._defer_env_reset)
         self._reset_thread.start()
 
@@ -140,6 +139,8 @@ class ParallelProcessCage(Cage, mp.Process):
         """
         super()._create_env() # create env, traj info, etc.
 
+        self._reset_thread = None
+
         # send env spaces back to parent
         # parent process can receive gym Space objects because gym is imported
         self._child_pipe.send(EnvSpaces(
@@ -157,9 +158,9 @@ class ParallelProcessCage(Cage, mp.Process):
                 env_step: EnvStep = super().get_example_output()
                 self._child_pipe.send(env_step)
 
-            elif command == Command.set_sample_buffer:
-                self._samples_buffer = data
-                self._child_pipe.register_buffer(self._samples_buffer)
+            elif command == Command.register_sample_buffer:
+                samples_buffer = data
+                self._child_pipe.register_buffer(samples_buffer)
                 self._child_pipe.send(None)
 
             elif command == Command.step:
@@ -172,6 +173,7 @@ class ParallelProcessCage(Cage, mp.Process):
             elif command == Command.collect_deferred_reset:
                 out_obs = data
                 self._reset_thread.join()
+                self._reset_thread = None
                 reset_obs: Buffer = super().collect_deferred_reset(out_obs=out_obs)
                 self._child_pipe.send(reset_obs)
 
@@ -194,7 +196,7 @@ class ParallelProcessCage(Cage, mp.Process):
                 self._child_pipe.send(reset_obs)
 
             elif command == Command.close:
-                buffer_method(self._samples_buffer, "close")
+                # buffer_method(samples_buffer, "close")
                 super().close()  # close Cage object
                 break
 

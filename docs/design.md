@@ -40,7 +40,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Cages:
     - Merge `collect_deferred_reset` and `reset_async`.
     - Add `__getattr__`, `__setattr__`, and `env_method` methods to Cage, allowing direct access to env.
-    - Add `set_samples_buffer` to base class so this doesn't throw an error.
+    - Actually implement `already_done` in `ParallelProcessCage`.
     - From Paul: Add calling `set_samples_buffer` on cages to sampler `__init__` method. In parallel sampler, the samples buffer needs to be alternated every batch, so this can be set at each batch.
         - This isn't necessarily what we want, since it makes the sampler responsible for the operation of the cages.
 - Batch transformations, e.g. reward normalization, advantage estimation (jitted), creation of `valid` array
