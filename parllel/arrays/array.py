@@ -59,16 +59,15 @@ class Array(Buffer):
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
         # need to be modified.
-        # TODO: this calls __getstate__ and __setstate__, which repeats all
-        # indexing operations in the history. Can this be more efficient?
-        result: Array = copy.copy(self)
-        # assign previous subarray to new result
+        result: Array = self.__new__(type(self))
+        result.__dict__.update(self.__dict__)
+        # assign array prior to most recent indexing
         result._array = array
-        # assign new shape
+        # assign apparent shape of indexed subarray
         result._apparent_shape = subarray.shape
-        # assign copy of _index_history with additional element for this
+        # assign *copy* of _index_history with additional element for this
         # indexing operation
-        result._index_history = copy.copy(result._index_history) + [location]
+        result._index_history = result._index_history + [location]
         return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
