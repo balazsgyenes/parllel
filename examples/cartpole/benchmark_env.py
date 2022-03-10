@@ -15,6 +15,7 @@ from build.make_env import make_env
 
 batch_B = 16
 batch_T = 256
+batch_spec = BatchSpec(batch_T, batch_B)
 parallel = True
 n_iterations = 50
 
@@ -44,7 +45,7 @@ def build(EnvClass, env_kwargs=None, TrajInfoClass=TrajInfo, traj_info_kwargs=No
             traj_info_kwargs = traj_info_kwargs,
             wait_before_reset = False, # reset immediately for speed test
         )
-        for _ in range(batch_B)
+        for _ in range(batch_spec.B)
     ]
 
     # get example output from env
@@ -67,9 +68,8 @@ def build(EnvClass, env_kwargs=None, TrajInfoClass=TrajInfo, traj_info_kwargs=No
 
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
 
-    if parallel:
-        for cage in cages:
-            cage.set_samples_buffer(batch_samples)
+    for cage in cages:
+        cage.register_samples_buffer(batch_samples)
 
     try:
         yield cages, batch_samples
