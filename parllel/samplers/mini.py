@@ -6,7 +6,7 @@ from parllel.buffers import buffer_func
 from parllel.cages import Cage
 from parllel.handlers import Handler
 from parllel.transforms import Transform
-from parllel.types.traj_info import TrajInfo
+from parllel.types import BatchSpec, TrajInfo
 from .collections import Samples
 
 class MiniSampler:
@@ -14,16 +14,14 @@ class MiniSampler:
     immediately. Use this sampler for non-recurrent agents.
     """
     def __init__(self,
-        batch_T: int,
-        batch_B: int,
+        batch_spec: BatchSpec,
         envs: Sequence[Cage],
         agent: Handler,
         batch_buffer: Samples,
         get_bootstrap_value: bool = False,
         batch_transform: Transform = None,
     ) -> None:
-        self.batch_T = batch_T
-        self.batch_B = batch_B
+        self.batch_spec = batch_spec
         self.get_bootstrap_value = get_bootstrap_value
         
         if batch_transform is None:
@@ -32,7 +30,7 @@ class MiniSampler:
 
         self.agent = agent
         self.envs = tuple(envs)
-        assert len(envs) == self.batch_B
+        assert len(self.envs) == self.batch_spec.B
         self.batch_buffer = batch_buffer
 
         # bring all environments into a known state
@@ -90,7 +88,7 @@ class MiniSampler:
         self.agent.sample_mode(elapsed_steps)
         
         # main sampling loop
-        for t in range(0, self.batch_T):
+        for t in range(self.batch_spec.T):
             # agent observes environment and outputs actions
             # step_action and step_reward are from previous time step (t-1)
             self.agent.step(observation[t], out_action=action[t],
@@ -113,7 +111,7 @@ class MiniSampler:
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
             self.batch_buffer.agent.bootstrap_value[:] = self.agent.value(
-                observation[self.batch_T])
+                observation[self.batch_spec.T])
 
         # collect all completed trajectories from envs
         completed_trajectories = [
