@@ -25,6 +25,7 @@ class BufferConnection:
 
     def register_buffer(self, buffer: Buffer):
         if isinstance(buffer, tuple):
+            self._buffer_registry[buffer.buffer_id] = buffer
             for element in buffer:
                 self.register_buffer(element)
         else:

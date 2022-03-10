@@ -40,6 +40,7 @@ class Cage:
         TrajInfoClass: Callable,
         traj_info_kwargs: Dict,
         wait_before_reset: bool = False,
+        samples_buffer: Optional[Buffer] = None,
     ) -> None:
         self.EnvClass = EnvClass
         self.env_kwargs = env_kwargs
