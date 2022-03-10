@@ -1,23 +1,26 @@
 import setuptools
 
-INSTALL_REQUIRES = [
-    'numpy',
-    'torch',
-    'gym',
+CORE_REQUIRES = [
+    "numpy", "nptyping",
+    "gym",
+    "numba",
+    "tqdm",
+]
+TORCH_REQUIRES = [
+    "torch",
 ]
 TEST_REQUIRES = [
     # testing and coverage
     'pytest', 'coverage', 'pytest-cov',
     # unmandatory dependencies of the package itself
-    'atari_py', 'opencv-python', 'psutil', 'pyprind',  # TODO: update
-    'numpy', 'nptyping'
+    'opencv-python', 'psutil', 'pyprind',  # TODO: update
 ]
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="parllel", # Replace with your own username
+    name="parllel",
     version="0.0.1",
     author="Balazs Gyenes",
     author_email="balazs.gyenes@kit.edu",
@@ -36,4 +39,5 @@ setuptools.setup(
     # package_dir={"": "parllel"},
     # packages=setuptools.find_packages(where="parllel"),
     python_requires=">=3.9",
+    install_requires=CORE_REQUIRES + TORCH_REQUIRES,
 )
