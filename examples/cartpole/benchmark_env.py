@@ -8,7 +8,7 @@ from parllel.buffers import buffer_from_example, buffer_from_dict_example, buffe
 from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.cages import Cage, ParallelProcessCage
 from parllel.samplers.collections import Samples, AgentSamples, EnvSamples
-from parllel.types import TrajInfo
+from parllel.types import BatchSpec, TrajInfo
 
 from build.make_env import make_env
 
