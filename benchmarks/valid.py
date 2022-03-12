@@ -52,12 +52,12 @@ def benchmark(func, rng):
 
     for n in range(n_repeat):
         done = generate(rng)
-        start = time.time()
+        start = time.perf_counter_ns()
         func(done, valid)
-        end = time.time()
-        times[n] = (end - start) * 1000000
+        end = time.perf_counter_ns()
+        times[n] = (end - start) / 1000
 
-    print(f"Average time = {times.mean():.3f} +/- {times.std():.3f} ns")
+    print(f"Average time = {times.mean():.3f} +/- {times.std():.3f} us")
     print()
 
 
