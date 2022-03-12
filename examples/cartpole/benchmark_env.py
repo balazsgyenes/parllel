@@ -1,13 +1,13 @@
 from contextlib import contextmanager
+import datetime
 import multiprocessing as mp
-import time
-
-import numpy as np
 
 from parllel.buffers import buffer_from_example, buffer_from_dict_example, buffer_method
 from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
-from parllel.cages import Cage, ParallelProcessCage
+from parllel.cages import Cage
+from parllel.cages.profiler import ParallelProcessCage, ProfilingParallelProcessCage
 from parllel.samplers.collections import Samples, AgentSamples, EnvSamples
+from parllel.samplers.profiler import ProfilingSampler
 from parllel.types import BatchSpec, TrajInfo
 
 from build.make_env import make_env
@@ -17,7 +17,9 @@ batch_B = 16
 batch_T = 256
 batch_spec = BatchSpec(batch_T, batch_B)
 parallel = True
-n_iterations = 50
+n_iterations = 10
+profile = False
+profile_path = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "_main.profile"
 
 
 @contextmanager
@@ -28,7 +30,10 @@ def build(EnvClass, env_kwargs=None, TrajInfoClass=TrajInfo, traj_info_kwargs=No
         traj_info_kwargs = {}
 
     if parallel:
-        CageCls = ParallelProcessCage
+        if profile:
+            CageCls = ProfilingParallelProcessCage
+        else:
+            CageCls = ParallelProcessCage
         ArrayCls = ManagedMemoryArray
         RotatingArrayCls = RotatingManagedMemoryArray
     else:
@@ -71,8 +76,11 @@ def build(EnvClass, env_kwargs=None, TrajInfoClass=TrajInfo, traj_info_kwargs=No
     for cage in cages:
         cage.register_samples_buffer(batch_samples)
 
+    sampler = ProfilingSampler(batch_spec, cages, batch_samples, n_iterations,
+        profile_path=profile_path if profile else None)
+
     try:
-        yield cages, batch_samples
+        yield sampler
     
     finally:
         for cage in cages:
@@ -88,40 +96,5 @@ if __name__ == "__main__":
         "max_episode_steps": 1000,
     }
 
-    with build(make_env, env_kwargs) as (envs, batch_samples):
-        action, agent_info = (
-            batch_samples.agent.action,
-            batch_samples.agent.agent_info,
-        )
-        observation, reward, done, env_info = (
-            batch_samples.env.observation,
-            batch_samples.env.reward,
-            batch_samples.env.done,
-            batch_samples.env.env_info,
-        )
-
-        action_space = envs[0].spaces.action
-        durations = np.zeros((batch_T,), dtype=float)
-
-        for _ in range(n_iterations):
-            for t in range(batch_T):
-                # all environments receive the same actions
-                action[t] = [action_space.sample()] * batch_B
-
-                # don't include action space sampling in benchmark
-                start = time.time()
-
-                for b, env in enumerate(envs):
-                    env.step_async(action[t, b],
-                        out_obs=observation[t+1, b], out_reward=reward[t, b],
-                        out_done=done[t, b], out_info=env_info[t, b])
-
-                for b, env in enumerate(envs):
-                    env.await_step()
-
-                end = time.time()
-                durations[t] = (end - start)
-
-            print(f"Average step duration {durations.mean()*1000/batch_B:.4f} "
-                    f"+/- {durations.std()*1000/batch_B:.4f} (ms) "
-                    f"[{batch_B/durations.mean():.2f} FPS]")
+    with build(make_env, env_kwargs) as sampler:
+        sampler.time_batches()
