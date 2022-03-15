@@ -1,0 +1,17 @@
+from dataclasses import dataclass
+
+@dataclass
+class TrajInfo:
+    Length: int = 0
+    Return: float = 0
+    NonzeroRewards: int = 0
+    DiscountedReturn: float = 0
+    _current_discount: float = 1.0
+    _discount: float = 1.0
+
+    def step(self, observation, action, reward, done, env_info):
+        self.Length += 1
+        self.Return += reward
+        self.NonzeroRewards += reward != 0
+        self.DiscountedReturn += self._current_discount * reward
+        self._current_discount *= self._discount
