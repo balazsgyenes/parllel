@@ -1,0 +1,15 @@
+import cProfile
+import datetime
+
+from .parallel_process import ParallelProcessCage
+
+
+class ProfilingParallelProcessCage(ParallelProcessCage):
+
+    def run(self):
+
+        with cProfile.Profile() as profiler:
+            super().run()
+
+        datetimestr = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        profiler.dump_stats(datetimestr + f"_ParallelCage-{self.pid}.profile")

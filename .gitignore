@@ -6,3 +6,6 @@
 
 # log data folder
 log_data
+
+# cProfile statistics
+*.profile
