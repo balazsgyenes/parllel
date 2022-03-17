@@ -12,9 +12,9 @@ from parllel.buffers import buffer_from_example, buffer_from_dict_example, buffe
 from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.cages import Cage, ProcessCage
 from parllel.cages.tests.dummy import DummyEnv
-from parllel.cages.profiler import ProfilingProcessCage
+from parllel.cages.profiling import ProfilingProcessCage
 from parllel.samplers.collections import Samples, AgentSamples, EnvSamples
-from parllel.samplers.profiler import ProfilingSampler
+from parllel.samplers.profiling import ProfilingSampler
 from parllel.types import BatchSpec, TrajInfo
 
 
