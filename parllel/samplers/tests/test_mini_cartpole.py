@@ -8,7 +8,7 @@ from parllel.samplers.collections import AgentSamples, EnvSamples, Samples
 from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.buffers import buffer_method
 from parllel.buffers.utils import buffer_from_dict_example
-from parllel.cages import Cage, ParallelProcessCage
+from parllel.cages import Cage, ProcessCage
 from parllel.handlers import Handler
 from parllel.samplers import MiniSampler
 from parllel.samplers.tests.random_agent import RandomAgent
@@ -35,7 +35,7 @@ def make_env(
 def test_single_batch():
 
     if parallel:
-        CageCls = ParallelProcessCage
+        CageCls = ProcessCage
         ArrayCls = ManagedMemoryArray
         RotatingArrayCls = RotatingManagedMemoryArray
     else:

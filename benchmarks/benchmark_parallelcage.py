@@ -10,9 +10,9 @@ from gym.wrappers import TimeLimit
 
 from parllel.buffers import buffer_from_example, buffer_from_dict_example, buffer_method
 from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
-from parllel.cages import Cage
+from parllel.cages import Cage, ProcessCage
 from parllel.cages.tests.dummy import DummyEnv
-from parllel.cages.profiler import ParallelProcessCage, ProfilingParallelProcessCage
+from parllel.cages.profiler import ProfilingProcessCage
 from parllel.samplers.collections import Samples, AgentSamples, EnvSamples
 from parllel.samplers.profiler import ProfilingSampler
 from parllel.types import BatchSpec, TrajInfo
@@ -45,9 +45,9 @@ def make_cartpole_env(
 def build(config, parallel, profile_path):
     if parallel:
         if profile_path is not None:
-            CageCls = ProfilingParallelProcessCage
+            CageCls = ProfilingProcessCage
         else:
-            CageCls = ParallelProcessCage
+            CageCls = ProcessCage
         ArrayCls = ManagedMemoryArray
         RotatingArrayCls = RotatingManagedMemoryArray
     else:

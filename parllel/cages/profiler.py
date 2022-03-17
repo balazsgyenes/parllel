@@ -1,10 +1,10 @@
 import cProfile
 import datetime
 
-from .parallel_process import ParallelProcessCage
+from .process import ProcessCage
 
 
-class ProfilingParallelProcessCage(ParallelProcessCage):
+class ProfilingProcessCage(ProcessCage):
 
     def run(self):
 

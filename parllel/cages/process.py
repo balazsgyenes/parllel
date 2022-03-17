@@ -31,7 +31,7 @@ class Message:
     data: Any = None
 
 
-class ParallelProcessCage(Cage, mp.Process):
+class ProcessCage(Cage, mp.Process):
     def __init__(self, *args,
         samples_buffer: Optional[Buffer] = None,
         **kwargs,

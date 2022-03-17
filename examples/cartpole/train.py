@@ -5,7 +5,7 @@ import torch
 
 from parllel.buffers import buffer_from_example, buffer_from_dict_example, buffer_method
 from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
-from parllel.cages import Cage, ParallelProcessCage
+from parllel.cages import Cage, ProcessCage
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers import MiniSampler
 from parllel.samplers.collections import Samples, AgentSamplesWBootstrap, EnvSamples
@@ -41,7 +41,7 @@ def build():
 
 
     if parallel:
-        CageCls = ParallelProcessCage
+        CageCls = ProcessCage
         ArrayCls = ManagedMemoryArray
         RotatingArrayCls = RotatingManagedMemoryArray
     else:
