@@ -12,9 +12,6 @@ from parllel.types.traj_info import TrajInfo
 from .collections import EnvStep, EnvSpaces
 
 
-INVALID_STEP_RESULT: str = "This is an invalid step result"
-
-
 class Cage:
     """Cages abstract communication between the sampler and the environments.
 
@@ -58,8 +55,8 @@ class Cage:
     def _create_env(self) -> None:
         self._completed_trajs: List[TrajInfo] = []
         self._traj_info: TrajInfo = self.TrajInfoClass(**self.traj_info_kwargs)
-        self._step_result: Union[EnvStep, str] = INVALID_STEP_RESULT
-        self._reset_obs: Union[Buffer, str] = INVALID_STEP_RESULT
+        self._step_result: Union[EnvStep, str] = None
+        self._reset_obs: Union[Buffer, str] = None
 
         self._env: gym.Env = self.EnvClass(**self.env_kwargs)
         self._env.reset()
@@ -140,7 +137,6 @@ class Cage:
             out_reward[:] = reward
             out_done[:] = done
             out_info[:] = env_info
-            self._step_result = INVALID_STEP_RESULT
 
     def _defer_env_reset(self) -> None:
         self._reset_obs = self._env.reset()
@@ -148,7 +144,7 @@ class Cage:
 
     def await_step(self) -> Union[EnvStep, Tuple[Buffer, EnvStep], Buffer]:
         result = self._step_result
-        self._step_result = INVALID_STEP_RESULT
+        self._step_result = None
         return result
 
     def collect_completed_trajs(self) -> List[TrajInfo]:
@@ -171,7 +167,7 @@ class Cage:
         self.step_async(action, out_obs, out_reward, out_done, out_info)
         self.wait_before_reset = wait_before_reset
 
-        if self._step_result is not INVALID_STEP_RESULT:
+        if self._step_result is not None:
             self._step_result = (action, self._step_result)
         else:
             out_action[:] = action
@@ -180,7 +176,7 @@ class Cage:
         if self._already_done:
             _reset_obs = self._reset_obs
             self._already_done = False
-            self._reset_obs = INVALID_STEP_RESULT
+            self._reset_obs = None
         else:
             _reset_obs = self._env.reset()
             self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
