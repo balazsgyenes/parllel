@@ -12,6 +12,7 @@ from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
     RotatingManagedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.buffers import AgentSamples, buffer_method, EnvSamples, Samples
 from parllel.cages import Cage, ProcessCage, TrajInfo
+from parllel.cages.synchronized import SynchronizedProcessCage
 from parllel.cages.tests.dummy import DummyEnv
 from parllel.cages.profiling import ProfilingProcessCage
 from parllel.samplers.profiling import ProfilingSampler
@@ -47,7 +48,7 @@ def build(config, parallel, profile_path):
         if profile_path is not None:
             CageCls = ProfilingProcessCage
         else:
-            CageCls = ProcessCage
+            CageCls = SynchronizedProcessCage
         ArrayCls = ManagedMemoryArray
         RotatingArrayCls = RotatingManagedMemoryArray
     else:
