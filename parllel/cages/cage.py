@@ -1,9 +1,10 @@
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import gym
 from gym.wrappers import TimeLimit as GymTimeLimit
 
+from parllel.arrays import Array
 from parllel.buffers import Buffer, buffer_func
 from parllel.buffers.named_tuple import namedtuple_to_dict
 from parllel.types.traj_info import TrajInfo
@@ -40,7 +41,7 @@ class Cage:
         TrajInfoClass: Callable,
         traj_info_kwargs: Dict,
         wait_before_reset: bool = False,
-        samples_buffer: Optional[Buffer] = None,
+        samples_buffer: Optional[Sequence[Buffer]] = None,
     ) -> None:
         self.EnvClass = EnvClass
         self.env_kwargs = env_kwargs
@@ -50,6 +51,9 @@ class Cage:
 
         self._already_done: bool = False
         self._create_env()
+
+        if samples_buffer is not None:
+            self.set_samples_buffer(*samples_buffer)
 
     def _create_env(self) -> None:
         self._completed_trajs: List[TrajInfo] = []
@@ -93,7 +97,8 @@ class Cage:
     def already_done(self) -> bool:
         return self._already_done
 
-    def register_samples_buffer(self, samples_buffer: Buffer) -> None:
+    def set_samples_buffer(self, action: Buffer, obs: Buffer, reward: Buffer,
+                           done: Array, info: Buffer) -> None:
         pass
 
     def step_async(self,

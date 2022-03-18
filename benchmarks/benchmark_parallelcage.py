@@ -90,7 +90,7 @@ def build(config, parallel, profile_path):
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
 
     for cage in cages:
-        cage.register_samples_buffer(batch_samples)
+        cage.set_samples_buffer(batch_action, *batch_env_samples)
 
     sampler = ProfilingSampler(
         batch_spec = config["sampler"]["batch_spec"],

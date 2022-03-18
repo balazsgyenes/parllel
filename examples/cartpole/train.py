@@ -26,7 +26,7 @@ def build():
     batch_B = 8
     batch_T = 64
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = False
+    parallel = True
     EnvClass=make_env
     env_kwargs={
         "max_episode_steps": 1000,
@@ -105,7 +105,7 @@ def build():
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
 
     for cage in cages:
-        cage.register_samples_buffer(batch_samples)
+        cage.set_samples_buffer(batch_action, *batch_env_samples)
 
     batch_transform = GeneralizedAdvantageEstimator(
         discount=discount, gae_lambda=gae_lambda)
@@ -117,6 +117,7 @@ def build():
                           get_bootstrap_value=True,
                           batch_transform=batch_transform,
                           )
+    sampler.decorrelate_environments()
 
     optimizer = torch.optim.Adam(
         agent.parameters(),
