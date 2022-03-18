@@ -38,7 +38,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - For improving buffer handling, look at JAX tree structures for inspiration.
     - Add Generic type hinting for Buffer, e.g. `Buffer[NDArray]`
 - Cages:
-    - Merge `collect_deferred_reset` and `reset_async`.
     - Add `__getattr__`, `__setattr__`, and `env_method` methods to Cage, allowing direct access to env.
     - Actually implement `already_done` in `ParallelProcessCage`.
     - From Paul: Add calling `set_samples_buffer` on cages to sampler `__init__` method. In parallel sampler, the samples buffer needs to be alternated every batch, so this can be set at each batch.

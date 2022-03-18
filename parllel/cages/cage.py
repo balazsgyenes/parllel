@@ -125,10 +125,10 @@ class Cage:
             self._completed_trajs.append(self._traj_info)
             self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
             if self.wait_before_reset:
-                # start environment reset asynchronously
-                self._defer_env_reset()
                 # store done state
                 self._already_done = True
+                # start environment reset asynchronously
+                self._defer_env_reset()
             else:
                 # reset immediately and overwrite last observation
                 obs = self._env.reset()
@@ -144,20 +144,12 @@ class Cage:
 
     def _defer_env_reset(self) -> None:
         self._reset_obs = self._env.reset()
+        self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
 
     def await_step(self) -> Union[EnvStep, Tuple[Buffer, EnvStep], Buffer]:
         result = self._step_result
         self._step_result = INVALID_STEP_RESULT
         return result
-
-    def collect_deferred_reset(self, *, out_obs: Buffer = None) -> Optional[Buffer]:
-        result = self._reset_obs
-        self._already_done = False
-        self._reset_obs = INVALID_STEP_RESULT
-        if out_obs is not None:
-            out_obs[:] = result
-        else:
-            return result
 
     def collect_completed_trajs(self) -> List[TrajInfo]:
         completed_trajs = self._completed_trajs
@@ -184,9 +176,14 @@ class Cage:
         else:
             out_action[:] = action
 
-    def reset_async(self, out_obs: Buffer = None) -> None:
-        _reset_obs = self._env.reset()
-        self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
+    def reset_async(self, *, out_obs: Buffer = None) -> None:
+        if self._already_done:
+            _reset_obs = self._reset_obs
+            self._already_done = False
+            self._reset_obs = INVALID_STEP_RESULT
+        else:
+            _reset_obs = self._env.reset()
+            self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
 
         if out_obs is None:
             self._step_result = _reset_obs

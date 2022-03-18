@@ -18,7 +18,6 @@ class Command(enum.Enum):
     get_example_output = 0
     register_sample_buffer = 1
     step = 2
-    collect_deferred_reset = 3
     collect_completed_trajs = 4
     random_step = 5
     reset_async = 6
@@ -99,12 +98,6 @@ class ProcessCage(Cage, mp.Process):
         self._last_command = None
         return self._parent_pipe.recv()
 
-    def collect_deferred_reset(self, *, out_obs: Buffer = None) -> Optional[Buffer]:
-        assert self._last_command is None and self.wait_before_reset
-        out_obs = self.buffer_registry.reduce_buffer(out_obs)
-        self._parent_pipe.send(Message(Command.collect_deferred_reset, out_obs))
-        self._last_command = Command.collect_deferred_reset
-    
     def collect_completed_trajs(self) -> List[TrajInfo]:
         assert self._last_command is None
         self._parent_pipe.send(Message(Command.collect_completed_trajs))
@@ -144,7 +137,7 @@ class ProcessCage(Cage, mp.Process):
         """
         super()._create_env() # create env, traj info, etc.
 
-        self._reset_thread = None
+        self._reset_thread: Optional[Thread] = None
 
         # send env spaces back to parent
         # parent process can receive gym Space objects because gym is imported
@@ -177,14 +170,6 @@ class ProcessCage(Cage, mp.Process):
                 step_result: Optional[EnvStep] = super().await_step()
                 self._child_pipe.send(step_result)
 
-            elif command == Command.collect_deferred_reset:
-                out_obs = data
-                out_obs = self.buffer_registry.rebuild_buffer(out_obs)
-                self._reset_thread.join()
-                self._reset_thread = None
-                reset_obs: Optional[Buffer] = super().collect_deferred_reset(out_obs=out_obs)
-                self._child_pipe.send(reset_obs)
-
             elif command == Command.collect_completed_trajs:
                 # data must be None
                 trajs: List[TrajInfo] = super().collect_completed_trajs()
@@ -201,6 +186,9 @@ class ProcessCage(Cage, mp.Process):
             elif command == Command.reset_async:
                 out_obs = data
                 out_obs = self.buffer_registry.rebuild_buffer(out_obs)
+                if self._reset_thread is not None:
+                    self._reset_thread.join()
+                    self._reset_thread = None
                 super().reset_async(out_obs=out_obs)
                 reset_obs: Buffer = super().await_step()
                 self._child_pipe.send(reset_obs)
