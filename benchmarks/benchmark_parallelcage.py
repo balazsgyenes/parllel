@@ -14,7 +14,7 @@ from parllel.buffers import AgentSamples, buffer_method, EnvSamples, Samples
 from parllel.cages import Cage, ProcessCage, TrajInfo
 from parllel.cages.synchronized import SynchronizedProcessCage
 from parllel.cages.tests.dummy import DummyEnv
-from parllel.cages.profiling import ProfilingProcessCage
+from parllel.cages.profiling import ProfilingProcessCage, ProfilingSynchronizedProcessCage
 from parllel.samplers.profiling import ProfilingSampler
 from parllel.types import BatchSpec
 
@@ -46,7 +46,7 @@ def make_cartpole_env(
 def build(config, parallel, profile_path):
     if parallel:
         if profile_path is not None:
-            CageCls = ProfilingProcessCage
+            CageCls = ProfilingSynchronizedProcessCage
         else:
             CageCls = SynchronizedProcessCage
         ArrayCls = ManagedMemoryArray
@@ -115,8 +115,8 @@ if __name__ == "__main__":
     mp.set_start_method("spawn")
 
     parallel = True
-    profile_path = None
-    # profile_path = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "_main.profile"
+    # profile_path = None
+    profile_path = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "_main.profile"
 
     config = dict(
         env = dict(
@@ -130,19 +130,22 @@ if __name__ == "__main__":
         sampler = dict(
             batch_spec = BatchSpec(
                 T = 256,
-                B = 8,
+                B = 16,
             ),
             n_iterations = 1,
         )
     )
 
-    for b in range(1, 16 + 1):
+    with build(config, parallel, profile_path) as sampler:
+        sampler.time_batches()
 
-        config["sampler"]["batch_spec"] = BatchSpec(
-            T = 64,
-            B = b,
-        )
-        print(f"With {b} {'parallel' if parallel else 'serial'} environments:")
+    # for b in range(1, 16 + 1):
+
+    #     config["sampler"]["batch_spec"] = BatchSpec(
+    #         T = 64,
+    #         B = b,
+    #     )
+    #     print(f"With {b} {'parallel' if parallel else 'serial'} environments:")
         
-        with build(config, parallel, profile_path) as sampler:
-            sampler.time_batches()
+    #     with build(config, parallel, profile_path) as sampler:
+    #         sampler.time_batches()
