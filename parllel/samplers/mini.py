@@ -3,7 +3,7 @@ from typing import List, Sequence, Tuple
 import numpy as np
 
 from parllel.arrays.array import Array
-from parllel.buffers import buffer_func, buffer_replace
+from parllel.buffers.utils import buffer_func, buffer_rotate
 from parllel.cages import Cage
 from parllel.handlers import Handler
 from parllel.transforms import Transform
@@ -83,7 +83,7 @@ class MiniSampler:
         )
 
         # rotate last values from previous batch to become previous values
-        observation.rotate()
+        buffer_rotate(self.batch_buffer)
 
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
