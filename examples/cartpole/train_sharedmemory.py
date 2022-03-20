@@ -23,10 +23,10 @@ from build.model import CartPoleFfCategoricalPgModel
 @contextmanager
 def build():
 
-    batch_B = 8
-    batch_T = 64
+    batch_B = 16
+    batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = False
+    parallel = True
     EnvClass=make_env
     env_kwargs={
         "max_episode_steps": 1000,
@@ -101,17 +101,16 @@ def build():
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
 
     # create cages to manage environments
-    cages = [
-        CageCls(
+    cage_kwargs = dict(
             EnvClass = EnvClass,
             env_kwargs = env_kwargs,
             TrajInfoClass = TrajInfoClass,
             traj_info_kwargs = traj_info_kwargs,
             wait_before_reset = wait_before_reset,
-            samples_buffer = batch_samples,
-        )
-        for _ in range(batch_spec.B)
-    ]
+    )
+    if parallel:
+        cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
+    cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
     batch_transform = GeneralizedAdvantageEstimator(
         discount=discount, gae_lambda=gae_lambda)
@@ -123,6 +122,7 @@ def build():
                           get_bootstrap_value=True,
                           batch_transform=batch_transform,
                           )
+    sampler.decorrelate_environments()
 
     optimizer = torch.optim.Adam(
         agent.parameters(),

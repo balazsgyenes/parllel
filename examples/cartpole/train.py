@@ -23,8 +23,8 @@ from build.model import CartPoleFfCategoricalPgModel
 @contextmanager
 def build():
 
-    batch_B = 8
-    batch_T = 64
+    batch_B = 16
+    batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
     parallel = True
     EnvClass=make_env

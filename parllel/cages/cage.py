@@ -38,7 +38,6 @@ class Cage:
         TrajInfoClass: Callable,
         traj_info_kwargs: Dict,
         wait_before_reset: bool = False,
-        samples_buffer: Optional[Sequence[Buffer]] = None,
     ) -> None:
         self.EnvClass = EnvClass
         self.env_kwargs = env_kwargs
@@ -48,9 +47,6 @@ class Cage:
 
         self._already_done: bool = False
         self._create_env()
-
-        if samples_buffer is not None:
-            self.set_samples_buffer(*samples_buffer)
 
     def _create_env(self) -> None:
         self._completed_trajs: List[TrajInfo] = []
