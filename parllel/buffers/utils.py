@@ -53,3 +53,18 @@ def buffer_all(buffer: Buffer, predicate: Callable[[LeafType], bool]) -> bool:
     if buffer is None:
         return False
     return predicate(buffer)
+
+
+def buffer_replace(buffer: Buffer, other_buffer: Buffer) -> Buffer:
+    """Replaces leaf nodes in buffer with leaf nodes in other_buffer, if they
+    are present. Leaf nodes not present in other_buffer are left unchanged.
+    Buffer must be a superset of other_buffer.
+    """
+    if isinstance(buffer, NamedTuple): # non-leaf node
+        # recursively replace subelements of buffer in the corresponding field
+        other_dict = {k: buffer_replace(getattr(buffer, k), v)
+                      for (k, v) in other_buffer._asdict().items()}
+        return buffer._replace(**other_dict)
+
+    # leaf node
+    return other_buffer

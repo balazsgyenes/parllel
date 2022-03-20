@@ -67,19 +67,14 @@ class GeneralizedAdvantageEstimator(Transform):
         else:
             self.estimator = generalized_advantage_estimation
 
-        self._EnvSamplesClass = None
-
-    def __call__(self, batch_samples: Samples) -> Samples:
-
+    def dry_run(self, batch_samples: Samples) -> Samples:
         env_samples: EnvSamples = batch_samples.env
 
-        if self._EnvSamplesClass is None:
-            self._EnvSamplesClass = NamedArrayTupleClass(
-                typename = env_samples._typename,
-                fields = env_samples._fields + ("advantage", "return_")
-            )
+        EnvSamplesClass = NamedArrayTupleClass(
+            typename = env_samples._typename,
+            fields = env_samples._fields + ("advantage", "return_")
+        )
 
-        # TODO: pre-allocate these as part of overall samples buffer
         advantage = np.zeros_like(batch_samples.env.reward)
         return_ = np.zeros_like(batch_samples.env.reward)
 
@@ -93,10 +88,22 @@ class GeneralizedAdvantageEstimator(Transform):
             advantage,
             return_,
         )
-
-        env_samples = self._EnvSamplesClass(
+        env_samples = EnvSamplesClass(
             **env_samples._asdict(), advantage=advantage, return_=return_,
         )
 
         batch_samples = Samples(env=env_samples, agent=batch_samples.agent)
+        return batch_samples
+
+    def __call__(self, batch_samples: Samples) -> Samples:
+        self.estimator(
+            batch_samples.env.reward,
+            batch_samples.agent.agent_info.value,
+            batch_samples.env.done,
+            batch_samples.agent.bootstrap_value,
+            self._discount,
+            self._lambda,
+            batch_samples.env.advantage,
+            batch_samples.env.return_,
+        )
         return batch_samples

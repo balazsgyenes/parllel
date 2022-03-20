@@ -27,14 +27,13 @@ class ValidFromDone(Transform):
     def __init__(self) -> None:
         self._EnvSamplesClass = None
         
-    def __call__(self, batch_samples: Samples) -> Samples:
+    def dry_run(self, batch_samples: Samples) -> Samples:
         env_samples: EnvSamples = batch_samples.env
 
-        if self._EnvSamplesClass is None:
-            self._EnvSamplesClass = NamedArrayTupleClass(
-                typename = env_samples._typename,
-                fields = env_samples._fields + ("valid",)
-            )
+        EnvSamplesClass = NamedArrayTupleClass(
+            typename = env_samples._typename,
+            fields = env_samples._fields + ("valid",)
+        )
 
         valid = np.zeros_like(batch_samples.env.reward)
 
@@ -43,9 +42,16 @@ class ValidFromDone(Transform):
             valid,
         )
 
-        env_samples = self._EnvSamplesClass(
+        env_samples = EnvSamplesClass(
             **env_samples._asdict(), valid=valid,
         )
 
         batch_samples = Samples(env=env_samples, agent=batch_samples.agent)
+        return batch_samples
+
+    def __call__(self, batch_samples: Samples) -> Samples:
+        valid_from_done(
+            batch_samples.env.done,
+            batch_samples.env.valid,
+        )
         return batch_samples

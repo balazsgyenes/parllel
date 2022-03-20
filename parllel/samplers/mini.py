@@ -2,7 +2,7 @@ from typing import List, Sequence, Tuple
 
 import numpy as np
 
-from parllel.buffers import buffer_func
+from parllel.buffers import buffer_func, buffer_replace
 from parllel.cages import Cage
 from parllel.handlers import Handler
 from parllel.transforms import Transform
@@ -33,6 +33,8 @@ class MiniSampler:
         assert len(self.envs) == self.batch_spec.B
         self.batch_buffer = batch_buffer
 
+        self._init_buffer_transform()
+
         # bring all environments into a known state
         self.reset_all()
 
@@ -52,6 +54,15 @@ class MiniSampler:
         # wait for envs to finish reset
         for b, env in enumerate(self.envs):
             env.await_step()
+
+    def _init_buffer_transform(self) -> None:
+        # initialize transforms using a dry run
+        batch_samples = buffer_func(np.asarray, self.batch_buffer)
+        transformed_samples = self.batch_transform.dry_run(batch_samples)
+
+        # the result may include additional buffer elements, so keep returned
+        # namedarraytuple, but replace with original Array objects
+        self.batch_buffer = buffer_replace(transformed_samples, self.batch_buffer)
 
     def get_example_output(self) -> Samples:
         """Get example of a batch of samples."""

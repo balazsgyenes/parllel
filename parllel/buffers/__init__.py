@@ -5,7 +5,7 @@ from .named_tuple import (
     NamedArrayTupleClass_like, dict_to_namedtuple, namedtuple_to_dict,
 )
 from .utils import (
-    buffer_method, buffer_func, buffer_all,
+    buffer_method, buffer_func, buffer_all, buffer_replace,
 )
 
 __all__ = [

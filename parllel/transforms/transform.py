@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from functools import reduce
-from typing import Callable, Sequence, Tuple
+from typing import Sequence, Tuple
 
 from parllel.buffers import Buffer
 
@@ -10,9 +10,18 @@ class Transform(ABC):
     def __call__(self, samples: Buffer) -> Buffer:
         raise NotImplementedError
 
+    def dry_run(self, samples: Buffer) -> Buffer:
+        pass
+
+
 class Compose(Transform):
-    def __init__(self, transforms: Sequence[Callable[[Buffer], Buffer]]) -> None:
-        self.transforms: Tuple[Callable[[Buffer], Buffer]] = tuple(transforms)
+    def __init__(self, transforms: Sequence[Transform]) -> None:
+        self.transforms: Tuple[Transform] = tuple(transforms)
 
     def __call__(self, samples: Buffer) -> Buffer:
-        return reduce(lambda buf, f: f(buf), self.transforms, samples)
+        return reduce(lambda buffer, transform: transform(buffer),
+                      self.transforms, samples)
+
+    def dry_run(self, samples: Buffer) -> Buffer:
+        return reduce(lambda buffer, transform: transform.dry_run(buffer),
+                      self.transforms, samples)
