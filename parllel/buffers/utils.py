@@ -1,7 +1,7 @@
 from typing import Any, Callable, Union
 
 from parllel.buffers import Buffer, LeafType
-from .named_tuple import NamedTuple
+from .named_tuple import NamedTuple, NamedArrayTuple
 
 
 def buffer_method(buffer: Union[Buffer, tuple], method_name: str, *args, **kwargs) -> Buffer:
@@ -61,6 +61,7 @@ def buffer_replace(buffer: Buffer, other_buffer: Buffer) -> Buffer:
     Buffer must be a superset of other_buffer.
     """
     if isinstance(buffer, NamedTuple): # non-leaf node
+        assert isinstance(other_buffer, NamedArrayTuple)
         # recursively replace subelements of buffer in the corresponding field
         other_dict = {k: buffer_replace(getattr(buffer, k), v)
                       for (k, v) in other_buffer._asdict().items()}

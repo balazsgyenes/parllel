@@ -48,6 +48,13 @@ class Array(Buffer):
         # set to the previous value of current_array, or the base_array
         self._previous_array: NDArray = self._base_array
 
+    @classmethod
+    def from_numpy(cls, np_array: NDArray) -> Array:
+        array = cls(shape=np_array.shape, dtype=np_array.dtype)
+        array._array = np_array  # steal numpy array
+        # TODO: prevent extra allocation?
+        return array
+
     def _allocate(self) -> None:
         # initialize numpy array
         self._base_array: NDArray = np.zeros(shape=self._base_shape, dtype=self.dtype)

@@ -2,6 +2,7 @@ from typing import List, Sequence, Tuple
 
 import numpy as np
 
+from parllel.arrays.array import Array
 from parllel.buffers import buffer_func, buffer_replace
 from parllel.cages import Cage
 from parllel.handlers import Handler
@@ -63,6 +64,13 @@ class MiniSampler:
         # the result may include additional buffer elements, so keep returned
         # namedarraytuple, but replace with original Array objects
         self.batch_buffer = buffer_replace(transformed_samples, self.batch_buffer)
+
+        # convert newly-allocated buffer elements to Array objects
+        def numpy_to_array(element):
+            if isinstance(element, np.ndarray):
+                return Array.from_numpy(element)
+            return element
+        self.batch_buffer = buffer_func(numpy_to_array, self.batch_buffer)
 
     def get_example_output(self) -> Samples:
         """Get example of a batch of samples."""
