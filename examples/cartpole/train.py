@@ -14,7 +14,9 @@ from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
-from parllel.transforms.advantage import GeneralizedAdvantageEstimator
+from parllel.transforms import Compose
+from parllel.transforms.advantage import EstimateAdvantage
+from parllel.transforms.norm_rewards import NormalizeRewards
 from parllel.types import BatchSpec, TrajInfo
 
 from build.make_env import make_env
@@ -37,6 +39,8 @@ def build():
     wait_before_reset=False
     discount = 0.99
     gae_lambda = 0.95
+    reward_min = -5.
+    reward_max = 5.
     learning_rate = 0.001
     n_steps = 200 * batch_spec.size
 
@@ -108,8 +112,18 @@ def build():
     for cage in cages:
         cage.set_samples_buffer(batch_action, *batch_env_samples)
 
-    batch_transform = GeneralizedAdvantageEstimator(
-        discount=discount, gae_lambda=gae_lambda)
+    reward_norm_transform = NormalizeRewards(discount=discount,
+        reward_min=reward_min, reward_max=reward_max)
+    batch_samples = reward_norm_transform.dry_run(batch_samples, RotatingArrayCls)
+
+    advantage_transform = EstimateAdvantage(discount=discount,
+        gae_lambda=gae_lambda)
+    batch_samples = advantage_transform.dry_run(batch_samples, ArrayCls)
+
+    batch_transform = Compose([
+        reward_norm_transform,
+        advantage_transform,
+    ])
 
     sampler = MiniSampler(batch_spec=batch_spec,
                           envs=cages,

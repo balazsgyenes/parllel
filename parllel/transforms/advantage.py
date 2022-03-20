@@ -2,6 +2,7 @@ from numba import njit
 import numpy as np
 from nptyping import NDArray
 
+from parllel.arrays import Array
 from parllel.buffers import NamedArrayTupleClass
 from parllel.samplers import Samples, EnvSamples
 
@@ -9,7 +10,7 @@ from .transform import Transform
 
 
 @njit(fastmath=True)
-def discount_return(
+def compute_discount_return(
         reward: NDArray[np.float32],
         value: NDArray[np.float32],
         done: NDArray[np.bool_],
@@ -34,7 +35,7 @@ def discount_return(
 
 
 @njit(fastmath=True)
-def generalized_advantage_estimation(
+def compute_gae_advantage(
         reward: NDArray[np.float32],
         value: NDArray[np.float32],
         done: NDArray[np.bool_],
@@ -57,53 +58,51 @@ def generalized_advantage_estimation(
     return_[:] = advantage + value
 
 
-class GeneralizedAdvantageEstimator(Transform):
+class EstimateAdvantage(Transform):
     def __init__(self, discount: float, gae_lambda: float) -> None:
         self._discount = discount
         self._lambda = gae_lambda
         if gae_lambda == 1.0:
             # GAE reduces to empirical discounted return
-            self.estimator = discount_return
+            self.estimator = compute_discount_return
         else:
-            self.estimator = generalized_advantage_estimation
+            self.estimator = compute_gae_advantage
 
-    def dry_run(self, batch_samples: Samples) -> Samples:
+    def dry_run(self, batch_samples: Samples, ArrayCls: Array) -> Samples:
+        # get convenient local references
         env_samples: EnvSamples = batch_samples.env
+        reward = env_samples.reward
 
+        # create new NamedArrayTuple for env samples with additional fields
         EnvSamplesClass = NamedArrayTupleClass(
             typename = env_samples._typename,
             fields = env_samples._fields + ("advantage", "return_")
         )
 
-        advantage = np.zeros_like(batch_samples.env.reward)
-        return_ = np.zeros_like(batch_samples.env.reward)
+        # allocate new Array objects for advantage and return_
+        advantage = ArrayCls(shape=reward.shape, dtype=reward.dtype)
+        return_ = ArrayCls(shape=reward.shape, dtype=reward.dtype)
 
-        self.estimator(
-            batch_samples.env.reward,
-            batch_samples.agent.agent_info.value,
-            batch_samples.env.done,
-            batch_samples.agent.bootstrap_value,
-            self._discount,
-            self._lambda,
-            advantage,
-            return_,
-        )
+        # package everything back into batch_samples
         env_samples = EnvSamplesClass(
             **env_samples._asdict(), advantage=advantage, return_=return_,
         )
+        batch_samples = batch_samples._replace(env = env_samples)
 
-        batch_samples = Samples(env=env_samples, agent=batch_samples.agent)
+        # test the forward pass
+        self.__call__(batch_samples)
+
         return batch_samples
 
     def __call__(self, batch_samples: Samples) -> Samples:
         self.estimator(
-            batch_samples.env.reward,
-            batch_samples.agent.agent_info.value,
-            batch_samples.env.done,
-            batch_samples.agent.bootstrap_value,
+            np.asarray(batch_samples.env.reward),
+            np.asarray(batch_samples.agent.agent_info.value),
+            np.asarray(batch_samples.env.done),
+            np.asarray(batch_samples.agent.bootstrap_value),
             self._discount,
             self._lambda,
-            batch_samples.env.advantage,
-            batch_samples.env.return_,
+            np.asarray(batch_samples.env.advantage),
+            np.asarray(batch_samples.env.return_),
         )
         return batch_samples

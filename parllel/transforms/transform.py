@@ -10,9 +10,6 @@ class Transform(ABC):
     def __call__(self, samples: Buffer) -> Buffer:
         raise NotImplementedError
 
-    def dry_run(self, samples: Buffer) -> Buffer:
-        pass
-
 
 class Compose(Transform):
     def __init__(self, transforms: Sequence[Transform]) -> None:
@@ -20,8 +17,4 @@ class Compose(Transform):
 
     def __call__(self, samples: Buffer) -> Buffer:
         return reduce(lambda buffer, transform: transform(buffer),
-                      self.transforms, samples)
-
-    def dry_run(self, samples: Buffer) -> Buffer:
-        return reduce(lambda buffer, transform: transform.dry_run(buffer),
                       self.transforms, samples)
