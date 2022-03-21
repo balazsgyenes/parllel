@@ -8,8 +8,9 @@ from gym.envs.classic_control import CartPoleEnv
 from gym import spaces
 from gym.wrappers import TimeLimit
 
-from parllel.buffers import buffer_from_example, buffer_from_dict_example, buffer_method
-from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
+from parllel.buffers import buffer_method
+from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
+    RotatingManagedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.cages import Cage, ProcessCage
 from parllel.cages.tests.dummy import DummyEnv
 from parllel.cages.profiling import ProfilingProcessCage
