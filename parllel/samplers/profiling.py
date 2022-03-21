@@ -83,3 +83,5 @@ class ProfilingSampler(MiniSampler):
         if self.profiler is not None:
             self.profiler.disable()
             self.profiler.dump_stats(str(self.profile_path))
+
+        return durations

@@ -1,7 +1,7 @@
 from .cage import Cage
-from .parallel_process import ParallelProcessCage
+from .process import ProcessCage
 
 __all__ = [
     Cage,
-    ParallelProcessCage,
+    ProcessCage,
 ]
