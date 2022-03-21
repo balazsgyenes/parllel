@@ -17,7 +17,7 @@ class Buffer(ABC, Generic[LeafType]):
     Array objects, numpy arrays, torch tensors, etc.
     """
     @property
-    def index_history(self) -> Tuple[Tuple[Index, ...], ...]:
+    def index_history(self) -> Tuple[Indices, ...]:
         # return a copy of the list as a tuple, not the list itself
         return tuple(self._index_history)
 

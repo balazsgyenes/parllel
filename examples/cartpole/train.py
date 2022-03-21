@@ -5,7 +5,7 @@ import torch
 
 from parllel.buffers import buffer_from_example, buffer_from_dict_example, buffer_method
 from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
-from parllel.cages import Cage, ParallelProcessCage
+from parllel.cages import Cage, ProcessCage
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers import MiniSampler
 from parllel.samplers.collections import Samples, AgentSamplesWBootstrap, EnvSamples
@@ -23,10 +23,10 @@ from build.model import CartPoleFfCategoricalPgModel
 @contextmanager
 def build():
 
-    batch_B = 8
-    batch_T = 64
+    batch_B = 16
+    batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = False
+    parallel = True
     EnvClass=make_env
     env_kwargs={
         "max_episode_steps": 1000,
@@ -41,7 +41,7 @@ def build():
 
 
     if parallel:
-        CageCls = ParallelProcessCage
+        CageCls = ProcessCage
         ArrayCls = ManagedMemoryArray
         RotatingArrayCls = RotatingManagedMemoryArray
     else:
@@ -105,7 +105,7 @@ def build():
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
 
     for cage in cages:
-        cage.register_samples_buffer(batch_samples)
+        cage.set_samples_buffer(batch_action, *batch_env_samples)
 
     batch_transform = GeneralizedAdvantageEstimator(
         discount=discount, gae_lambda=gae_lambda)
@@ -117,6 +117,7 @@ def build():
                           get_bootstrap_value=True,
                           batch_transform=batch_transform,
                           )
+    sampler.decorrelate_environments()
 
     optimizer = torch.optim.Adam(
         agent.parameters(),
