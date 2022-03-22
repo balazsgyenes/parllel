@@ -1,6 +1,6 @@
 from typing import Any, Callable, Union
 
-from parllel.buffers import Buffer
+from parllel.buffers import Buffer, LeafType
 from .named_tuple import NamedTuple
 
 
@@ -43,3 +43,13 @@ def buffer_func(func: Callable[[Buffer, Any], Any], buffer: Union[Buffer, tuple]
     if buffer is None:
         return None
     return func(buffer, *args, **kwargs)
+
+
+def buffer_all(buffer: Buffer, predicate: Callable[[LeafType], bool]) -> bool:
+    if isinstance(buffer, tuple): # non-leaf node
+        return all(buffer_all(elem, predicate) for elem in buffer if elem is not None)
+
+    # leaf node (None elements already filtered out, unless called buffer = None)
+    if buffer is None:
+        return False
+    return predicate(buffer)
