@@ -1,11 +1,11 @@
-from __future__ import annotations
 from functools import reduce
-from typing import Tuple
+from typing import Any, Tuple
 
 import numpy as np
 
+from parllel.buffers import Index, Indices
+
 from .array import Array
-from parllel.buffers.buffer import Buffer, Index, Indices
 
 
 class RotatingArray(Array):
@@ -49,10 +49,10 @@ class RotatingArray(Array):
         self._resolve_indexing_history()
         # this also fixes _apparent_shape, which still includes the padding
 
-    @Buffer.index_history.getter
-    def index_history(self) -> Tuple[Tuple[Index, ...], ...]:
-        # return without the first indices which remove the padding
-        return self._index_history[1:]
+    # @Buffer.index_history.getter
+    # def index_history(self) -> Tuple[Tuple[Index, ...], ...]:
+    #     # return without the first indices which remove the padding
+    #     return self._index_history[1:]
 
     @property
     def end(self) -> int:
@@ -90,7 +90,7 @@ class RotatingArray(Array):
             default_slice = slice(self._padding, -self._padding)
             self._previous_array = self._base_array[default_slice]
             self._current_array = self._previous_array
-        if len(self._index_history) == 1:
+        elif len(self._index_history) == 1:
             default_slice = slice(self._padding, -self._padding)
             self._previous_array = self._base_array[default_slice]
 
@@ -108,6 +108,17 @@ class RotatingArray(Array):
             self._current_array = array[self._index_history[-1]]
         self._apparent_shape = self._current_array.shape
 
+    def __setitem__(self, location: Indices, value: Any) -> None:
+        if self._index_history:
+            return super().__setitem__(location, value)
+        
+        if isinstance(location, tuple):
+            first, rest = location[0], location[1:]
+        else:
+            first, rest = location, ()
+        first = shift_index(first, self._padding)
+        self._base_array[first + rest] = value
+
     def rotate(self) -> None:
         """Prepare buffer for collecting next batch. Rotate values stored at
         the end of buffer for the next batch to become previous values for
@@ -117,8 +128,8 @@ class RotatingArray(Array):
         if not self._index_history:
             # only rotate if called on the base array.
             # rotating subarrays is not possible anyway
-            final_values = slice(-(self._padding + 1), None)
-            next_previous_values = slice(0, self._padding + 1)
+            final_values = slice(-(self._padding * 2), None)
+            next_previous_values = slice(0, self._padding * 2)
             self._base_array[next_previous_values] = self._base_array[final_values]
 
 
@@ -129,7 +140,7 @@ def shift_index(index: Index, shift: int) -> Tuple[Index, ...]:
         return (index + shift,)
     if isinstance(index, slice):
         return (slice(
-            index.start + shift,
+            index.start + shift if index.start is not None else shift,
             index.stop + shift if index.stop is not None else -shift,
             index.step,
         ),)
