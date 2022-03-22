@@ -1,10 +1,13 @@
-from typing import Any, Callable, Union
+import functools
+from typing import Any, Callable, Optional, TypeVar, Union
 
 import numpy as np
 from nptyping import NDArray
 
 from .buffer import Buffer, LeafType
 from .named_tuple import NamedTuple, NamedArrayTuple
+
+T = TypeVar("T")
 
 
 def buffer_method(buffer: Union[Buffer, tuple], method_name: str, *args, **kwargs) -> Buffer:
@@ -85,6 +88,38 @@ def buffer_rotate(buffer: Union[Buffer, tuple]) -> Buffer:
     # leaf node
     if hasattr(buffer, "rotate"):
         buffer.rotate()
+    return buffer
+
+
+# sentinel object
+no_initializer = object()
+
+def buffer_reduce(func: Callable[[T, Buffer], T], buffer: Buffer,
+                  initializer: Optional[T] = no_initializer) -> T:
+    """Problems:
+    1: the function is not called for buffer = Array() (but maybe that's desired)
+    2: the initializer is only 
+    """
+
+    if isinstance(buffer, tuple): # non-leaf node
+        if initializer is no_initializer:
+            # first reduce each element if not a leaf, then reduce the tuple
+            return functools.reduce(func,
+                (buffer_reduce(func, elem) for elem in buffer if elem is not None)
+            )
+        else:
+            return functools.reduce(func,
+                (buffer_reduce(func, elem) for elem in buffer if elem is not None),
+                initializer,
+            )
+
+    # leaf node (None elements already filtered out, unless called buffer = None)
+    if buffer is None:
+        if initializer is no_initializer:
+            return None
+        return initializer
+    
+    # return leaf nodes unchanged, and functools.reduce will reduce them
     return buffer
 
 
