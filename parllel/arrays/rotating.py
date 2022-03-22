@@ -1,4 +1,5 @@
 from __future__ import annotations
+from functools import reduce
 from typing import Tuple
 
 import numpy as np
@@ -40,11 +41,11 @@ class RotatingArray(Array):
         super().__init__(shape=padded_shape, dtype=dtype)
 
         # parent class assigns padded_shape to apparent_shape
-        self._apparent_shape = shape
+        # self._apparent_shape = shape
 
         # initialize array as though the base array had been indexed such that
         # now the padding is removed
-        self._index_history = [slice(self._padding, -self._padding)]
+        # self._index_history = [slice(self._padding, -self._padding)]
         self._resolve_indexing_history()
         # this also fixes _apparent_shape, which still includes the padding
 
@@ -59,6 +60,54 @@ class RotatingArray(Array):
         """
         return self._apparent_shape[0] - 1
 
+    # def _resolve_indexing_history(self) -> None:
+    #     # this function is a little different than the parent class because we
+    #     # want previous_array to
+    #     array = self._base_array
+
+    #     if self._index_history:
+    #         first = self._index_history[0]
+    #         first = shift_index(first, self._padding)
+    #     else:
+    #         first = slice(self._padding, -self._padding)
+
+    #     array = array[first]
+        
+    #     # if index history has less than 3 elements, this has no effect
+    #     array = reduce(lambda arr, index: arr[index], self._index_history[1:-1], array)
+    #     self._previous_array = array
+        
+    #     # index last item in history only if there is a history
+    #     if len(self._index_history) > 1:
+    #         array = array[self._index_history[-1]]
+
+    #     self._current_array = array
+    #     self._apparent_shape = array.shape
+
+    def _resolve_indexing_history(self) -> None:
+
+        if len(self._index_history) == 0:
+            default_slice = slice(self._padding, -self._padding)
+            self._previous_array = self._base_array[default_slice]
+            self._current_array = self._previous_array
+        if len(self._index_history) == 1:
+            default_slice = slice(self._padding, -self._padding)
+            self._previous_array = self._base_array[default_slice]
+
+            index = shift_index(self._index_history[0], self._padding)
+            self._current_array = self._base_array[index]
+        else: # len(self._index_history) >= 2
+            array = self._base_array
+            index = shift_index(self._index_history[0], self._padding)
+            array = array[index]
+
+            array = reduce(lambda arr, index: arr[index], self._index_history[1:-1], array)
+
+            self._previous_array = array
+
+            self._current_array = array[self._index_history[-1]]
+        self._apparent_shape = self._current_array.shape
+
     def rotate(self) -> None:
         """Prepare buffer for collecting next batch. Rotate values stored at
         the end of buffer for the next batch to become previous values for
@@ -71,3 +120,19 @@ class RotatingArray(Array):
             final_values = slice(-(self._padding + 1), None)
             next_previous_values = slice(0, self._padding + 1)
             self._base_array[next_previous_values] = self._base_array[final_values]
+
+
+def shift_index(index: Index, shift: int) -> Tuple[Index, ...]:
+    """Shifts an array index up by an integer value.
+    """
+    if isinstance(index, int):
+        return (index + shift,)
+    if isinstance(index, slice):
+        return (slice(
+            index.start + shift,
+            index.stop + shift if index.stop is not None else -shift,
+            index.step,
+        ),)
+    if index is Ellipsis:
+        return (slice(shift, -shift), Ellipsis)
+    raise ValueError(index)
