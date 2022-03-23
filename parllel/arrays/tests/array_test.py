@@ -41,13 +41,13 @@ def array(blank_array, np_array):
 
 
 class TestArray:
-    def test_no_args(self):
+    def test_no_args(self, ArrayClass):
         with pytest.raises(TypeError):
-            _ = Array()
+            _ = ArrayClass()
 
-    def test_wrong_dtype(self, shape):
+    def test_wrong_dtype(self, ArrayClass, shape):
         with pytest.raises(AssertionError):
-            _ = Array(shape=shape, dtype=list)
+            _ = ArrayClass(shape=shape, dtype=list)
 
     def test_init(self, blank_array, shape, dtype):
         assert np.array_equal(blank_array, np.zeros(shape, dtype))
@@ -193,13 +193,13 @@ class TestArray:
             (slice(None), slice(None, None, 2)),
         )
 
-    def test_array_reconstruction(self, array, np_array, shape, dtype):
+    def test_array_reconstruction(self, array, np_array, ArrayClass, shape, dtype):
         array = array[3]
         array = array[:]
         array = array[0:2]
         array = array[:, -2:]
 
-        array2 = Array(shape=shape, dtype=dtype)
+        array2 = ArrayClass(shape=shape, dtype=dtype)
         array2[:] = np_array
         # apply array's index history to array2
         array2 = functools.reduce(

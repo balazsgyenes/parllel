@@ -167,14 +167,17 @@ def shift_index(index: Index, shift: int) -> Tuple[Index, ...]:
     """Shifts an array index up by an integer value.
     """
     if isinstance(index, int):
+        if index < -shift:
+            raise IndexError(f"Not enough padding ({shift}) to accomodate "
+                             f"index ({index})")
         return (index + shift,)
     if isinstance(index, slice):
         # in case the step is negative, we need to reverse/adjust the limits
         # limits must be incremented because the upper limit of the slice is
         # not in the slice
-        # [:] = slice(None, None, None) -> slice(shift, shift, None)
-        # [::-1] = slice(None, None, -1) -> slice(-shift+1, shift-1, -1)
-        # [:3:-1] = slice(None, 3, -1) -> slice(-shift+1, 3, -1)
+        # [:] = slice(None, None, None) -> slice(shift, -shift, None)
+        # [::-1] = slice(None, None, -1) -> slice(-shift-1, shift-1, -1)
+        # [:3:-1] = slice(None, 3, -1) -> slice(-shift-1, 3+shift, -1)
         lower_limit = -(shift+1) if index.step is not None and index.step < 0 else shift
         upper_limit = shift-1 if index.step is not None and index.step < 0 else -shift
         return (slice(
