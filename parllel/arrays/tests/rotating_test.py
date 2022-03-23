@@ -22,67 +22,42 @@ def dtype(request):
 def padding(request):
     return request.param
 
-@pytest.fixture(scope="module")
-def gen_blank_array(ArrayClass, shape, dtype, padding):
-    def _gen_blank_array():
-        return ArrayClass(shape=shape, dtype=dtype, padding=padding)
-    return _gen_blank_array
+@pytest.fixture
+def blank_array(ArrayClass, shape, dtype, padding):
+    return ArrayClass(shape=shape, dtype=dtype, padding=padding)
 
 @pytest.fixture
-def blank_array(gen_blank_array):
-    return gen_blank_array()
-
-@pytest.fixture(scope="module")
-def gen_np_array(shape, dtype):
-    def _gen_np_array():
-        return np.arange(np.prod(shape), dtype=dtype).reshape(shape)
-    return _gen_np_array
+def np_array(shape, dtype):
+    return np.arange(np.prod(shape), dtype=dtype).reshape(shape)
 
 @pytest.fixture
-def np_array(gen_np_array):
-    return gen_np_array()
-
-@pytest.fixture(scope="module")
-def gen_previous_region(gen_np_array, padding):
-    def _gen_previous_region():
-        np_array = gen_np_array()
-        # flip data in trailing dims
-        return np_array[:padding, ::-1, ::-1]
-    return _gen_previous_region
+def previous_region(np_array, padding):
+    # flip data in trailing dims
+    return np_array[:padding, ::-1, ::-1].copy()
 
 @pytest.fixture
-def previous_region(gen_previous_region):
-    return gen_previous_region()
-
-@pytest.fixture(scope="module")
-def gen_next_region(gen_np_array, padding):
-    def _gen_next_region():
-        np_array = gen_np_array()
-        # flip data in trailing dims, scale to make unique
-        return np_array[:padding, ::-1, ::-1] * 2
-    return _gen_next_region
+def next_region(np_array, padding):
+    # flip data in trailing dims, scale to make unique
+    return np_array[:padding, ::-1, ::-1] * 2
 
 @pytest.fixture
-def next_region(gen_next_region):
-    return gen_next_region()
+def array(blank_array, np_array, padding, previous_region, next_region):
+    blank_array[:] = np_array
+    blank_array[-padding:0] = previous_region
+    end = blank_array.end
+    blank_array[(end + 1):(end + padding + 1)] = next_region
+    return blank_array
 
-@pytest.fixture(scope="module")
-def gen_array(gen_blank_array, gen_np_array, padding, gen_previous_region, gen_next_region):
+@pytest.fixture
+def gen_array(ArrayClass, shape, dtype, padding, np_array, previous_region, next_region):
     def _gen_array():
-        array = gen_blank_array()
-        np_array = gen_np_array()
-        previous_region = gen_previous_region()
-        next_region = gen_next_region()
-        array[:] = np_array
-        array[-padding:0] = previous_region
-        end = array.end
-        array[(end + 1):(end + padding + 1)] = next_region
-        return array
+        blank_array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
+        blank_array[:] = np_array
+        blank_array[-padding:0] = previous_region
+        end = blank_array.end
+        blank_array[(end + 1):(end + padding + 1)] = next_region
+        return blank_array
     return _gen_array
-
-@pytest.fixture()
-def array(gen_array):
-    return gen_array()
 
 
 class TestRotatingArray:
