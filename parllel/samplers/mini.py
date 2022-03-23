@@ -32,6 +32,10 @@ class MiniSampler:
         self.agent = agent
         self.envs = tuple(envs)
         assert len(self.envs) == self.batch_spec.B
+        for cage in self.envs:
+            if cage.wait_before_reset:
+                raise ValueError("MiniSampler expects cages that reset"
+                    " environments immediately. Set wait_before_reset=False")
         self.batch_buffer = batch_buffer
 
         # bring all environments into a known state
@@ -91,7 +95,6 @@ class MiniSampler:
         # main sampling loop
         for t in range(self.batch_spec.T):
             # agent observes environment and outputs actions
-            # step_action and step_reward are from previous time step (t-1)
             self.agent.step(observation[t], out_action=action[t],
                 out_agent_info=agent_info[t])
 
