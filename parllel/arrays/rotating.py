@@ -49,19 +49,9 @@ class RotatingArray(Array):
 
         super().__init__(shape=padded_shape, dtype=dtype)
 
-        # parent class assigns padded_shape to apparent_shape
-        # self._apparent_shape = shape
-
-        # initialize array as though the base array had been indexed such that
-        # now the padding is removed
-        # self._index_history = [slice(self._padding, -self._padding)]
-        self._resolve_indexing_history()
+        # unlike in base class, _current_array is not the same as _base_array
         # this also fixes _apparent_shape, which still includes the padding
-
-    # @Buffer.index_history.getter
-    # def index_history(self) -> Tuple[Tuple[Index, ...], ...]:
-    #     # return without the first indices which remove the padding
-    #     return self._index_history[1:]
+        self._resolve_indexing_history()
 
     @property
     def end(self) -> int:
@@ -69,54 +59,27 @@ class RotatingArray(Array):
         """
         return self._apparent_shape[0] - 1
 
-    # def _resolve_indexing_history(self) -> None:
-    #     # this function is a little different than the parent class because we
-    #     # want previous_array to
-    #     array = self._base_array
-
-    #     if self._index_history:
-    #         first = self._index_history[0]
-    #         first = shift_index(first, self._padding)
-    #     else:
-    #         first = slice(self._padding, -self._padding)
-
-    #     array = array[first]
-        
-    #     # if index history has less than 3 elements, this has no effect
-    #     array = reduce(lambda arr, index: arr[index], self._index_history[1:-1], array)
-    #     self._previous_array = array
-        
-    #     # index last item in history only if there is a history
-    #     if len(self._index_history) > 1:
-    #         array = array[self._index_history[-1]]
-
-    #     self._current_array = array
-    #     self._apparent_shape = array.shape
-
     def _resolve_indexing_history(self) -> None:
+        array = self._base_array
 
-        if len(self._index_history) == 0:
-            self._previous_array = self._base_array
+        if self._index_history:
+            # shift only the first indices, leave the rest (if thereare more)
+            index_history = [shift_indices(self._index_history[0], self._padding),
+                            ] + self._index_history[1:]
+        else:
+            # even if the array was never indexed, only this slice of the array
+            # should be returned by __array__
+            index_history = [slice(self._padding, -self._padding)]
 
-            default_slice = slice(self._padding, -self._padding)
-            self._current_array = self._base_array[default_slice]
-        elif len(self._index_history) == 1:
-            self._previous_array = self._base_array
+        # if index history has only 1 element, this has no effect
+        array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
+        self._previous_array = array
+        
+        # we guarantee that index_history has at least 1 element
+        array = array[index_history[-1]]
 
-            index = shift_indices(self._index_history[0], self._padding)
-            self._current_array = self._base_array[index]
-        else: # len(self._index_history) >= 2
-            array = self._base_array
-            index = shift_indices(self._index_history[0], self._padding)
-            array = array[index]
-
-            # if index history has less than 3 elements, this has no effect
-            array = reduce(lambda arr, index: arr[index], self._index_history[1:-1], array)
-
-            self._previous_array = array
-
-            self._current_array = array[self._index_history[-1]]
-        self._apparent_shape = self._current_array.shape
+        self._current_array = array
+        self._apparent_shape = array.shape
 
     def __setitem__(self, location: Indices, value: Any) -> None:
         if self._current_array is None:
