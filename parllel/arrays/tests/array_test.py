@@ -71,6 +71,11 @@ class TestArray:
         np_array[0, 2:3, :2] = -7
         assert np.array_equal(array, np_array)
 
+    def test_setitem_all(self, array, np_array):
+        array[:] = -7
+        np_array[:] = -7
+        assert np.array_equal(array, np_array)
+
     def test_setitem_ellipsis(self, array, np_array):
         array[..., 0] = -7
         np_array[..., 0] = -7
