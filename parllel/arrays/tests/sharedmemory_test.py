@@ -5,6 +5,7 @@ import numpy as np
 
 from parllel.arrays.sharedmemory import SharedMemoryArray
 
+pytest.skip(allow_module_level=True)
 
 @pytest.fixture(autouse=True)
 def run_before_tests():

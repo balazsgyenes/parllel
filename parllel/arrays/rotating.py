@@ -23,7 +23,16 @@ class RotatingArray(Array):
         array([1, 1, 1, 1, 1])
 
     Todo:
-        - Add a nice __repr__ function to print head, body, and tail of the array. 
+        - Add a nice __repr__ function to print head, body, and tail of the
+            array.
+        - Possible alternate formulation would only allow access to the padding
+            via proxy objects accessible through 'next' and 'previous'
+            attributes. Benefit is some simpler logic, because indices do not
+            have to be shifted in every case. Also would eliminate ambiguity of
+            array[-1], which depends on the type of the array. Cost is more
+            complex pickling logic, since this operation must also be
+            reconstructable, and it would not be possible to index both body
+            and padding.
     """
     def __init__(self,
         shape: Tuple[int, ...],
@@ -87,20 +96,21 @@ class RotatingArray(Array):
     def _resolve_indexing_history(self) -> None:
 
         if len(self._index_history) == 0:
-            default_slice = slice(self._padding, -self._padding)
-            self._previous_array = self._base_array[default_slice]
-            self._current_array = self._previous_array
-        elif len(self._index_history) == 1:
-            default_slice = slice(self._padding, -self._padding)
-            self._previous_array = self._base_array[default_slice]
+            self._previous_array = self._base_array
 
-            index = shift_index(self._index_history[0], self._padding)
+            default_slice = slice(self._padding, -self._padding)
+            self._current_array = self._base_array[default_slice]
+        elif len(self._index_history) == 1:
+            self._previous_array = self._base_array
+
+            index = shift_indices(self._index_history[0], self._padding)
             self._current_array = self._base_array[index]
         else: # len(self._index_history) >= 2
             array = self._base_array
-            index = shift_index(self._index_history[0], self._padding)
+            index = shift_indices(self._index_history[0], self._padding)
             array = array[index]
 
+            # if index history has less than 3 elements, this has no effect
             array = reduce(lambda arr, index: arr[index], self._index_history[1:-1], array)
 
             self._previous_array = array
@@ -109,15 +119,27 @@ class RotatingArray(Array):
         self._apparent_shape = self._current_array.shape
 
     def __setitem__(self, location: Indices, value: Any) -> None:
+        if self._current_array is None:
+            self._resolve_indexing_history()
+
         if self._index_history:
-            return super().__setitem__(location, value)
-        
-        if isinstance(location, tuple):
-            first, rest = location[0], location[1:]
+            if self._apparent_shape == ():
+                # Need to avoid item assignment on a scalar (0-D) array, so we assign
+                # into previous array using the last indices used
+                if not (location == slice(None) or location == ...):
+                    raise IndexError("Cannot take slice of 0-D array.")
+                # in this case, there must be an index history
+                location = self._index_history[-1]
+                # indices must be shifted if they were the first indices
+                if len(self._index_history) == 1:
+                    location = shift_indices(location, self._padding)
+                destination = self._previous_array
+            else:
+                destination = self._current_array
         else:
-            first, rest = location, ()
-        first = shift_index(first, self._padding)
-        self._base_array[first + rest] = value
+            location = shift_indices(location, self._padding)
+            destination = self._base_array
+        destination[location] = value
 
     def rotate(self) -> None:
         """Prepare buffer for collecting next batch. Rotate values stored at
@@ -133,6 +155,14 @@ class RotatingArray(Array):
             self._base_array[next_previous_values] = self._base_array[final_values]
 
 
+def shift_indices(indices: Indices, shift: int) -> Tuple[Index, ...]:
+    if isinstance(indices, tuple):
+        first, rest = indices[0], indices[1:]
+    else:
+        first, rest = indices, ()
+    return shift_index(first, shift) + rest
+
+
 def shift_index(index: Index, shift: int) -> Tuple[Index, ...]:
     """Shifts an array index up by an integer value.
     """
@@ -145,5 +175,7 @@ def shift_index(index: Index, shift: int) -> Tuple[Index, ...]:
             index.step,
         ),)
     if index is Ellipsis:
+        # add another Ellipsis, to index any remaining dimensions that an
+        # Ellipsis would have indexed (possible no extra dimensions remain)
         return (slice(shift, -shift), Ellipsis)
     raise ValueError(index)

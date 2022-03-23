@@ -106,6 +106,18 @@ class TestArray:
         np_array[0, 1, 2, 3] = 0.5  # ndarray does not support item assignment
         assert np.array_equal(array, np_array)
 
+        element[...] = -7
+        np_array[0, 1, 2, 3] = -7  # ndarray does not support item assignment
+        assert np.array_equal(array, np_array)
+
+    def test_element_setitem_slice(self, array):
+        element = array[0, 1, 2, 3]
+        with pytest.raises(IndexError):
+            element[0] = 0.5
+
+        with pytest.raises(IndexError):
+            element[1:] = 0.5
+
     def test_getitem(self, array, np_array):
         assert array.shape == (4, 4, 4, 4)
         assert np.asarray(array).shape == (4, 4, 4, 4)

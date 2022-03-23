@@ -38,8 +38,13 @@ class Array(Buffer):
         self._index_history: List[Indices] = []
 
         self._allocate()
-        self._previous_array: NDArray = self._base_array
+
+        # the result of calling np.asarray() on the array at any time
         self._current_array: NDArray = self._base_array
+
+        # used to enable indexing into a single element like element[:] = 0
+        # set to the previous value of current_array, or the base_array
+        self._previous_array: NDArray = self._base_array
 
     def _allocate(self) -> None:
         # initialize numpy array
@@ -88,11 +93,13 @@ class Array(Buffer):
         if self._current_array is None:
             self._resolve_indexing_history()
 
-        # Need to avoid item assignment on a scalar (0-D) array, so we assign
-        # into previous array using that previous index
         if self._apparent_shape == ():
-            assert location == slice(None), "Cannot take slice of 0-D array."
-            location = self._index_history[-1] # in this case, there must be an index history
+            # Need to avoid item assignment on a scalar (0-D) array, so we assign
+            # into previous array using the last indices used
+            if not (location == slice(None) or location == ...):
+                raise IndexError("Cannot take slice of 0-D array.")
+            # in this case, there must be an index history
+            location = self._index_history[-1]
             destination = self._previous_array
         else:
             destination = self._current_array
