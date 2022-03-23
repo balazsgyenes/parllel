@@ -4,19 +4,31 @@ import pytest
 import numpy as np
 
 from parllel.arrays.array import Array
+from parllel.arrays.rotating import RotatingArray
 
+
+@pytest.fixture(params=[Array, RotatingArray])
+def ArrayClass(request):
+    return request.param
 
 @pytest.fixture
 def shape():
-    return (4, 4, 4, 4)
+    return (4, 4, 4)
+
+@pytest.fixture(params=[np.float32, np.int32])
+def dtype(request):
+    return request.param
+
+@pytest.fixture(params=[1, 2], ids=["padding=1", "padding=2"])
+def padding(request):
+    return request.param
 
 @pytest.fixture
-def dtype():
-    return np.float32
-
-@pytest.fixture
-def blank_array(shape, dtype):
-    return Array(shape=shape, dtype=dtype)
+def blank_array(ArrayClass, shape, dtype, padding):
+    if issubclass(ArrayClass, RotatingArray):
+        return ArrayClass(shape=shape, dtype=dtype, padding=padding)
+    else:
+        return ArrayClass(shape=shape, dtype=dtype)
 
 @pytest.fixture
 def np_array(shape, dtype):
@@ -33,9 +45,8 @@ class TestArray:
         with pytest.raises(TypeError):
             _ = Array()
 
-    def test_wrong_dtype(self):
+    def test_wrong_dtype(self, shape):
         with pytest.raises(AssertionError):
-            shape = (4, 4, 4)
             _ = Array(shape=shape, dtype=list)
 
     def test_init(self, blank_array, shape, dtype):
@@ -43,104 +54,106 @@ class TestArray:
         assert blank_array.dtype == dtype
         assert np.asarray(blank_array).dtype == dtype
 
-    def test_dtype(self, blank_array):
-        blank_array[0, 0, 0] = 5
-        assert blank_array.dtype == np.float32
-        assert np.asarray(blank_array).dtype == np.float32
-        assert blank_array[0, 0, 0].dtype == np.float32
-        assert np.asarray(blank_array[0, 0, 0]).dtype == np.float32
+    def test_dtype(self, blank_array, dtype):
+        blank_array[0, 0, 0] = -1.1
+        assert blank_array.dtype == dtype
+        assert np.asarray(blank_array).dtype == dtype
+        assert blank_array[0, 0, 0].dtype == dtype
+        assert np.asarray(blank_array[0, 0, 0]).dtype == dtype
     
     def test_setitem_single(self, array, np_array):
-        array[1, 2, 3] = 5.5
-        np_array[1, 2, 3] = 5.5
+        array[1, 2, 3] = -7
+        np_array[1, 2, 3] = -7
         assert np.array_equal(array, np_array)
 
     def test_setitem_slices(self, array, np_array):
-        array[0, 2:3, :2] = 6.5
-        np_array[0, 2:3, :2] = 6.5
+        array[0, 2:3, :2] = -7
+        np_array[0, 2:3, :2] = -7
         assert np.array_equal(array, np_array)
 
     def test_setitem_ellipsis(self, array, np_array):
-        array[..., 0] = 7.5
-        np_array[..., 0] = 7.5
+        array[..., 0] = -7
+        np_array[..., 0] = -7
         assert np.array_equal(array, np_array)
 
     def test_setitem_reversed_slice(self, array, np_array, dtype):
-        values = np.arange(4, dtype=dtype) + 0.5
+        values = np.arange(4, dtype=dtype) * 2  # scale so the values are unique
         array[::-1, 0, 0] = values
         np_array[::-1, 0, 0] = values
         assert np.array_equal(array, np_array)
 
     def test_subarrays_setitem_single(self, array, np_array):
         subarray, np_subarray = array[1:2, 0], np_array[1:2, 0]
-        subarray[0] = 9.5
-        np_subarray[0] = 9.5
+        subarray[0] = -7
+        np_subarray[0] = -7
         assert np.array_equal(array, np_array)
 
     def test_subarrays_setitem_slices(self, array, np_array):
         subarray, np_subarray = array[1:2, 0], np_array[1:2, 0]
-        subarray[2:3] = 8.5
-        np_subarray[2:3] = 8.5
+        subarray[2:3] = -7
+        np_subarray[2:3] = -7
         assert np.array_equal(array, np_array)
 
     def test_subarrays_setitem_ellipsis(self, array, np_array):
         subarray, np_subarray = array[1:2, 0], np_array[1:2, 0]
-        subarray[...] = 7.5
-        np_subarray[...] = 7.5
+        subarray[...] = -7
+        np_subarray[...] = -7
         assert np.array_equal(array, np_array)
 
     def test_subarrays_setitem_reversed_slice(self, array, np_array):
         subarray, np_subarray = array[1:3, 0], np_array[1:3, 0]
 
-        shape = (4, 4)
+        shape = (4,)
         values = np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
-        values = values + 0.5  # increment so the values are unique
+        values = values * 2  # scale so the values are unique
 
         subarray[1, ::-1] = values
         np_subarray[1, ::-1] = values
         assert np.array_equal(array, np_array)
 
     def test_element_setitem(self, array, np_array):
-        element = array[0, 1, 2, 3]
-        element[:] = 0.5
-        np_array[0, 1, 2, 3] = 0.5  # ndarray does not support item assignment
+        element = array[0, 1, 2]
+        element[:] = -7
+        np_array[0, 1, 2] = -7  # ndarray does not support item assignment
         assert np.array_equal(array, np_array)
 
-        element[...] = -7
-        np_array[0, 1, 2, 3] = -7  # ndarray does not support item assignment
+        element[...] = -8
+        np_array[0, 1, 2] = -8  # ndarray does not support item assignment
         assert np.array_equal(array, np_array)
+
+    def test_element_setitem_index(self, array):
+        element = array[0, 1, 2]
+        with pytest.raises(IndexError):
+            element[0] = -7
 
     def test_element_setitem_slice(self, array):
-        element = array[0, 1, 2, 3]
+        element = array[0, 1, 2]
         with pytest.raises(IndexError):
-            element[0] = 0.5
+            element[1:] = -8
 
-        with pytest.raises(IndexError):
-            element[1:] = 0.5
-
-    def test_getitem(self, array, np_array):
-        assert array.shape == (4, 4, 4, 4)
-        assert np.asarray(array).shape == (4, 4, 4, 4)
+    def test_getitem(self, array, np_array, shape):
+        assert array.shape == shape
+        assert np.asarray(array).shape == shape
         assert np.array_equal(array, np_array)
 
         array = array[:]
-        assert array.shape == (4, 4, 4, 4)
-        assert np.asarray(array).shape == (4, 4, 4, 4)
+        assert array.shape == shape
+        assert np.asarray(array).shape == shape
         assert np.array_equal(array, np_array)
 
         array = array[2]
-        assert array.shape == (4, 4, 4)
-        assert np.asarray(array).shape == (4, 4, 4)
+        assert array.shape == (4, 4)
+        assert np.asarray(array).shape == (4, 4)
         assert np.array_equal(array, np_array[2])
 
         array = array[1:3]
-        assert array.shape == (2, 4, 4)
-        assert np.asarray(array).shape == (2, 4, 4)
+        assert array.shape == (2, 4)
+        assert np.asarray(array).shape == (2, 4)
         assert np.array_equal(array, np_array[2, 1:3])
 
         array = array[:, ::2]
-        assert array.shape == (2, 2, 4)
-        assert np.asarray(array).shape == (2, 2, 4)
+        assert array.shape == (2, 2)
+        assert np.asarray(array).shape == (2, 2)
         assert np.array_equal(array, np_array[2, 1:3, ::2])
 
     def test_getitem_consecutively(self, array, np_array):
@@ -148,17 +161,17 @@ class TestArray:
         array = array[0, 0:3]
         array = array[:]
         array = array[:, ::-1]
-        assert array.shape == (3, 4, 4)
-        assert np.asarray(array).shape == (3, 4, 4)
+        assert array.shape == (3, 4)
+        assert np.asarray(array).shape == (3, 4)
         assert np.array_equal(array, np_array[1, 0:3, ::-1])
 
     def test_getitem_single_element(self, array, np_array):
-        element = array[0, 1, 2, 3]
-        np_element = np_array[0, 1, 2, 3]
+        element = array[0, 1, 2]
+        np_element = np_array[0, 1, 2]
 
         assert np.array_equal(element, np_element)
         assert np.asarray(element) == np_element
-        assert np.asarray(element) == float(np_element)
+        assert np.asarray(element) == np_element.item()
 
     def test_indexhistory(self, array):
         assert array.index_history == ()
