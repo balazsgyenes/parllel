@@ -4,9 +4,10 @@ import multiprocessing as mp
 from threading import Thread
 from typing import Any, List, Optional, Sequence, Tuple, Union
 
-from parllel.arrays import Array
+from parllel.arrays import Array, ManagedMemoryArray
 from parllel.buffers import Buffer
 from parllel.buffers.registry import BufferRegistry
+from parllel.buffers.utils import buffer_all
 from parllel.types.traj_info import TrajInfo
 
 from .cage import Cage
@@ -69,6 +70,12 @@ class ProcessCage(Cage, mp.Process):
         """Pass reference to samples buffer after process start."""
         assert self._last_command is None
         samples_buffer = (action, obs, reward, done, info)
+        if not buffer_all(samples_buffer, lambda arr: isinstance(arr, ManagedMemoryArray)):
+            raise TypeError(
+                "Only ManagedMemoryArray can be set as samples buffer after "
+                "process start. Either use ManagedMemoryArrays or pass the "
+                "sample buffer to the cage on init."
+            )
         self._parent_pipe.send(Message(Command.register_sample_buffer, samples_buffer))
         for buf in samples_buffer:
             self.buffer_registry.register_buffer(buf)

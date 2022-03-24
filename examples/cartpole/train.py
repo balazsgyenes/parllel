@@ -3,8 +3,9 @@ import multiprocessing as mp
 
 import torch
 
-from parllel.buffers import buffer_from_example, buffer_from_dict_example, buffer_method
-from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
+from parllel.buffers import buffer_method
+from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
+    RotatingManagedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.cages import Cage, ProcessCage
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers import MiniSampler

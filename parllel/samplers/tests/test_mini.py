@@ -1,8 +1,9 @@
 import multiprocessing as mp
 
 from parllel.samplers.collections import AgentSamples, EnvSamples, Samples
-from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
-from parllel.buffers import buffer_from_example, buffer_method
+from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
+    RotatingManagedMemoryArray, buffer_from_example)
+from parllel.buffers import buffer_method
 from parllel.cages import Cage, ProcessCage
 from parllel.handlers import Handler
 from parllel.samplers import MiniSampler
