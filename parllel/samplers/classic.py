@@ -3,9 +3,8 @@ from typing import List, Sequence, Tuple
 
 import numpy as np
 
-from parllel.arrays import Array
+from parllel.arrays import Array, buffer_from_example
 from parllel.buffers import Buffer, buffer_func
-from parllel.buffers.utils import buffer_from_example
 from parllel.cages import Cage
 from parllel.handlers.agent import Agent
 from parllel.types.traj_info import TrajInfo
