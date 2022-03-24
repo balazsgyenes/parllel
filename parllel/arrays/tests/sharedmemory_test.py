@@ -1,33 +1,104 @@
+from operator import setitem
 import pytest
 
 import multiprocessing as mp
 import numpy as np
 
-from parllel.arrays.sharedmemory import SharedMemoryArray
-
-pytest.skip(allow_module_level=True)
-
-@pytest.fixture(autouse=True)
-def run_before_tests():
-    mp.set_start_method("spawn")
-    assert mp.get_start_method() == "spawn", "Setting multiprocessing start method to spawn failed."
+from parllel.arrays.sharedmemory import SharedMemoryArray, RotatingSharedMemoryArray
+from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
 
 
-def test_sharedmemory_array():
-    shape = (5, 5)
+@pytest.fixture(params=["fork", "spawn"], scope="module")
+def mp_start_method(request):
+    return request.param
 
-    array = SharedMemoryArray(shape=shape, dtype=np.int32)
-    array.initialize()
+@pytest.fixture(params=[
+    SharedMemoryArray, RotatingSharedMemoryArray,
+    ManagedMemoryArray, RotatingManagedMemoryArray
+    ], scope="module")
+def ArrayClass(request):
+    return request.param
 
-    assert np.count_nonzero(array) == 0
+@pytest.fixture(scope="module")
+def shape():
+    return (4, 4, 4)
 
-    p = mp.Process(target=fill_array_in_subprocess, args=(array,))
+@pytest.fixture(params=[np.float32, np.int32], scope="module")
+def dtype(request):
+    return request.param
+
+@pytest.fixture
+def blank_array(ArrayClass, shape, dtype):
+    array = ArrayClass(shape=shape, dtype=dtype)
+    yield array
+    array.close()
+    array.destroy()
+
+@pytest.fixture
+def np_array(shape, dtype):
+    return np.arange(np.prod(shape), dtype=dtype).reshape(shape)
+
+@pytest.fixture
+def array(blank_array, np_array):
+    blank_array[:] = np_array
+    return blank_array
+
+
+def test_setitem_single(array, np_array, mp_start_method):
+    location = (0, 1, 2)
+    value = -7
+
+    ctx = mp.get_context(mp_start_method)
+    p = ctx.Process(target=setitem, args=(array, location, value))
     p.start()
     p.join()
 
-    array = np.asarray(array)
-    assert np.all(array == 5)
+    np_array[location] = value
+    assert np.array_equal(array, np_array)
 
-def fill_array_in_subprocess(array: SharedMemoryArray):
-    local_array = array
-    local_array[:, :] = 5
+def test_setitem_slice(array, np_array, mp_start_method):
+    location = (3, slice(1,2))
+    value = -7
+
+    ctx = mp.get_context(mp_start_method)
+    p = ctx.Process(target=setitem, args=(array, location, value))
+    p.start()
+    p.join()
+
+    np_array[location] = value
+    assert np.array_equal(array, np_array)
+
+def test_setitem_subarray(array, np_array, mp_start_method):
+    subarray = array[2, :2]
+    subarray = subarray[1:, :]
+
+    location = (0, 3)
+    value = -7
+
+    ctx = mp.get_context(mp_start_method)
+    p = ctx.Process(target=setitem, args=(subarray, location, value))
+    p.start()
+    p.join()
+
+    np_subarray = np_array[2, :2]
+    np_subarray = np_subarray[1:, :]
+    np_subarray[location] = value
+    assert np.array_equal(array, np_array)
+
+def get_array_shape(pipe, array):
+    pipe.send(array.shape)
+
+def test_subarray_shape(array, np_array, mp_start_method):
+    subarray = array[:3, 2]
+    subarray = subarray[:, 2:]
+
+    ctx = mp.get_context(mp_start_method)
+    parent_pipe, child_pipe = ctx.Pipe()
+    p = ctx.Process(target=get_array_shape, args=(child_pipe, subarray))
+    p.start()
+    subarray_shape = parent_pipe.recv()
+    p.join()
+
+    np_subarray = np_array[:3, 2]
+    np_subarray = np_subarray[:, 2:]
+    assert subarray_shape == np_subarray.shape
