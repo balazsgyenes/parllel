@@ -70,10 +70,12 @@ class ProcessCage(Cage, mp.Process):
         """Pass reference to samples buffer after process start."""
         assert self._last_command is None
         samples_buffer = (action, obs, reward, done, info)
-        assert buffer_all(samples_buffer, lambda arr: isinstance(arr, ManagedMemoryArray)), (
-            "Only ManagedMemoryArray can be set as samples buffer after process start. "
-            "Either use ManagedMemoryArrays or pass the sample buffer to the cage on init."
-        )
+        if not buffer_all(samples_buffer, lambda arr: isinstance(arr, ManagedMemoryArray)):
+            raise TypeError(
+                "Only ManagedMemoryArray can be set as samples buffer after "
+                "process start. Either use ManagedMemoryArrays or pass the "
+                "sample buffer to the cage on init."
+            )
         self._parent_pipe.send(Message(Command.register_sample_buffer, samples_buffer))
         for buf in samples_buffer:
             self.buffer_registry.register_buffer(buf)
