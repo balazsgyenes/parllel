@@ -4,10 +4,16 @@ import pytest
 import numpy as np
 
 from parllel.arrays.array import Array
+from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.arrays.rotating import RotatingArray
+from parllel.arrays.sharedmemory import RotatingSharedMemoryArray, SharedMemoryArray
 
 
-@pytest.fixture(params=[Array, RotatingArray])
+@pytest.fixture(params=[
+    Array, RotatingArray,
+    SharedMemoryArray, RotatingSharedMemoryArray,
+    ManagedMemoryArray, RotatingManagedMemoryArray
+    ])
 def ArrayClass(request):
     return request.param
 
@@ -26,9 +32,12 @@ def padding(request):
 @pytest.fixture
 def blank_array(ArrayClass, shape, dtype, padding):
     if issubclass(ArrayClass, RotatingArray):
-        return ArrayClass(shape=shape, dtype=dtype, padding=padding)
+        array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
     else:
-        return ArrayClass(shape=shape, dtype=dtype)
+        array = ArrayClass(shape=shape, dtype=dtype)
+    yield array
+    array.close()
+    array.destroy()
 
 @pytest.fixture
 def np_array(shape, dtype):

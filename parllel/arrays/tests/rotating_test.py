@@ -3,10 +3,16 @@ import functools
 import pytest
 import numpy as np
 
+from parllel.arrays.managedmemory import RotatingManagedMemoryArray
 from parllel.arrays.rotating import RotatingArray, shift_index
+from parllel.arrays.sharedmemory import RotatingSharedMemoryArray
 
 
-@pytest.fixture(params=[RotatingArray], scope="module")
+@pytest.fixture(params=[
+    RotatingArray,
+    RotatingSharedMemoryArray,
+    RotatingManagedMemoryArray,
+    ], scope="module")
 def ArrayClass(request):
     return request.param
 

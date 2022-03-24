@@ -24,24 +24,19 @@ class ManagedMemoryArray(Array):
         
     def _wrap_raw_array(self) -> None:
         size = int(np.prod(self._base_shape))
-        self._array = np.frombuffer(self._raw_array.buf, dtype=self.dtype, count=size)
+        self._base_array = np.frombuffer(self._raw_array.buf, dtype=self.dtype, count=size)
 
         # assign to shape attribute so that error is raised when data is copied
         # array.reshape might silently copy the data
-        self._array.shape = self._base_shape
-
-        if self._index_history:
-            if len(self._index_history) > 1:
-                # TODO: not correct for rotating arrays
-                raise NotImplementedError
-            self._array = reduce(lambda arr, index: arr[index],
-                                 self._index_history[:-1], self._array)
+        self._base_array.shape = self._base_shape
 
     def __getstate__(self) -> Dict:
         state = self.__dict__.copy()
         # remove arrays which cannot be pickled
-        del state["_array"]
         del state["_raw_array"]
+        del state["_base_array"]
+        del state["_current_array"]
+        del state["_previous_array"]
         state["_memory_name"] = self._raw_array.name
         return state
 
@@ -49,11 +44,13 @@ class ManagedMemoryArray(Array):
         # restore state dict entries
         name = state.pop("_memory_name")
         self.__dict__.update(state)
-
+        # restore _raw_array
         self._raw_array = shared_memory.SharedMemory(name=name)
-
-        # restore numpy array
+        # restore _base_array array
         self._wrap_raw_array()
+        # other arrays will be resolved when required
+        self._previous_array = None
+        self._current_array = None
 
     def close(self):
         # close must be called by each instance (i.e. each process) on cleanup
