@@ -54,7 +54,14 @@ class RotatingArray(Array):
         self._resolve_indexing_history()
 
     @property
-    def end(self) -> int:
+    def first(self) -> int:
+        """The index of the first element in the array, not including padding.
+        Enables syntactic sugar like `arr[arr.first - 1]`
+        """
+        return 0
+
+    @property
+    def last(self) -> int:
         """The index of the final element in the array, not including padding.
         """
         return self._apparent_shape[0] - 1
@@ -105,10 +112,16 @@ class RotatingArray(Array):
         destination[location] = value
 
     def rotate(self) -> None:
-        """Prepare buffer for collecting next batch. Rotate values stored at
-        the end of buffer for the next batch to become previous values for
-        upcoming batch (e.g. value_T becomes value_(-1) and value_(T+1) becomes
-        value_0).
+        """Rotate values stored at the end of buffer for the next batch to
+        become previous values for upcoming batch. Usually called to prepare
+        buffer for collecting next batch.
+
+        before rotate()     ->  after rotate()
+        -------------------------------------------------------
+        value[last + 2]     ->  value[first + 1]    = value[1]
+        value[last + 1]     ->  value[first]        = value[0]
+        value[last]         ->  value[first - 1]    = value[-1]
+        value[last - 1]     ->  value[first - 2]    = value[-2]
         """
         if not self._index_history:
             # only rotate if called on the base array.

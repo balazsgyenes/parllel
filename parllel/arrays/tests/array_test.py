@@ -199,20 +199,19 @@ class TestArray:
         )
 
     def test_array_reconstruction(self, array, np_array, ArrayClass, shape, dtype):
-        array = array[3]
-        array = array[:]
-        array = array[0:2]
-        array = array[:, -2:]
+        subarray1 = array
+        subarray1 = subarray1[3]
+        subarray1 = subarray1[:]
+        subarray1 = subarray1[0:2]
+        subarray1 = subarray1[:, -2:]
 
-        array2 = ArrayClass(shape=shape, dtype=dtype)
-        array2[:] = np_array
-        # apply array's index history to array2
-        array2 = functools.reduce(
+        # apply subarray1's index history to array again
+        subarray2 = functools.reduce(
             lambda buf, index: buf[index],
-            array.index_history,
-            array2
+            subarray1.index_history,
+            array
         )
 
-        assert np.array_equal(array, array2)
+        assert np.array_equal(subarray1, subarray2)
         assert all(el1 == el2 for el1, el2
-            in zip(array.index_history, array2.index_history))
+            in zip(subarray1.index_history, subarray2.index_history))

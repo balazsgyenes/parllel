@@ -44,20 +44,9 @@ def next_region(np_array, padding):
 def array(blank_array, np_array, padding, previous_region, next_region):
     blank_array[:] = np_array
     blank_array[-padding:0] = previous_region
-    end = blank_array.end
-    blank_array[(end + 1):(end + padding + 1)] = next_region
+    last = blank_array.last
+    blank_array[(last + 1):(last + padding + 1)] = next_region
     return blank_array
-
-@pytest.fixture
-def gen_array(ArrayClass, shape, dtype, padding, np_array, previous_region, next_region):
-    def _gen_array():
-        blank_array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
-        blank_array[:] = np_array
-        blank_array[-padding:0] = previous_region
-        end = blank_array.end
-        blank_array[(end + 1):(end + padding + 1)] = next_region
-        return blank_array
-    return _gen_array
 
 
 class TestRotatingArray:
@@ -72,46 +61,44 @@ class TestRotatingArray:
         assert np.asarray(blank_array).dtype == dtype
 
     def test_setitem_single(self, array, np_array, next_region):
-        array[-1] = -7
-        array[array.end + 1] = -8
+        array[array.first - 1] = -7
+        array[array.last + 1] = -8
         ones = np.ones_like(next_region[0])
 
         assert np.array_equal(array, np_array)
-        assert np.array_equal(array[-1], ones * -7)
-        np.array_equal(array[array.end + 1], ones * -8)
+        assert np.array_equal(array[array.first - 1], ones * -7)
+        np.array_equal(array[array.last + 1], ones * -8)
 
     def test_setitem_slices(self, array, shape, dtype, np_array):
-        array[-1:1] = -7
+        array[array.first - 1 : 1] = -7
         ones = np.ones((2,) + shape[1:], dtype)
-        assert np.array_equal(array[-1:1], ones * -7)
+        assert np.array_equal(array[array.first - 1 : 1], ones * -7)
         assert np.array_equal(array[1:], np_array[1:])
 
     def test_setitem_all(self, array, padding, previous_region, next_region):
         array[:] = -7
-
-        assert np.array_equal(array[-padding:0], previous_region)
-        end = array.end
-        assert np.array_equal(array[(end + 1):(end + padding + 1)],
-                              next_region)
+        first = array.first
+        last = array.last
+        assert np.array_equal(array[first - padding : 0], previous_region)
+        assert np.array_equal(array[last + 1 : last + padding + 1], next_region)
 
     def test_setitem_ellipsis(self, array, padding, previous_region, next_region):
         array[..., 1] = -7
+        first = array.first
+        last = array.last
+        assert np.array_equal(array[first - padding : 0], previous_region)
+        assert np.array_equal(array[last + 1 : last + padding + 1], next_region)
 
-        assert np.array_equal(array[-padding:0], previous_region)
-        end = array.end
-        assert np.array_equal(array[(end + 1):(end + padding + 1)],
-                              next_region)
-
-    def test_setitem_beyond_end(self, blank_array, padding):
+    def test_setitem_beyond_last(self, blank_array, padding):
         with pytest.raises(IndexError):
-            blank_array[blank_array.end + padding + 1] = 1
+            blank_array[blank_array.last + padding + 1] = 1
 
     def test_setitem_beyond_beginning(self, blank_array, padding):
         with pytest.raises(IndexError):
-            blank_array[-padding - 1] = 1
+            blank_array[blank_array.first - padding - 1] = 1
 
     def test_getitem(self, array, np_array, previous_region):
-        array = array[-1:]
+        array = array[array.first - 1:]
         assert array.shape == (11, 4, 4)
         assert np.asarray(array).shape == (11, 4, 4)
         values = np.concatenate((previous_region[-1:], np_array))
@@ -123,7 +110,7 @@ class TestRotatingArray:
         assert np.array_equal(array, np_array[1])
 
     def test_getitem_consecutively(self, array, np_array):
-        array = array[-1:]
+        array = array[array.first - 1:]
         array = array[2]
         assert array.shape == (4, 4)
         assert np.asarray(array).shape == (4, 4)
@@ -131,13 +118,19 @@ class TestRotatingArray:
 
     def test_rotate(self, array, np_array, padding, next_region):
         array.rotate()
+        first = array.first
+        last = array.last
+        # elements just before last have been moved into padding
+        assert np.array_equal(array[first - padding:first], array[last - padding + 1:])
+        # elements just after last have been moved to the beginning
         assert np.array_equal(array[:padding], next_region)
+        # the rest of the array body is unaffected
         assert np.array_equal(array[padding:], np_array[padding:])
 
     def test_indexhistory(self, array):
         assert array.index_history == ()
 
-        array = array[-1:]
+        array = array[array.first - 1:]
         assert array.index_history == (slice(-1, None), )
 
         array = array[1]
@@ -146,7 +139,7 @@ class TestRotatingArray:
         array = array[1:3]
         assert array.index_history == (slice(-1, None), 1, slice(1, 3))
 
-        array = array[-1, ::2]
+        array = array[array.first - 1, ::2]
         assert array.index_history == (
             slice(-1, None),
             1,
@@ -154,25 +147,24 @@ class TestRotatingArray:
             (-1, slice(None, None, 2)),
         )
 
-    def test_array_reconstruction(self, gen_array):
-        array = gen_array()
+    def test_array_reconstruction(self, array):
         # same as Array test, just start with negative index here
-        array = array[-1:]
-        array = array[:]
-        array = array[0:2]
-        array = array[:, -2:]
+        subarray1 = array
+        subarray1 = subarray1[subarray1.first - 1:]
+        subarray1 = subarray1[:]
+        subarray1 = subarray1[0:2]
+        subarray1 = subarray1[:, -2:]
 
-        array2 = gen_array()
-        # apply array's index history to array2
-        array2 = functools.reduce(
+        # apply subarray1's index history to array again
+        subarray2 = functools.reduce(
             lambda buf, index: buf[index],
-            array.index_history,
-            array2
+            subarray1.index_history,
+            array
         )
 
-        assert np.array_equal(array, array2)
+        assert np.array_equal(subarray1, subarray2)
         assert all(el1 == el2 for el1, el2
-            in zip(array.index_history, array2.index_history))
+            in zip(subarray1.index_history, subarray2.index_history))
 
     def test_shift_integer(self):
         assert shift_index(4, 2) == (6,)
