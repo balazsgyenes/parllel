@@ -1,4 +1,5 @@
 import functools
+from itertools import count
 
 import gym
 from gym import spaces
@@ -22,17 +23,17 @@ def ArrayClass(request):
 
 @pytest.fixture(scope="module")
 def shape():
-    return (16, 2, 3, 92, 92)
+    return (16, 2, 4)
 
 @pytest.fixture(scope="module")
 def frame_ndims():
-    return 3
+    return 1
 
 @pytest.fixture(params=[4], ids=["depth=4"], scope="module")
 def stack_depth(request):
     return request.param
 
-@pytest.fixture(params=[np.float32], scope="module")
+@pytest.fixture(params=[np.int32], scope="module")
 def dtype(request):
     return request.param
 
@@ -68,8 +69,8 @@ def np_array(shape, frame_ndims, stack_depth, dtype):
     return array
 
 class DummyEnv(gym.Env):
-    def __init__(self, frame_shape, dtype, rng):
-        self._counter = 0
+    def __init__(self, frame_shape, dtype, rng, counter_init=0):
+        self._counter = count(counter_init)
         self._frame_shape = frame_shape
         self._frame_size = np.prod(frame_shape)
         self._dtype = dtype
@@ -84,11 +85,10 @@ class DummyEnv(gym.Env):
         return self._next_obs()
         
     def _next_obs(self):
-        t = self._counter
+        t = next(self._counter)
         obs = np.arange(t*self._frame_size, (t+1)*self._frame_size,
                         dtype=self._dtype,
                         ).reshape(self._frame_shape)
-        self._counter = t + 1
         return obs
 
 @pytest.fixture
@@ -102,7 +102,7 @@ def dataset(shape, frame_ndims, stack_depth, dtype, rng,
     batch_B = shape[1]
     envs = list()
     for b in range(batch_B):
-        env = DummyEnv(frame_shape, dtype, rng)
+        env = DummyEnv(frame_shape, dtype, rng, b * 1000)
         env = FrameStack(env, stack_depth)
         reset_obs = env.reset()
         batch_obs[0, b] = reset_obs
