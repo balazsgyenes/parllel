@@ -26,12 +26,14 @@ class Array(Buffer):
         shape: Tuple[int, ...],
         dtype: np.dtype,
     ) -> None:
-        assert shape, "Non-empty shape required."
+        if not shape:
+            raise ValueError("Non-empty shape required.")
         self._base_shape = shape
         self._apparent_shape = shape
 
         dtype = np.dtype(dtype)
-        assert dtype != np.object_, "Data type should not be object."
+        if dtype == np.object_:
+            raise TypeError("Data type should not be object.")
         self.dtype = dtype
 
         self._buffer_id: int = id(self)

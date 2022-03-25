@@ -55,7 +55,7 @@ class TestArray:
             _ = ArrayClass()
 
     def test_wrong_dtype(self, ArrayClass, shape):
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             _ = ArrayClass(shape=shape, dtype=list)
 
     def test_init(self, blank_array, shape, dtype):

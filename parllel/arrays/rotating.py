@@ -40,11 +40,18 @@ class RotatingArray(Array):
         padding: int = 1,
     ) -> None:
 
-        assert padding > 0, "Padding must be positive."
+        if not padding > 0:
+            raise ValueError("Padding must be positive.")
         self._padding = padding
 
+        if not shape:
+            raise ValueError("Non-empty shape required.")
+
+        if not shape[0] >= padding:
+            raise ValueError(f"Leading dimension {shape[0]} must be at least "
+                f"as long as padding {padding}")
+        
         # add padding onto both ends of first dimension
-        assert shape, "Non-empty shape required."
         padded_shape = (shape[0] + 2 * self._padding,) + shape[1:]
 
         super().__init__(shape=padded_shape, dtype=dtype)
@@ -52,6 +59,10 @@ class RotatingArray(Array):
         # unlike in base class, _current_array is not the same as _base_array
         # this also fixes _apparent_shape, which still includes the padding
         self._resolve_indexing_history()
+
+    @property
+    def padding(self) -> int:
+        return self._padding
 
     @property
     def first(self) -> int:

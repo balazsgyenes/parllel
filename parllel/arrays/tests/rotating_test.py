@@ -57,7 +57,7 @@ def array(blank_array, np_array, padding, previous_region, next_region):
 
 class TestRotatingArray:
     def test_negative_padding(self, ArrayClass, shape, dtype, padding):
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             _ = ArrayClass(shape=shape, dtype=dtype, padding=-padding)
 
     def test_init(self, blank_array, shape, dtype):
