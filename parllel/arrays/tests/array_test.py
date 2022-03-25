@@ -13,19 +13,19 @@ from parllel.arrays.sharedmemory import RotatingSharedMemoryArray, SharedMemoryA
     Array, RotatingArray,
     SharedMemoryArray, RotatingSharedMemoryArray,
     ManagedMemoryArray, RotatingManagedMemoryArray
-    ])
+    ], scope="module")
 def ArrayClass(request):
     return request.param
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def shape():
     return (4, 4, 4)
 
-@pytest.fixture(params=[np.float32, np.int32])
+@pytest.fixture(params=[np.float32, np.int32], scope="module")
 def dtype(request):
     return request.param
 
-@pytest.fixture(params=[1, 2], ids=["padding=1", "padding=2"])
+@pytest.fixture(params=[1, 2], ids=["padding=1", "padding=2"], scope="module")
 def padding(request):
     return request.param
 
