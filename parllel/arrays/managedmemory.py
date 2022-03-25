@@ -1,5 +1,3 @@
-from __future__ import annotations
-from functools import reduce
 from multiprocessing import shared_memory
 from typing import Dict
 
@@ -7,6 +5,7 @@ import numpy as np
 
 from .array import Array
 from .rotating import RotatingArray
+
 
 class ManagedMemoryArray(Array):
     """An array in OS shared memory that can be shared between processes at any

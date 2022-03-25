@@ -7,8 +7,8 @@ from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemo
 
 
 @pytest.fixture(params=["fork", "spawn"], scope="module")
-def mp_start_method(request):
-    return request.param
+def mp_ctx(request):
+    return mp.get_context(request.param)
 
 @pytest.fixture(params=[
     ManagedMemoryArray, RotatingManagedMemoryArray
@@ -20,7 +20,7 @@ def ArrayClass(request):
 def shape():
     return (4, 4, 4)
 
-@pytest.fixture(params=[np.float32, np.int32], scope="module")
+@pytest.fixture(params=[np.float32], scope="module")
 def dtype(request):
     return request.param
 
@@ -46,13 +46,12 @@ def setitem_in_piped_array(pipe):
     array[location] = value
 
 
-def test_setitem_single(array, np_array, mp_start_method):
+def test_setitem_single(array, np_array, mp_ctx):
     location = (0, 1, 2)
     value = -7
 
-    ctx = mp.get_context(mp_start_method)
-    parent_pipe, child_pipe = ctx.Pipe()
-    p = ctx.Process(target=setitem_in_piped_array, args=(child_pipe,))
+    parent_pipe, child_pipe = mp_ctx.Pipe()
+    p = mp_ctx.Process(target=setitem_in_piped_array, args=(child_pipe,))
     p.start()
     parent_pipe.send((array, location, value))
     p.join()
@@ -60,13 +59,12 @@ def test_setitem_single(array, np_array, mp_start_method):
     np_array[location] = value
     assert np.array_equal(array, np_array)
 
-def test_setitem_slice(array, np_array, mp_start_method):
+def test_setitem_slice(array, np_array, mp_ctx):
     location = (3, slice(1,2))
     value = -7
 
-    ctx = mp.get_context(mp_start_method)
-    parent_pipe, child_pipe = ctx.Pipe()
-    p = ctx.Process(target=setitem_in_piped_array, args=(child_pipe,))
+    parent_pipe, child_pipe = mp_ctx.Pipe()
+    p = mp_ctx.Process(target=setitem_in_piped_array, args=(child_pipe,))
     p.start()
     parent_pipe.send((array, location, value))
     p.join()
@@ -74,16 +72,15 @@ def test_setitem_slice(array, np_array, mp_start_method):
     np_array[location] = value
     assert np.array_equal(array, np_array)
 
-def test_setitem_subarray(array, np_array, mp_start_method):
+def test_setitem_subarray(array, np_array, mp_ctx):
     subarray = array[2, :2]
     subarray = subarray[1:, :]
 
     location = (0, 3)
     value = -7
 
-    ctx = mp.get_context(mp_start_method)
-    parent_pipe, child_pipe = ctx.Pipe()
-    p = ctx.Process(target=setitem_in_piped_array, args=(child_pipe,))
+    parent_pipe, child_pipe = mp_ctx.Pipe()
+    p = mp_ctx.Process(target=setitem_in_piped_array, args=(child_pipe,))
     p.start()
     parent_pipe.send((subarray, location, value))
     p.join()
@@ -98,14 +95,13 @@ def get_piped_array_shape(pipe):
     subarray = array[location]
     pipe.send(subarray.shape)
 
-def test_subarray_shape(array, np_array, mp_start_method):
+def test_subarray_shape(array, np_array, mp_ctx):
     subarray = array[:3, 2]
     subarray = subarray[:, 2:]
     location = 1
 
-    ctx = mp.get_context(mp_start_method)
-    parent_pipe, child_pipe = ctx.Pipe()
-    p = ctx.Process(target=get_piped_array_shape, args=(child_pipe,))
+    parent_pipe, child_pipe = mp_ctx.Pipe()
+    p = mp_ctx.Process(target=get_piped_array_shape, args=(child_pipe,))
     p.start()
     parent_pipe.send((subarray, location))
     subarray_shape = parent_pipe.recv()
