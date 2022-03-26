@@ -23,13 +23,13 @@ def ArrayClass(request):
 
 @pytest.fixture(scope="module")
 def shape():
-    return (16, 2, 4)
+    return (8, 2, 5)
 
 @pytest.fixture(scope="module")
 def frame_ndims():
     return 1
 
-@pytest.fixture(params=[4], ids=["depth=4"], scope="module")
+@pytest.fixture(params=[3, 4], ids=["depth=3", "depth=4"], scope="module")
 def stack_depth(request):
     return request.param
 
@@ -57,6 +57,7 @@ def blank_array(ArrayClass, shape, frame_ndims, stack_depth, dtype, done_array):
         frame_ndims=frame_ndims,
         dtype=dtype,
         done=done_array,
+        reset_mode="repeat",
     )
     yield array
     array.close()
@@ -109,19 +110,18 @@ def dataset(shape, frame_ndims, stack_depth, dtype, rng,
         batch_np_obs[0, b] = np.asarray(reset_obs)
         envs.append(env)
 
-    for t in range(1, batch_T):
+    for t in range(0, batch_T-1):
         for b, env in enumerate(envs):
             obs, _, done, _ = env.step(None)
             if done:
                 obs = env.reset()
-            batch_obs[t, b] = obs
-            batch_np_obs[t, b] = np.asarray(obs)
+            batch_obs[t+1, b] = obs
+            batch_np_obs[t+1, b] = np.asarray(obs)
             batch_done[t, b] = done
     return batch_done, batch_obs, batch_np_obs
 
 
 class TestLazyFramesArray:
-    # @pytest.mark.skip
     def test_reconstruction(self, dataset):
         batch_done, batch_obs, batch_np_obs = dataset
 
