@@ -23,17 +23,17 @@ def ArrayClass(request):
 
 @pytest.fixture(scope="module")
 def shape():
-    return (8, 2, 5)
+    return (16, 8, 3, 96, 96)
 
 @pytest.fixture(scope="module")
 def frame_ndims():
-    return 1
+    return 3
 
 @pytest.fixture(params=[3, 4], ids=["depth=3", "depth=4"], scope="module")
 def stack_depth(request):
     return request.param
 
-@pytest.fixture(params=[np.int32], scope="module")
+@pytest.fixture(params=[np.int32, np.float32], scope="module")
 def dtype(request):
     return request.param
 
@@ -79,7 +79,7 @@ class DummyEnv(gym.Env):
         self.observation_space = spaces.Box(0, 255, shape=frame_shape)
 
     def step(self, action):
-        done = self._rng.random() > 0.95
+        done = self._rng.random() > 0.90
         return self._next_obs(), 0, done, {}
 
     def reset(self):

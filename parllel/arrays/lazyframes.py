@@ -57,7 +57,9 @@ class LazyFramesArray(RotatingArray):
         ]
         array = np.stack(slices, axis=-self._frame_ndims - 1)
 
-        for t in range(1, self._stack_depth):
+        # handle past frames right after a reset
+        # iterate reversed so that more recent resets take precedence
+        for t in reversed(range(1, self._stack_depth)):
             # get whether this env was done exactly t time steps ago
             done_t_steps_ago = self._done[-t : self._done.last + 1 - t]
             # convert from RotatingArray to ndarray, which can be used to index
