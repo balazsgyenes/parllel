@@ -48,6 +48,8 @@ class Array(Buffer):
         # set to the previous value of current_array, or the base_array
         self._previous_array: NDArray = self._base_array
 
+        self._current_indices = None
+
     def _allocate(self) -> None:
         # initialize numpy array
         self._base_array: NDArray = np.zeros(shape=self._base_shape, dtype=self.dtype)
@@ -117,6 +119,14 @@ class Array(Buffer):
             array = array.astype(dtype, copy=False)
         return array
 
+    @property
+    def current_indices(self):
+        if self._current_indices == None:
+            self._current_indices = compute_current_indices(
+                self._base_array, self._current_array,
+            )
+        return self._current_indices
+
     def __repr__(self) -> str:
         return repr(self.__array__())
 
@@ -131,3 +141,60 @@ class Array(Buffer):
 
     def destroy(self):
         pass
+
+
+def compute_current_indices(base_array, current_array):
+    # make strides positive 
+    # current_strides = tuple(abs(stride) for stride in self._current_array.strides)
+    base_shape = base_array.shape
+    base_strides = base_array.strides
+    curr_shape = current_array.shape
+    curr_strides = current_array.strides
+    current_indices = [None for _ in base_shape]
+
+    current_pointer = current_array.__array_interface__["data"][0]
+    base_pointer = base_array.__array_interface__["data"][0]
+    offset = current_pointer - base_pointer
+    dim_offsets = [0 for _ in base_shape]
+    for dim, base_stride in enumerate(base_strides):
+        dim_offsets[dim] = offset // base_stride
+        offset %= base_stride
+    assert offset == 0
+
+    for dim, (base_size, base_stride) in enumerate(zip(base_shape, base_strides)):
+        # search for the corresponding stride in current_array
+        # base_stride_(dim-1) > abs(current_stride_(dim)) > base_stride_(dim), if it exists
+        # the absolute value is required because the current stride might be negative
+        for i, (curr_size, curr_stride) in enumerate(zip(curr_shape, curr_strides)):
+            # if dim==0, skip check against previous base_stride
+            if abs(curr_stride) >= base_stride and (
+                dim == 0 or base_strides[dim-1] > curr_stride):
+                # stride exists, so index is at least not an integer
+                # stride can only have been changed by slicing with a step != 1
+                step = curr_stride // base_stride
+                start = dim_offsets[dim]
+                stop = start + curr_size * step
+                # if step > 0:
+                #     start = start if start != 0 else None
+                #     stop = stop if stop != base_size else None
+                # else:
+                #     start -= base_size
+                #     start = start if start != -1 else None
+                #     stop = stop if stop != -1 else None
+                # step = step if step != 1 else None
+                current_indices[dim] = slice(start, stop, step)
+                break
+        else:
+            # stride does not exist, so index must be integer
+            # calculate index using offset
+            current_indices[dim] = dim_offsets[dim]
+
+    return current_indices
+
+
+if __name__ == "__main__":
+    array = np.zeros(shape=(8,4,3,96,96))
+    subarray = array[::2, ::-3, 2, :48, 48:]
+
+    indices = compute_current_indices(array, subarray)
+    print(indices)
