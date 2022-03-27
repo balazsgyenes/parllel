@@ -1,4 +1,5 @@
 import functools
+from operator import getitem
 
 import pytest
 import numpy as np
@@ -209,7 +210,7 @@ class TestArray:
             (slice(None), slice(None, None, 2)),
         )
 
-    def test_array_reconstruction(self, array, np_array, ArrayClass, shape, dtype):
+    def test_array_reconstruction(self, array):
         subarray1 = array
         subarray1 = subarray1[3]
         subarray1 = subarray1[:]
@@ -217,12 +218,34 @@ class TestArray:
         subarray1 = subarray1[:, -2:]
 
         # apply subarray1's index history to array again
-        subarray2 = functools.reduce(
-            lambda buf, index: buf[index],
-            subarray1.index_history,
-            array
-        )
+        subarray2 = functools.reduce(getitem, subarray1.index_history, array)
 
         assert np.array_equal(subarray1, subarray2)
         assert all(el1 == el2 for el1, el2
             in zip(subarray1.index_history, subarray2.index_history))
+
+
+class TestArrayIndices:
+    def test_indices(self, array, np_array):
+        np_subarray = np_array[::2, 2, :1]
+        subarray = array[::2, 2, :1]
+        indices = subarray.current_indices
+
+        assert np.array_equal(np_subarray, np_array[indices])
+        assert np.array_equal(subarray, array[indices])
+
+    def test_indices_negative_step(self, array, np_array):
+        np_subarray = np_array[2::-1, :2, 2:]
+        subarray = array[2::-1, :2, 2:]
+        indices = subarray.current_indices
+
+        assert np.array_equal(np_subarray, np_array[indices])
+        assert np.array_equal(subarray, array[indices])
+
+    def test_indices_element(self, array, np_array):
+        np_subarray = np_array[0, 1, 2]
+        subarray = array[0, 1, 2]
+        indices = subarray.current_indices
+
+        assert np.array_equal(np_subarray, np_array[indices])
+        assert np.array_equal(subarray, array[indices])

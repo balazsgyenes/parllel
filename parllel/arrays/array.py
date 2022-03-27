@@ -1,5 +1,6 @@
 from __future__ import annotations
 from functools import reduce
+from operator import getitem
 from typing import Any, List, Tuple
 
 import numpy as np
@@ -44,35 +45,23 @@ class Array(Buffer):
         # the result of calling np.asarray() on the array at any time
         self._current_array: NDArray = self._base_array
 
-        # used to enable indexing into a single element like element[:] = 0
-        # set to the previous value of current_array, or the base_array
-        self._previous_array: NDArray = self._base_array
-
-        self._current_indices = None
+        self._current_indices = [slice(None) for _ in self._base_shape]
 
     def _allocate(self) -> None:
         # initialize numpy array
         self._base_array: NDArray = np.zeros(shape=self._base_shape, dtype=self.dtype)
 
     def _resolve_indexing_history(self) -> None:
-        array = self._base_array
-        
-        # if index history has 0 or 1 elements, this has no effect
-        array = reduce(lambda arr, index: arr[index], self._index_history[:-1], array)
-        self._previous_array = array
-        
-        # index last item in history only if there is a history
-        if self._index_history:
-            array = array[self._index_history[-1]]
-
-        self._current_array = array
-        self._apparent_shape = array.shape
+        self._current_array = reduce(
+            getitem, self._index_history, self._base_array)
+        self._apparent_shape = self._current_array.shape
+        self._current_indices = compute_current_indices(
+            self._base_array, self._current_array)
 
     @property
     def shape(self):
         if self._apparent_shape is None:
             self._resolve_indexing_history()
-
         return self._apparent_shape
 
     def __getitem__(self, location: Indices) -> Array:
@@ -88,9 +77,7 @@ class Array(Buffer):
         # current array and shape are not computed until needed
         result._current_array = None
         result._apparent_shape = None
-        # if self._current_array is not None, saves extra computation
-        # if it is None, then it must be recomputed anyway
-        result._previous_array = self._current_array
+        result._current_indices = None
         return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
@@ -99,12 +86,11 @@ class Array(Buffer):
 
         if self._apparent_shape == ():
             # Need to avoid item assignment on a scalar (0-D) array, so we assign
-            # into previous array using the last indices used
+            # into base array using the current indices
             if not (location == slice(None) or location == ...):
                 raise IndexError("Cannot take slice of 0-D array.")
-            # in this case, there must be an index history
-            location = self._index_history[-1]
-            destination = self._previous_array
+            location = self.current_indices
+            destination = self._base_array
         else:
             destination = self._current_array
 
@@ -121,11 +107,9 @@ class Array(Buffer):
 
     @property
     def current_indices(self):
-        if self._current_indices == None:
-            self._current_indices = compute_current_indices(
-                self._base_array, self._current_array,
-            )
-        return self._current_indices
+        if self._current_indices is None:
+            self._resolve_indexing_history()
+        return tuple(self._current_indices)
 
     def __repr__(self) -> str:
         return repr(self.__array__())
@@ -150,6 +134,8 @@ def compute_current_indices(base_array: NDArray, current_array: NDArray):
 
     # total offset is a linear combination of base strides
     # get the coefficients of that linear combination
+    # this are either the start of the slices for that dimension, or the index
+    # itself if indexed with an integer
     base_strides = base_array.strides
     dim_offsets = [0 for _ in base_strides]
     for dim, base_stride in enumerate(base_strides):
@@ -175,6 +161,10 @@ def compute_current_indices(base_array: NDArray, current_array: NDArray):
         step = curr_stride // base_stride
         start = dim_offsets[dim]
         stop = start + curr_size * step
+        if step < 1 and stop == step:
+            # for negative indices, stop=-1 means stop just after 0
+            # unfortunately, this is ambiguous, since -1 is the last element
+            stop = None
 
         step = step if step != 1 else None
 
@@ -187,11 +177,3 @@ def compute_current_indices(base_array: NDArray, current_array: NDArray):
     current_indices.reverse()
 
     return current_indices
-
-
-if __name__ == "__main__":
-    array = np.zeros(shape=(8,4,3,96,96))
-    subarray = array[::2, ::-3, 2, :48, 48:]
-
-    indices = compute_current_indices(array, subarray)
-    print(indices)
