@@ -25,14 +25,6 @@ class RotatingArray(Array):
     Todo:
         - Add a nice __repr__ function to print head, body, and tail of the
             array.
-        - Possible alternate formulation would only allow access to the padding
-            via proxy objects accessible through 'next' and 'previous'
-            attributes. Benefit is some simpler logic, because indices do not
-            have to be shifted in every case. Also would eliminate ambiguity of
-            array[-1], which depends on the type of the array. Cost is more
-            complex pickling logic, since this operation must also be
-            reconstructable, and it would not be possible to index both body
-            and padding.
     """
     def __init__(self,
         shape: Tuple[int, ...],
@@ -74,6 +66,8 @@ class RotatingArray(Array):
     @property
     def last(self) -> int:
         """The index of the final element in the array, not including padding.
+        Replaces indexing at -1 in numpy arrays.
+        e.g. array[-1] -> rot_array[rot_array.last]
         """
         return self._apparent_shape[0] - 1
 
