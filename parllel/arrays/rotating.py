@@ -1,12 +1,12 @@
-from __future__ import annotations
-import copy
-from typing import Any, List, Tuple
+from functools import reduce
+from typing import Any, Tuple
 
 import numpy as np
-from nptyping import NDArray
+
+from parllel.buffers import Index, Indices
 
 from .array import Array
-from parllel.buffers.buffer import Buffer, Index, Indices
+
 
 class RotatingArray(Array):
     """An array with padding at both edges of the leading dimension. Calling
@@ -23,7 +23,8 @@ class RotatingArray(Array):
         array([1, 1, 1, 1, 1])
 
     Todo:
-        - Add a nice __repr__ function to print head, body, and tail of the array. 
+        - Add a nice __repr__ function to print head, body, and tail of the
+            array.
     """
     def __init__(self,
         shape: Tuple[int, ...],
@@ -31,93 +32,142 @@ class RotatingArray(Array):
         padding: int = 1,
     ) -> None:
 
-        assert padding > 0, "Padding must be positive."
+        if not padding > 0:
+            raise ValueError("Padding must be positive.")
         self._padding = padding
 
+        if not shape:
+            raise ValueError("Non-empty shape required.")
+
+        if not shape[0] >= padding:
+            raise ValueError(f"Leading dimension {shape[0]} must be at least "
+                f"as long as padding {padding}")
+        
         # add padding onto both ends of first dimension
-        assert shape, "Non-empty shape required."
         padded_shape = (shape[0] + 2 * self._padding,) + shape[1:]
 
-        super().__init__(padded_shape, dtype)
-        self._apparent_shape = shape # padding is not part of apparent shape
+        super().__init__(shape=padded_shape, dtype=dtype)
 
-        self._apparent_index_history: List[Indices] = []
-
-    @Buffer.index_history.getter
-    def index_history(self) -> Tuple[Tuple[Index, ...], ...]:
-        """For external use, return the index history before shifting. The base
-        class index history records indices after shifting.
-        """
-        return self._apparent_index_history
+        # unlike in base class, _current_array is not the same as _base_array
+        # this also fixes _apparent_shape, which still includes the padding
+        self._resolve_indexing_history()
 
     @property
-    def end(self) -> int:
+    def padding(self) -> int:
+        return self._padding
+
+    @property
+    def first(self) -> int:
+        """The index of the first element in the array, not including padding.
+        Enables syntactic sugar like `arr[arr.first - 1]`
+        """
+        return 0
+
+    @property
+    def last(self) -> int:
         """The index of the final element in the array, not including padding.
+        Replaces indexing at -1 in numpy arrays.
+        e.g. array[-1] -> rot_array[rot_array.last]
         """
         return self._apparent_shape[0] - 1
 
-    def rotate(self) -> None:
-        """Prepare buffer for collecting next batch. Rotate values stored at
-        the end of buffer for the next batch to become previous values for
-        upcoming batch (e.g. value_T becomes value_(-1) and value_(T+1) becomes
-        value_0).
-        """
-        if self._padding > 0:
-            final_values = slice(-(self._padding + 1), None)
-            next_previous_values = slice(0, self._padding + 1)
-            self._array[next_previous_values] = self._array[final_values]
+    def _resolve_indexing_history(self) -> None:
+        array = self._base_array
 
-    def __getitem__(self, location: Indices) -> RotatingArray:
-        """Index into contained array, applying offset due to padding. The
-        result of this method will always have padding of 0, since the padding
-        is stripped away.
-        """
-        if isinstance(location, tuple):
-            leading, trailing = location[0], location[1:]
+        if self._index_history:
+            # shift only the first indices, leave the rest (if thereare more)
+            index_history = [shift_indices(self._index_history[0], self._padding),
+                            ] + self._index_history[1:]
         else:
-            leading, trailing = location, ()
+            # even if the array was never indexed, only this slice of the array
+            # should be returned by __array__
+            index_history = [slice(self._padding, -self._padding)]
 
-        leading = shift_index(leading, self._padding, self._apparent_shape[0])
-        result: RotatingArray = super().__getitem__(leading + trailing)
-        # modify additional instance variables from RotatingArray
-        result._padding = 0 # padding is no longer available after indexing
-        # assign copy of _index_history with additional element for this
-        # indexing operation
-        result._apparent_index_history = copy.copy(
-            result._apparent_index_history) + [location]
-        return result
+        # if index history has only 1 element, this has no effect
+        array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
+        self._previous_array = array
+        
+        # we guarantee that index_history has at least 1 element
+        array = array[index_history[-1]]
+
+        self._current_array = array
+        self._apparent_shape = array.shape
 
     def __setitem__(self, location: Indices, value: Any) -> None:
-        if not self._padding:
-            return super().__setitem__(location, value)
-        
-        if isinstance(location, tuple):
-            leading, trailing = location[0], location[1:]
+        if self._current_array is None:
+            self._resolve_indexing_history()
+
+        if self._index_history:
+            if self._apparent_shape == ():
+                # Need to avoid item assignment on a scalar (0-D) array, so we assign
+                # into previous array using the last indices used
+                if not (location == slice(None) or location == ...):
+                    raise IndexError("Cannot take slice of 0-D array.")
+                # in this case, there must be an index history
+                location = self._index_history[-1]
+                # indices must be shifted if they were the first indices
+                if len(self._index_history) == 1:
+                    location = shift_indices(location, self._padding)
+                destination = self._previous_array
+            else:
+                destination = self._current_array
         else:
-            leading, trailing = location, ()
+            location = shift_indices(location, self._padding)
+            destination = self._base_array
+        destination[location] = value
 
-        leading = shift_index(leading, self._padding, self._apparent_shape[0])
-        super().__setitem__(leading + trailing, value)
+    def rotate(self) -> None:
+        """Rotate values stored at the end of buffer for the next batch to
+        become previous values for upcoming batch. Usually called to prepare
+        buffer for collecting next batch.
 
-    def __array__(self, dtype = None) -> NDArray:
-        array = super().__array__(dtype)
-        if self._padding > 0:
-            array = array[self._padding:-self._padding]
-        return array
+        before rotate()     ->  after rotate()
+        -------------------------------------------------------
+        value[last + 2]     ->  value[first + 1]    = value[1]
+        value[last + 1]     ->  value[first]        = value[0]
+        value[last]         ->  value[first - 1]    = value[-1]
+        value[last - 1]     ->  value[first - 2]    = value[-2]
+        """
+        if not self._index_history:
+            # only rotate if called on the base array.
+            # rotating subarrays is not possible anyway
+            final_values = slice(-(self._padding * 2), None)
+            next_previous_values = slice(0, self._padding * 2)
+            self._base_array[next_previous_values] = self._base_array[final_values]
 
 
-def shift_index(index: Index, shift: int, apparent_length: int) -> Tuple[Index, ...]:
+def shift_indices(indices: Indices, shift: int) -> Tuple[Index, ...]:
+    if isinstance(indices, tuple):
+        first, rest = indices[0], indices[1:]
+    else:
+        first, rest = indices, ()
+    return shift_index(first, shift) + rest
+
+
+def shift_index(index: Index, shift: int) -> Tuple[Index, ...]:
     """Shifts an array index up by an integer value.
     """
     if isinstance(index, int):
+        if index < -shift:
+            raise IndexError(f"Not enough padding ({shift}) to accomodate "
+                             f"index ({index})")
         return (index + shift,)
     if isinstance(index, slice):
-        start, stop, step = index.indices(apparent_length)
+        # in case the step is negative, we need to reverse/adjust the limits
+        # limits must be incremented because the upper limit of the slice is
+        # not in the slice
+        # [:] = slice(None, None, None) -> slice(shift, -shift, None)
+        # [::-1] = slice(None, None, -1) -> slice(-shift-1, shift-1, -1)
+        # [:3:-1] = slice(None, 3, -1) -> slice(-shift-1, 3+shift, -1)
+        lower_limit = -(shift+1) if index.step is not None and index.step < 0 else shift
+        upper_limit = shift-1 if index.step is not None and index.step < 0 else -shift
         return (slice(
-            start + shift,
-            stop + shift,
-            step,
+            index.start + shift if index.start is not None else lower_limit,
+            index.stop + shift if index.stop is not None else upper_limit,
+            index.step,
         ),)
     if index is Ellipsis:
+        # add another Ellipsis, to index any remaining dimensions that an
+        # Ellipsis would have indexed (possible no extra dimensions remain)
         return (slice(shift, -shift), Ellipsis)
     raise ValueError(index)
