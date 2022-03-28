@@ -172,6 +172,8 @@ class TestRotatingArray:
         assert all(el1 == el2 for el1, el2
             in zip(subarray1.index_history, subarray2.index_history))
 
+
+class TestIndexShifting:
     def test_shift_integer(self):
         assert shift_index(4, 2) == (6,)
         assert shift_index(0, 1) == (1,)
