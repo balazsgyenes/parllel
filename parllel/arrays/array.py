@@ -44,7 +44,6 @@ class Array(Buffer):
 
         # the result of calling np.asarray() on the array at any time
         self._current_array: NDArray = self._base_array
-
         self._current_indices = [slice(None) for _ in self._base_shape]
 
     def _allocate(self) -> None:

@@ -37,7 +37,6 @@ class SharedMemoryArray(Array):
         # remove this numpy array which cannot be pickled
         del state["_base_array"]
         del state["_current_array"]
-        del state["_previous_array"]
         return state
 
     def __setstate__(self, state: Dict) -> None:
@@ -46,7 +45,6 @@ class SharedMemoryArray(Array):
         # restore _base_array array
         self._wrap_raw_array()
         # other arrays will be resolved when required
-        self._previous_array = None
         self._current_array = None
 
 

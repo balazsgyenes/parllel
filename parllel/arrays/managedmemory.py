@@ -35,7 +35,6 @@ class ManagedMemoryArray(Array):
         del state["_raw_array"]
         del state["_base_array"]
         del state["_current_array"]
-        del state["_previous_array"]
         state["_memory_name"] = self._raw_array.name
         return state
 
@@ -48,7 +47,6 @@ class ManagedMemoryArray(Array):
         # restore _base_array array
         self._wrap_raw_array()
         # other arrays will be resolved when required
-        self._previous_array = None
         self._current_array = None
 
     def close(self):

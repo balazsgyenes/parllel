@@ -1,11 +1,12 @@
 from functools import reduce
+from operator import getitem
 from typing import Any, Tuple
 
 import numpy as np
 
 from parllel.buffers import Index, Indices
 
-from .array import Array
+from .array import Array, compute_current_indices
 
 
 class RotatingArray(Array):
@@ -72,8 +73,6 @@ class RotatingArray(Array):
         return self._apparent_shape[0] - 1
 
     def _resolve_indexing_history(self) -> None:
-        array = self._base_array
-
         if self._index_history:
             # shift only the first indices, leave the rest (if thereare more)
             index_history = [shift_indices(self._index_history[0], self._padding),
@@ -84,37 +83,17 @@ class RotatingArray(Array):
             index_history = [slice(self._padding, -self._padding)]
 
         # if index history has only 1 element, this has no effect
-        array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
-        self._previous_array = array
-        
-        # we guarantee that index_history has at least 1 element
-        array = array[index_history[-1]]
-
-        self._current_array = array
-        self._apparent_shape = array.shape
+        self._current_array = reduce(getitem, index_history, self._base_array)
+        self._apparent_shape = self._current_array.shape
+        self._current_indices = compute_current_indices(
+            self._base_array, self._current_array)
 
     def __setitem__(self, location: Indices, value: Any) -> None:
-        if self._current_array is None:
-            self._resolve_indexing_history()
-
         if self._index_history:
-            if self._apparent_shape == ():
-                # Need to avoid item assignment on a scalar (0-D) array, so we assign
-                # into previous array using the last indices used
-                if not (location == slice(None) or location == ...):
-                    raise IndexError("Cannot take slice of 0-D array.")
-                # in this case, there must be an index history
-                location = self._index_history[-1]
-                # indices must be shifted if they were the first indices
-                if len(self._index_history) == 1:
-                    location = shift_indices(location, self._padding)
-                destination = self._previous_array
-            else:
-                destination = self._current_array
-        else:
-            location = shift_indices(location, self._padding)
-            destination = self._base_array
-        destination[location] = value
+            return super().__setitem__(location, value)
+        
+        location = shift_indices(location, self._padding)
+        self._base_array[location] = value
 
     def rotate(self) -> None:
         """Rotate values stored at the end of buffer for the next batch to
