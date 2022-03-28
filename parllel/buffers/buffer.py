@@ -2,14 +2,17 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Tuple, TypeVar, Union, Generic
 
-# import numpy as np
 
+# A single index element, e.g. arr[3:6]
+Index = Union[int, slice, type(Ellipsis)]
 
-Index = Union[int, slice, type(Ellipsis), ]
-#TODO: add type(np.newaxis) to Index types?
+# A single indexing location, e.g. arr[2, 0] or arr[:-2]
 Indices = Union[Index, Tuple[Index, ...]]
 
+# Represents the object type at the leaves of the buffer tree structure:
+# e.g. numpy array, Array, torch tensor, jax array, etc.
 LeafType = TypeVar('LeafType')
+
 
 class Buffer(ABC, Generic[LeafType]):
     """A buffer represents a tree-like structure, where the non-leaf nodes are

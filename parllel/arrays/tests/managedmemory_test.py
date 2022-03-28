@@ -1,10 +1,8 @@
-from operator import setitem
 import pytest
 
 import multiprocessing as mp
 import numpy as np
 
-from parllel.arrays.sharedmemory import SharedMemoryArray, RotatingSharedMemoryArray
 from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
 
 
@@ -13,7 +11,6 @@ def mp_ctx(request):
     return mp.get_context(request.param)
 
 @pytest.fixture(params=[
-    SharedMemoryArray, RotatingSharedMemoryArray,
     ManagedMemoryArray, RotatingManagedMemoryArray
     ], scope="module")
 def ArrayClass(request):
@@ -44,17 +41,25 @@ def array(blank_array, np_array):
     return blank_array
 
 
-def get_array_shape(pipe, array):
-    pipe.send(array.shape)
+def setitem_in_piped_array(pipe):
+    array, location, value = pipe.recv()
+    array[location] = value
+
+def get_piped_array_shape(pipe):
+    array, location = pipe.recv()
+    subarray = array[location]
+    pipe.send(subarray.shape)
 
 
-class TestSharedMemoryArray:
+class TestManagedMemoryArray:
     def test_setitem_single(self, array, np_array, mp_ctx):
         location = (0, 1, 2)
         value = -7
 
-        p = mp_ctx.Process(target=setitem, args=(array, location, value))
+        parent_pipe, child_pipe = mp_ctx.Pipe()
+        p = mp_ctx.Process(target=setitem_in_piped_array, args=(child_pipe,))
         p.start()
+        parent_pipe.send((array, location, value))
         p.join()
 
         np_array[location] = value
@@ -64,8 +69,10 @@ class TestSharedMemoryArray:
         location = (3, slice(1,2))
         value = -7
 
-        p = mp_ctx.Process(target=setitem, args=(array, location, value))
+        parent_pipe, child_pipe = mp_ctx.Pipe()
+        p = mp_ctx.Process(target=setitem_in_piped_array, args=(child_pipe,))
         p.start()
+        parent_pipe.send((array, location, value))
         p.join()
 
         np_array[location] = value
@@ -78,8 +85,10 @@ class TestSharedMemoryArray:
         location = (0, 3)
         value = -7
 
-        p = mp_ctx.Process(target=setitem, args=(subarray, location, value))
+        parent_pipe, child_pipe = mp_ctx.Pipe()
+        p = mp_ctx.Process(target=setitem_in_piped_array, args=(child_pipe,))
         p.start()
+        parent_pipe.send((subarray, location, value))
         p.join()
 
         np_subarray = np_array[2, :2]
@@ -90,13 +99,15 @@ class TestSharedMemoryArray:
     def test_subarray_shape(self, array, np_array, mp_ctx):
         subarray = array[:3, 2]
         subarray = subarray[:, 2:]
+        location = 1
 
         parent_pipe, child_pipe = mp_ctx.Pipe()
-        p = mp_ctx.Process(target=get_array_shape, args=(child_pipe, subarray))
+        p = mp_ctx.Process(target=get_piped_array_shape, args=(child_pipe,))
         p.start()
+        parent_pipe.send((subarray, location))
         subarray_shape = parent_pipe.recv()
         p.join()
 
         np_subarray = np_array[:3, 2]
         np_subarray = np_subarray[:, 2:]
-        assert subarray_shape == np_subarray.shape
+        assert subarray_shape == np_subarray[location].shape
