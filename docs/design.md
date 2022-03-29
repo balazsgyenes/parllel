@@ -43,7 +43,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Actually implement `already_done` in `ParallelProcessCage`.
     - From Paul: Add calling `set_samples_buffer` on cages to sampler `__init__` method. In parallel sampler, the samples buffer needs to be alternated every batch, so this can be set at each batch.
         - This isn't necessarily what we want, since it makes the sampler responsible for the operation of the cages.
-- Step transformations, e.g. observation normalization, image translation
 - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
 - In Handler, preallocate torch tensor version of batch buffer so that it does not have to be converted at each step.
 - Add mechanism for including `previous_action` in the samples buffer if the agent/algo requires it. Right now it's entirely up to the Sampler what gets passed to the agent, but the algo needs to know this too.
@@ -51,9 +50,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
 
 ## Bugs
 
-- BUG: fix array indexing logic. Is the wrapped array indexed when the Array object is indexed? How can this indexed array state be reconstructed when unpickling? Ensure this is correct in all cases, including rotating arrays.
-    - add second index history to rotating array. The public interface returns the unshifted indicies for use by the unpickler in reconstructing the array. The private index history tracks the shifted index history for use by `__setstate__` in reconstructing the numpy array
-    - removing `__getstate__` and `__setstate__` might solve this problem as well as result in a performance boost, since they are called by `copy.copy` each time the array is indexed. Can the numpy arrays simply be sent through the pipe?
 - BUG: fix memory leak when using `fork` start method
 
 
