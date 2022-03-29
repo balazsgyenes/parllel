@@ -2,7 +2,7 @@ from typing import List, Sequence, Tuple
 
 import numpy as np
 
-from parllel.buffers.utils import buffer_func, buffer_rotate
+from parllel.buffers.utils import buffer_map, buffer_rotate
 from parllel.cages import Cage
 from parllel.handlers import Handler
 from parllel.transforms import Transform
@@ -26,7 +26,7 @@ class MiniSampler:
         self.get_bootstrap_value = get_bootstrap_value
         
         if obs_transform is None:
-            obs_transform = lambda x: x
+            obs_transform = lambda x, t: x
         self.obs_transform = obs_transform
 
         if batch_transform is None:
