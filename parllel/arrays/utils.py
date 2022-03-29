@@ -4,7 +4,7 @@ import numpy as np
 from nptyping import NDArray
 
 from parllel.buffers import (Buffer, NamedArrayTuple, NamedTuple,
-    NamedArrayTupleClass_like, dict_to_namedtuple, buffer_func)
+    NamedArrayTupleClass_like, dict_to_namedtuple, buffer_map)
 
 from .array import Array
 
@@ -34,7 +34,7 @@ def buffer_from_dict_example(example: Dict, leading_dims: Tuple[int, ...], Array
     example = dict_to_namedtuple(example, name)
 
     # convert any Python values to numpy
-    example = buffer_func(np.asanyarray, example)
+    example = buffer_map(np.asanyarray, example)
 
     # demote any 1d scalar arrays to actual scalars
     # this ensures that the final buffer with leading dimensions is the right size
@@ -42,7 +42,7 @@ def buffer_from_dict_example(example: Dict, leading_dims: Tuple[int, ...], Array
         if arr.shape == (1,):
             return arr[0]
         return arr
-    example = buffer_func(to_numpy_scalar, example)
+    example = buffer_map(to_numpy_scalar, example)
 
     # force float64 arrays to float32 arrays to save memory
     if force_float32:
@@ -51,6 +51,6 @@ def buffer_from_dict_example(example: Dict, leading_dims: Tuple[int, ...], Array
                 return arr.astype(np.float32)
             return arr
 
-        example = buffer_func(force_float_to_float32, example)
+        example = buffer_map(force_float_to_float32, example)
 
     return buffer_from_example(example, leading_dims, ArrayClass, **kwargs)

@@ -24,7 +24,7 @@ def buffer_method(buffer: Union[Buffer, tuple], method_name: str, *args, **kwarg
     return getattr(buffer, method_name)(*args, **kwargs)
 
 
-def buffer_func(func: Callable[[Buffer, Any], Any], buffer: Union[Buffer, tuple],
+def buffer_map(func: Callable[[Buffer, Any], Any], buffer: Union[Buffer, tuple],
                 *args, **kwargs) -> Buffer:
     """Call function ``func(buf, *args, **kwargs)`` on all contents of
     ``buffer_``, and return the results.  ``buffer_`` can be an arbitrary
@@ -33,7 +33,7 @@ def buffer_func(func: Callable[[Buffer, Any], Any], buffer: Union[Buffer, tuple]
     ``None`` fields remain ``None``.
     """
     if isinstance(buffer, tuple): # non-leaf node
-        contents = tuple(buffer_func(func, elem, *args, **kwargs) for elem in buffer)
+        contents = tuple(buffer_map(func, elem, *args, **kwargs) for elem in buffer)
         if isinstance(buffer, NamedTuple):
             return buffer._make(contents)
         # buffer is a tuple

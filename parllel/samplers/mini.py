@@ -134,7 +134,7 @@ class MiniSampler:
         batch_samples = self.batch_transform(self.batch_buffer)
 
         # convert to underlying numpy array
-        batch_samples = buffer_func(np.asarray, batch_samples)
+        batch_samples = buffer_map(np.asarray, batch_samples)
 
         return batch_samples, completed_trajectories
 
