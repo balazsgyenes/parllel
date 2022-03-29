@@ -62,9 +62,11 @@ class EstimateAdvantage(BatchTransform):
     def __init__(self, discount: float, gae_lambda: float) -> None:
         """Adds a field to samples buffer under `env.advantage` for the
         advantage: roughly, the return left to go compared to the state value
-        predicted by the agent. If `lambda==1.0`, this is equivalent to the
-        discounted return minus the value, otherwise Generalized Advantage
-        Estimation (GAE) is used.
+        predicted by the agent. The agent's bootstrap value accounts for
+        rewards that are expected to be gained after the end of the current
+        batch. If `lambda==1.0`, advantage is estimated as discounted return
+        minus the value, otherwise Generalized Advantage Estimation (GAE) is\
+        used.
         
         Requires fields:
             - .env.reward
