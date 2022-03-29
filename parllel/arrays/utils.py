@@ -54,7 +54,3 @@ def buffer_from_dict_example(example: Dict, leading_dims: Tuple[int, ...], Array
         example = buffer_func(force_float_to_float32, example)
 
     return buffer_from_example(example, leading_dims, ArrayClass, **kwargs)
-
-
-def array_like_numpy(array: NDArray, ArrayCls: Array = Array, **kwargs):
-    return ArrayCls(shape=array.shape, dtype=array.dtype, **kwargs)
