@@ -2,7 +2,7 @@ from typing import Optional, Union
 
 import numpy as np
 
-from parllel.buffers import Buffer, buffer_func
+from parllel.buffers import Buffer, buffer_map
 from parllel.handlers import Handler, AgentStep
 from parllel.torch.utils import numpify_buffer, torchify_buffer
 
@@ -13,7 +13,7 @@ class TorchHandler(Handler):
         # TODO: preallocate a torch tensor version of the samples buffer
         # at runtime, just index into torch samples buffer instead of calling
         # from_numpy repeatedly, which might be slow
-        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
+        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
         observation, previous_action = torchify_buffer((observation, previous_action))
 
         example = self._agent.dry_run(n_states, observation, previous_action)
@@ -27,7 +27,7 @@ class TorchHandler(Handler):
              out_agent_info: Buffer = None,
              ) -> Optional[AgentStep]:
 
-        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
+        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
         observation, previous_action = torchify_buffer((observation, previous_action))
 
         agent_step: AgentStep = self._agent.step(observation, previous_action,
@@ -45,7 +45,7 @@ class TorchHandler(Handler):
     def value(self, observation: Buffer, previous_action: Optional[Buffer] = None,
               *, out_value: Buffer = None,
               ) -> Optional[Buffer]:
-        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
+        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
         observation, previous_action = torchify_buffer((observation, previous_action))
 
         value: Buffer = self._agent.value(observation, previous_action)

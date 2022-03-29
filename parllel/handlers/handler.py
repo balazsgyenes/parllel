@@ -3,7 +3,7 @@ from typing import Any, Optional, Union
 import numpy as np
 
 from parllel.handlers.agent import Agent, AgentStep
-from parllel.buffers import Buffer, buffer_func
+from parllel.buffers import Buffer, buffer_map
 
 
 class Handler:
@@ -12,7 +12,7 @@ class Handler:
 
     def dry_run(self, n_states: int, observation: Buffer, previous_action: Optional[Buffer] = None,
                 ) -> AgentStep:
-        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
+        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
 
         example = self._agent.dry_run(n_states, observation, previous_action)
 
@@ -23,7 +23,7 @@ class Handler:
              out_agent_info: Buffer = None,
              ) -> Optional[AgentStep]:
 
-        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
+        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
 
         agent_step: AgentStep = self._agent.step(observation, previous_action,
                                                  env_indices=env_indices)
@@ -38,7 +38,7 @@ class Handler:
     def value(self, observation: Buffer, previous_action: Optional[Buffer] = None,
               *, out_value: Buffer = None,
               ) -> Optional[Buffer]:
-        observation, previous_action = buffer_func(np.asarray,(observation, previous_action))
+        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
 
         value: Buffer = self._agent.value(observation, previous_action)
 

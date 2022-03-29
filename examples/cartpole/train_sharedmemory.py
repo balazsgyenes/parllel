@@ -8,13 +8,17 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.cages import Cage, ProcessCage
 from parllel.runners.onpolicy import OnPolicyRunner
-from parllel.samplers import MiniSampler
+from parllel.samplers.mini import MiniSampler
 from parllel.samplers.collections import Samples, AgentSamplesWBootstrap, EnvSamples
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
-from parllel.transforms.advantage import GeneralizedAdvantageEstimator
+from parllel.transforms import Compose
+from parllel.transforms.advantage import EstimateAdvantage
+from parllel.transforms.clip_rewards import ClipRewards
+from parllel.transforms.norm_obs import NormalizeObservations
+from parllel.transforms.norm_rewards import NormalizeRewards
 from parllel.types import BatchSpec, TrajInfo
 
 from build.make_env import make_env
@@ -37,6 +41,8 @@ def build():
     wait_before_reset=False
     discount = 0.99
     gae_lambda = 0.95
+    reward_min = -5.
+    reward_max = 5.
     learning_rate = 0.001
     n_steps = 200 * batch_spec.size
 
@@ -65,7 +71,7 @@ def build():
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), RotatingArrayCls, name="obs", padding=1)
     batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward", force_float32=True)
-    batch_done = buffer_from_dict_example(done, tuple(batch_spec), ArrayCls, name="done")
+    batch_done = buffer_from_dict_example(done, tuple(batch_spec), RotatingArrayCls, name="done", padding=1)
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
     batch_env_samples = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
@@ -113,14 +119,32 @@ def build():
         cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
     cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
-    batch_transform = GeneralizedAdvantageEstimator(
-        discount=discount, gae_lambda=gae_lambda)
+    obs_transform = NormalizeObservations(initial_count=10000)
+    batch_samples = obs_transform.dry_run(batch_samples)
+
+    reward_norm_transform = NormalizeRewards(discount=discount)
+    batch_samples = reward_norm_transform.dry_run(batch_samples, RotatingArrayCls)
+
+    reward_clip_transform = ClipRewards(reward_min=reward_min,
+        reward_max=reward_max)
+    batch_samples = reward_clip_transform.dry_run(batch_samples)
+
+    advantage_transform = EstimateAdvantage(discount=discount,
+        gae_lambda=gae_lambda)
+    batch_samples = advantage_transform.dry_run(batch_samples, ArrayCls)
+
+    batch_transform = Compose([
+        reward_norm_transform,
+        reward_clip_transform,
+        advantage_transform,
+    ])
 
     sampler = MiniSampler(batch_spec=batch_spec,
                           envs=cages,
                           agent=handler,
                           batch_buffer=batch_samples,
                           get_bootstrap_value=True,
+                          obs_transform=obs_transform,
                           batch_transform=batch_transform,
                           )
     sampler.decorrelate_environments()
