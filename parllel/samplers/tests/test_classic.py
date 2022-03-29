@@ -1,6 +1,5 @@
 from parllel.samplers.collections import AgentSamples, EnvSamples, Samples
-from parllel.arrays import Array, RotatingArray
-from parllel.buffers.utils import buffer_from_example
+from parllel.arrays import Array, RotatingArray, buffer_from_example
 from parllel.cages import Cage
 from parllel.handlers import Handler
 from parllel.samplers import ClassicSampler

@@ -5,9 +5,9 @@ from gym.envs.classic_control.cartpole import CartPoleEnv
 from gym.wrappers import TimeLimit
 
 from parllel.samplers.collections import AgentSamples, EnvSamples, Samples
-from parllel.arrays import Array, RotatingArray, ManagedMemoryArray, RotatingManagedMemoryArray
+from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
+    RotatingManagedMemoryArray, buffer_from_dict_example)
 from parllel.buffers import buffer_method
-from parllel.buffers.utils import buffer_from_dict_example
 from parllel.cages import Cage, ProcessCage
 from parllel.handlers import Handler
 from parllel.samplers import MiniSampler
