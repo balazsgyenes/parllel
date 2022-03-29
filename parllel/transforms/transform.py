@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Sequence, Tuple
+from typing import Sequence, Tuple
 
 from parllel.samplers import Samples
 

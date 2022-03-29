@@ -2,7 +2,6 @@ from typing import List, Sequence, Tuple
 
 import numpy as np
 
-from parllel.arrays.array import Array
 from parllel.buffers.utils import buffer_func, buffer_rotate
 from parllel.cages import Cage
 from parllel.handlers import Handler

@@ -2,7 +2,7 @@ from parllel.samplers.collections import AgentSamples, EnvSamples, Samples
 from parllel.arrays import Array, RotatingArray, buffer_from_example
 from parllel.cages import Cage
 from parllel.handlers import Handler
-from parllel.samplers import ClassicSampler
+from parllel.samplers.classic import ClassicSampler
 from parllel.samplers.tests.dummy_agent import DummyAgent
 from parllel.samplers.tests.dummy_env import DummyEnv
 from parllel.types.traj_info import TrajInfo

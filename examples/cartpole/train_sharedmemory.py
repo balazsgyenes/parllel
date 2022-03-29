@@ -8,7 +8,7 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.cages import Cage, ProcessCage
 from parllel.runners.onpolicy import OnPolicyRunner
-from parllel.samplers import MiniSampler
+from parllel.samplers.mini import MiniSampler
 from parllel.samplers.collections import Samples, AgentSamplesWBootstrap, EnvSamples
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO

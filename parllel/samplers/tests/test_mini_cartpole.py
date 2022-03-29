@@ -10,7 +10,7 @@ from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
 from parllel.buffers import buffer_method
 from parllel.cages import Cage, ProcessCage
 from parllel.handlers import Handler
-from parllel.samplers import MiniSampler
+from parllel.samplers.mini import MiniSampler
 from parllel.samplers.tests.random_agent import RandomAgent
 from parllel.types.traj_info import TrajInfo
 
