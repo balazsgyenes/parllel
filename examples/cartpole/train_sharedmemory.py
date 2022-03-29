@@ -16,6 +16,7 @@ from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
 from parllel.transforms.advantage import EstimateAdvantage
+from parllel.transforms.clip_rewards import ClipRewards
 from parllel.transforms.norm_obs import NormalizeObservations
 from parllel.transforms.norm_rewards import NormalizeRewards
 from parllel.types import BatchSpec, TrajInfo
@@ -121,9 +122,12 @@ def build():
     obs_transform = NormalizeObservations(initial_count=10000)
     batch_samples = obs_transform.dry_run(batch_samples)
 
-    reward_norm_transform = NormalizeRewards(discount=discount,
-        reward_min=reward_min, reward_max=reward_max)
+    reward_norm_transform = NormalizeRewards(discount=discount)
     batch_samples = reward_norm_transform.dry_run(batch_samples, RotatingArrayCls)
+
+    reward_clip_transform = ClipRewards(reward_min=reward_min,
+        reward_max=reward_max)
+    batch_samples = reward_clip_transform.dry_run(batch_samples)
 
     advantage_transform = EstimateAdvantage(discount=discount,
         gae_lambda=gae_lambda)
@@ -131,6 +135,7 @@ def build():
 
     batch_transform = Compose([
         reward_norm_transform,
+        reward_clip_transform,
         advantage_transform,
     ])
 

@@ -38,14 +38,12 @@ def compute_past_discount_return(
 class NormalizeRewards(BatchTransform):
     def __init__(self,
         discount: float,
-        reward_min: Optional[float] = None,
-        reward_max: Optional[float] = None,
         initial_count: Optional[float] = None
     ) -> None:
         """Normalizes rewards by dividing by the standard deviation of past
-        discounted returns. Optionally clips rewards to a maximum and minimum.
-        As a side-effect, adds past_return to the samples buffer for the
-        discounted returns gained by the agent up to the current time.
+        discounted returns. As a side-effect, adds past_return to the samples
+        buffer for the discounted returns gained by the agent up to the current
+        time.
 
         Requires fields:
             - .env.reward
@@ -55,17 +53,12 @@ class NormalizeRewards(BatchTransform):
             - .env.past_return
 
         :param discount: discount (gamma) for discounting rewards over time
-        :param reward_min: after normalization, clips rewards from below
-        :param reward_max: after normalization, clips rewards from above
         :param initial_count: seed the running mean and standard deviation
             model with `initial_count` instances of x~N(0,1). Increase this to
             improve stability, to prevent the mean and standard deviation from
             changing too quickly during early training
         """
         self._discount = discount
-        self._reward_min = reward_min
-        self._reward_max = reward_max
-        self._do_clip = reward_min is not None or reward_max is not None
         if initial_count is not None and initial_count < 1.:
             raise ValueError("Initial must be at least 1")
         self._initial_count = initial_count
@@ -130,7 +123,4 @@ class NormalizeRewards(BatchTransform):
         np.multiply(reward, 1 / (np.sqrt(self._return_statistics.var + EPSILON)),
             out=reward)
 
-        if self._do_clip:
-            np.clip(reward, self._reward_min, self._reward_max, out=reward)
-        
         return batch_samples
