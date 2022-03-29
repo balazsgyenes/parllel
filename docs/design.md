@@ -27,6 +27,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Buffer registration and reduction is very similar to `mp.shared_memory.SharedMemory`. If looking up SharedMemory in the global registry is not too slow, could we just rely on this functionality instead?
     - However, the benefit of the buffer registry is that deeply nested namedarraytuples are recovered in a single step.
 - Can we avoid defining a rigid interface to the Handler/Agent/Model? How can a user add another argument to the agent/model, and what is the use case for this? (e.g. agent_ids for multi-agent case)
+- What object(s) are responsible for array allocation for the batch buffer. This batch buffer is basically global state, so it falls under the responsibility of the build function, but Transform types currently allocate their own additional Arrays.
 
 
 ## TODOs
@@ -42,12 +43,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Actually implement `already_done` in `ParallelProcessCage`.
     - From Paul: Add calling `set_samples_buffer` on cages to sampler `__init__` method. In parallel sampler, the samples buffer needs to be alternated every batch, so this can be set at each batch.
         - This isn't necessarily what we want, since it makes the sampler responsible for the operation of the cages.
-- Batch transformations, e.g. reward normalization, advantage estimation (jitted), creation of `valid` array
-- Preallocate additional buffer elements returned by batch transformations. Dry run is extended to sampler so that batch buffer also includes results of transforms. A reallocation step happens after this, the new batch buffer is set everywhere, and training starts.
-    - What Array type should these extra fields be (e.g. advantage, return_, valid)?
-    - Do these extra fields need to be shared with the cages? They will never write into them.
-    - Transforms could use a try-catch mechanism to detect dry run. e.g. try accessing expected sampler buffer field, and allocate it if it doesn't exist yet.
-- Step transformations, e.g. observation normalization, image translation
 - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
 - In Handler, preallocate torch tensor version of batch buffer so that it does not have to be converted at each step.
 - Add mechanism for including `previous_action` in the samples buffer if the agent/algo requires it. Right now it's entirely up to the Sampler what gets passed to the agent, but the algo needs to know this too.
@@ -55,9 +50,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
 
 ## Bugs
 
-- BUG: fix array indexing logic. Is the wrapped array indexed when the Array object is indexed? How can this indexed array state be reconstructed when unpickling? Ensure this is correct in all cases, including rotating arrays.
-    - add second index history to rotating array. The public interface returns the unshifted indicies for use by the unpickler in reconstructing the array. The private index history tracks the shifted index history for use by `__setstate__` in reconstructing the numpy array
-    - removing `__getstate__` and `__setstate__` might solve this problem as well as result in a performance boost, since they are called by `copy.copy` each time the array is indexed. Can the numpy arrays simply be sent through the pipe?
 - BUG: fix memory leak when using `fork` start method
 
 

@@ -2,7 +2,7 @@ from typing import List, Sequence, Tuple
 
 import numpy as np
 
-from parllel.buffers import buffer_func
+from parllel.buffers.utils import buffer_func, buffer_rotate
 from parllel.cages import Cage
 from parllel.handlers import Handler
 from parllel.transforms import Transform
@@ -19,11 +19,16 @@ class MiniSampler:
         agent: Handler,
         batch_buffer: Samples,
         get_bootstrap_value: bool = False,
+        obs_transform: Transform = None,
         batch_transform: Transform = None,
     ) -> None:
         self.batch_spec = batch_spec
         self.get_bootstrap_value = get_bootstrap_value
         
+        if obs_transform is None:
+            obs_transform = lambda x: x
+        self.obs_transform = obs_transform
+
         if batch_transform is None:
             batch_transform = lambda x: x
         self.batch_transform = batch_transform
@@ -31,6 +36,10 @@ class MiniSampler:
         self.agent = agent
         self.envs = tuple(envs)
         assert len(self.envs) == self.batch_spec.B
+        for cage in self.envs:
+            if cage.wait_before_reset:
+                raise ValueError("MiniSampler expects cages that reset"
+                    " environments immediately. Set wait_before_reset=False")
         self.batch_buffer = batch_buffer
 
         # bring all environments into a known state
@@ -82,15 +91,18 @@ class MiniSampler:
         )
 
         # rotate last values from previous batch to become previous values
-        observation.rotate()
+        buffer_rotate(self.batch_buffer)
 
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
         
         # main sampling loop
         for t in range(self.batch_spec.T):
+
+            # apply any transforms to the observation before the agent steps
+            self.batch_samples = self.obs_transform(self.batch_buffer, t)
+
             # agent observes environment and outputs actions
-            # step_action and step_reward are from previous time step (t-1)
             self.agent.step(observation[t], out_action=action[t],
                 out_agent_info=agent_info[t])
 
@@ -119,10 +131,10 @@ class MiniSampler:
             in env.collect_completed_trajs()
             ]
 
-        # convert to underlying numpy array
-        batch_samples = buffer_func(np.asarray, self.batch_buffer)
+        batch_samples = self.batch_transform(self.batch_buffer)
 
-        batch_samples = self.batch_transform(batch_samples)
+        # convert to underlying numpy array
+        batch_samples = buffer_map(np.asarray, batch_samples)
 
         return batch_samples, completed_trajectories
 

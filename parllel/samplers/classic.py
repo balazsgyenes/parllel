@@ -4,7 +4,7 @@ from typing import List, Sequence, Tuple
 import numpy as np
 
 from parllel.arrays import Array, buffer_from_example
-from parllel.buffers import Buffer, buffer_func
+from parllel.buffers import Buffer, buffer_map
 from parllel.cages import Cage
 from parllel.handlers.agent import Agent
 from parllel.types.traj_info import TrajInfo
@@ -132,7 +132,7 @@ class ClassicSampler:
         # collect all completed trajectories from envs
         completed_trajectories = [traj for env in self.envs for traj in env.collect_completed_trajs()]
 
-        batch_samples = buffer_func(np.asarray, self.batch_buffer[:(t+1)])
+        batch_samples = buffer_map(np.asarray, self.batch_buffer[:(t+1)])
 
         return batch_samples, completed_trajectories
 

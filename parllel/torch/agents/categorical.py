@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 import torch
 
-from parllel.buffers import Buffer, buffer_func, buffer_method
+from parllel.buffers import Buffer, buffer_map, buffer_method
 from parllel.handlers.agent import AgentStep
 from parllel.torch.distributions.categorical import Categorical, DistInfo
 from parllel.torch.utils import buffer_to_device
@@ -71,7 +71,7 @@ class CategoricalPgAgent(TorchAgent):
                 # concatenate in B dimension (shape should be [N,B,H])
                 return torch.cat(rnn_states, dim=1)
 
-            self._rnn_states = buffer_func(example_rnn_state, extend_rnn_state)
+            self._rnn_states = buffer_map(example_rnn_state, extend_rnn_state)
 
             # Transpose the rnn_state from [N,B,H] --> [B,N,H] for storage.
             example_rnn_state = buffer_method(example_rnn_state, "transpose", 0, 1)

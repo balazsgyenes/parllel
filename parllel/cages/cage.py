@@ -5,7 +5,7 @@ import gym
 from gym.wrappers import TimeLimit as GymTimeLimit
 
 from parllel.arrays import Array
-from parllel.buffers import Buffer, buffer_func
+from parllel.buffers import Buffer, buffer_map
 from parllel.buffers.named_tuple import namedtuple_to_dict
 from parllel.types.traj_info import TrajInfo
 
@@ -104,7 +104,7 @@ class Cage:
         """If any out parameter is given, they must all be given. 
         """
         # get underlying numpy arrays and convert to dict if needed
-        action = buffer_func(np.asarray, action)
+        action = buffer_map(np.asarray, action)
         action = namedtuple_to_dict(action)
 
         obs, reward, done, env_info = self._env.step(action)
