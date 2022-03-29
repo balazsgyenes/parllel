@@ -6,7 +6,7 @@ from parllel.arrays import Array
 from parllel.buffers import NamedArrayTupleClass
 from parllel.samplers import Samples, EnvSamples
 
-from .transform import Transform
+from .transform import BatchTransform
 
 
 @njit(fastmath=True)
@@ -58,8 +58,27 @@ def compute_gae_advantage(
     return_[...] = advantage + value
 
 
-class EstimateAdvantage(Transform):
+class EstimateAdvantage(BatchTransform):
     def __init__(self, discount: float, gae_lambda: float) -> None:
+        """Adds a field to samples buffer under `env.advantage` for the
+        advantage: roughly, the return left to go compared to the state value
+        predicted by the agent. If `lambda==1.0`, this is equivalent to the
+        discounted return minus the value, otherwise Generalized Advantage
+        Estimation (GAE) is used.
+        
+        Requires fields:
+            - .env.reward
+            - .env.done
+            - .agent.agent_info.value
+            - .agent.bootstrap_value
+        
+        Adds fields:
+            - .env.advantage
+            - .env.return_
+
+        :param discount: discount (gamma) for discounting rewards over time
+        :param gae_lambda: lambda parameter for GAE algorithm
+        """
         self._discount = discount
         self._lambda = gae_lambda
         if gae_lambda == 1.0:
@@ -89,8 +108,7 @@ class EstimateAdvantage(Transform):
         )
         batch_samples = batch_samples._replace(env = env_samples)
 
-        # test the forward pass
-        return self.__call__(batch_samples)
+        return batch_samples
 
     def __call__(self, batch_samples: Samples) -> Samples:
         self.estimator(

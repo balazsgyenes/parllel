@@ -5,16 +5,16 @@ import numpy as np
 from parllel.samplers import Samples
 
 from .running_mean_std import RunningMeanStd
-from .transform import Transform
+from .transform import StepTransform
 
 
 EPSILON = 1e-6
 
 
-class NormalizeObservations(Transform):
+class NormalizeObservations(StepTransform):
     def __init__(self, initial_count: Optional[float] = None) -> None:
-        """Normalizes the observation after every time step. This transform can
-        only be used as a step transform.
+        """Normalizes the observation by subtracting the mean and dividing by
+        the standard deviation.
 
         :param initial_count: seed the running mean and standard deviation
             model with `initial_count` instances of x~N(0,1). Increase this to
@@ -38,7 +38,7 @@ class NormalizeObservations(Transform):
         
         return batch_samples
 
-    def __call__(self, batch_samples: Samples, t: Optional[int] = None) -> Samples:
+    def __call__(self, batch_samples: Samples, t: int) -> Samples:
         step_obs = np.asarray(batch_samples.env.observation[t])
 
         # update statistics of each element of observation

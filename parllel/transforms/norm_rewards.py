@@ -9,7 +9,7 @@ from parllel.buffers import NamedArrayTupleClass
 from parllel.samplers import Samples, EnvSamples
 
 from .running_mean_std import RunningMeanStd
-from .transform import Transform
+from .transform import BatchTransform
 
 
 EPSILON = 1e-6
@@ -35,7 +35,7 @@ def compute_past_discount_return(
         return_[t] = reward[t] + return_[t - 1] * discount * not_done[t - 1]
 
 
-class NormalizeRewards(Transform):
+class NormalizeRewards(BatchTransform):
     def __init__(self,
         discount: float,
         reward_min: Optional[float] = None,
@@ -44,8 +44,17 @@ class NormalizeRewards(Transform):
     ) -> None:
         """Normalizes rewards by dividing by the standard deviation of past
         discounted returns. Optionally clips rewards to a maximum and minimum.
+        As a side-effect, adds past_return to the samples buffer for the
+        discounted returns gained by the agent up to the current time.
 
-        :param discount: discount (gamma) for discounting returns
+        Requires fields:
+            - .env.reward
+            - .env.done
+
+        Adds fields:
+            - .env.past_return
+
+        :param discount: discount (gamma) for discounting rewards over time
         :param reward_min: after normalization, clips rewards from below
         :param reward_max: after normalization, clips rewards from above
         :param initial_count: seed the running mean and standard deviation
@@ -97,10 +106,7 @@ class NormalizeRewards(Transform):
 
         return batch_samples
 
-    def __call__(self, batch_samples: Samples, t: Optional[int] = None) -> Samples:
-        if t is not None:
-            raise NotImplementedError
-
+    def __call__(self, batch_samples: Samples) -> Samples:
         reward = np.asarray(batch_samples.env.reward)
         past_return = batch_samples.env.past_return
         previous_past_return = np.asarray(past_return[past_return.first - 1])

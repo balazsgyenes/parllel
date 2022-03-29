@@ -6,7 +6,7 @@ from parllel.arrays import Array
 from parllel.buffers import NamedArrayTupleClass
 from parllel.samplers import Samples, EnvSamples
 
-from .transform import Transform
+from .transform import BatchTransform
 
 
 @njit
@@ -24,16 +24,19 @@ def compute_valid_from_done(done: NDArray[np.bool_], out_valid: NDArray[np.bool_
     return valid
 
 
-class ComputeValidLearningSteps(Transform):
-    def __init__(self) -> None:
-        """Adds a field to samples buffer under `env.valid` which defines
-        whether the time step is valid for learning in recurrent problems.
-        Because Pytorch recurrent models cannot reset their hidden state in
-        the middle of a batch, steps after an environment reset are invalid
-        and must be masked out of the loss.
-        """
-        self._EnvSamplesClass = None
-        
+class ComputeValidLearningSteps(BatchTransform):
+    """Adds a field to samples buffer which defines whether the time step
+    is valid for learning in recurrent problems. Because Pytorch recurrent
+    models cannot reset their hidden state in the middle of a batch, steps
+    after an environment reset are invalid and must be masked out of the
+    loss.
+
+    Requires fields:
+        - .env.done
+    
+    Adds fields:
+        - .env.valid
+    """
     def dry_run(self, batch_samples: Samples, ArrayCls: Array) -> Samples:
         # get convenient local references
         env_samples: EnvSamples = batch_samples.env
@@ -50,9 +53,9 @@ class ComputeValidLearningSteps(Transform):
         env_samples = EnvSamplesClass(
             **env_samples._asdict(), valid=valid,
         )
-
         batch_samples = batch_samples._replace(env = env_samples)
-        return self.__call__(batch_samples)
+
+        return batch_samples
 
     def __call__(self, batch_samples: Samples) -> Samples:
         compute_valid_from_done(

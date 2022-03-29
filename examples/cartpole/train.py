@@ -30,7 +30,7 @@ def build():
     batch_B = 16
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = False
+    parallel = True
     EnvClass=make_env
     env_kwargs={
         "max_episode_steps": 1000,
@@ -113,8 +113,8 @@ def build():
     for cage in cages:
         cage.set_samples_buffer(batch_action, *batch_env_samples)
 
-    obs_norm_transform = NormalizeObservations(initial_count=10000)
-    batch_samples = obs_norm_transform.dry_run(batch_samples)
+    obs_transform = NormalizeObservations(initial_count=10000)
+    batch_samples = obs_transform.dry_run(batch_samples)
 
     reward_norm_transform = NormalizeRewards(discount=discount,
         reward_min=reward_min, reward_max=reward_max)
@@ -134,7 +134,7 @@ def build():
                           agent=handler,
                           batch_buffer=batch_samples,
                           get_bootstrap_value=True,
-                          step_transform=obs_norm_transform,
+                          obs_transform=obs_transform,
                           batch_transform=batch_transform,
                           )
     sampler.decorrelate_environments()

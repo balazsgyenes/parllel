@@ -118,8 +118,8 @@ def build():
         cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
     cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
-    obs_norm_transform = NormalizeObservations()
-    batch_samples = obs_norm_transform.dry_run(batch_samples)
+    obs_transform = NormalizeObservations(initial_count=10000)
+    batch_samples = obs_transform.dry_run(batch_samples)
 
     reward_norm_transform = NormalizeRewards(discount=discount,
         reward_min=reward_min, reward_max=reward_max)
@@ -139,7 +139,7 @@ def build():
                           agent=handler,
                           batch_buffer=batch_samples,
                           get_bootstrap_value=True,
-                          step_transform=obs_norm_transform,
+                          obs_transform=obs_transform,
                           batch_transform=batch_transform,
                           )
     sampler.decorrelate_environments()
