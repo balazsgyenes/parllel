@@ -31,7 +31,7 @@ def compute_discount_return(
     # for t in reversed(range(len(reward) - 1)): # numba doesn't support reversed
     for t in range(len(reward) - 2, -1, -1):
         return_[t] = reward[t] + return_[t + 1] * discount * not_done[t]
-    advantage[:] = return_ - value
+    advantage[...] = return_ - value
 
 
 @njit(fastmath=True)
@@ -55,7 +55,7 @@ def compute_gae_advantage(
     for t in range(len(reward) - 2, -1, -1): # iterate backwards through time
         delta = reward[t] + discount * value[t + 1] * not_done[t] - value[t]
         advantage[t] = delta + discount * gae_lambda * not_done[t] * advantage[t + 1]
-    return_[:] = advantage + value
+    return_[...] = advantage + value
 
 
 class EstimateAdvantage(Transform):
@@ -90,9 +90,7 @@ class EstimateAdvantage(Transform):
         batch_samples = batch_samples._replace(env = env_samples)
 
         # test the forward pass
-        self.__call__(batch_samples)
-
-        return batch_samples
+        return self.__call__(batch_samples)
 
     def __call__(self, batch_samples: Samples) -> Samples:
         self.estimator(

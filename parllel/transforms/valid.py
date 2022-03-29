@@ -2,6 +2,7 @@ from numba import njit
 import numpy as np
 from nptyping import NDArray
 
+from parllel.arrays import Array
 from parllel.buffers import NamedArrayTupleClass
 from parllel.samplers import Samples, EnvSamples
 
@@ -9,7 +10,7 @@ from .transform import Transform
 
 
 @njit
-def valid_from_done(done: NDArray[np.bool_], out_valid: NDArray[np.bool_]):
+def compute_valid_from_done(done: NDArray[np.bool_], out_valid: NDArray[np.bool_]):
     """Returns a float mask which is zero for all time-steps after a
     `done=True` is signaled.  This function operates on the leading dimension
     of `done`, assumed to correspond to time [T,...], other dimensions are
@@ -23,35 +24,39 @@ def valid_from_done(done: NDArray[np.bool_], out_valid: NDArray[np.bool_]):
     return valid
 
 
-class ValidFromDone(Transform):
+class ComputeValidLearningSteps(Transform):
     def __init__(self) -> None:
+        """Adds a field to samples buffer under `env.valid` which defines
+        whether the time step is valid for learning in recurrent problems.
+        Because Pytorch recurrent models cannot reset their hidden state in
+        the middle of a batch, steps after an environment reset are invalid
+        and must be masked out of the loss.
+        """
         self._EnvSamplesClass = None
         
-    def dry_run(self, batch_samples: Samples) -> Samples:
+    def dry_run(self, batch_samples: Samples, ArrayCls: Array) -> Samples:
+        # get convenient local references
         env_samples: EnvSamples = batch_samples.env
+        done = env_samples.done
 
         EnvSamplesClass = NamedArrayTupleClass(
             typename = env_samples._typename,
             fields = env_samples._fields + ("valid",)
         )
 
-        valid = np.zeros_like(batch_samples.env.reward)
-
-        valid_from_done(
-            batch_samples.env.done,
-            valid,
-        )
+        # allocate new Array objects for advantage and return_
+        valid = ArrayCls(shape=done.shape, dtype=done.dtype)
 
         env_samples = EnvSamplesClass(
             **env_samples._asdict(), valid=valid,
         )
 
-        batch_samples = Samples(env=env_samples, agent=batch_samples.agent)
-        return batch_samples
+        batch_samples = batch_samples._replace(env = env_samples)
+        return self.__call__(batch_samples)
 
     def __call__(self, batch_samples: Samples) -> Samples:
-        valid_from_done(
-            batch_samples.env.done,
-            batch_samples.env.valid,
+        compute_valid_from_done(
+            np.asarray(batch_samples.env.done),
+            np.asarray(batch_samples.env.valid),
         )
         return batch_samples

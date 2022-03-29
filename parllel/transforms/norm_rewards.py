@@ -40,18 +40,35 @@ class NormalizeRewards(Transform):
         discount: float,
         reward_min: Optional[float] = None,
         reward_max: Optional[float] = None,
+        initial_count: Optional[float] = None
     ) -> None:
+        """Normalizes rewards by dividing by the standard deviation of past
+        discounted returns. Optionally clips rewards to a maximum and minimum.
+
+        :param discount: discount (gamma) for discounting returns
+        :param reward_min: after normalization, clips rewards from below
+        :param reward_max: after normalization, clips rewards from above
+        :param initial_count: seed the running mean and standard deviation
+            model with `initial_count` instances of x~N(0,1). Increase this to
+            improve stability, to prevent the mean and standard deviation from
+            changing too quickly during early training
+        """
         self._discount = discount
         self._reward_min = reward_min
         self._reward_max = reward_max
         self._do_clip = reward_min is not None or reward_max is not None
-        self._reward_statistics = RunningMeanStd(shape=(1,))
+        if initial_count is not None and initial_count < 1.:
+            raise ValueError("Initial must be at least 1")
+        self._initial_count = initial_count
     
     def dry_run(self, batch_samples: Samples, RotatingArrayCls: Array) -> Samples:
         # get convenient local references
         env_samples: EnvSamples = batch_samples.env
         reward = env_samples.reward
-        done = env_samples.done
+
+        if not isinstance(env_samples.done, RotatingArray):
+            raise TypeError("batch_samples.env.done must be a RotatingArray "
+                            "when using NormalizeRewards")
 
         # create new NamedArrayTuple for env samples with additional field
         EnvSamplesClass = NamedArrayTupleClass(
@@ -65,32 +82,33 @@ class NormalizeRewards(Transform):
         past_return = RotatingArrayCls(shape=reward.shape,
             dtype=reward.dtype, padding=1)
 
-        # if done is not a rotating array, reallocate as a rotating array
-        if not isinstance(env_samples.done, RotatingArray):
-            done = RotatingArrayCls(shape=done.shape, dtype=done.dtype, padding=1)
-            done[:] = env_samples.done
-            env_samples_dict["done"] = done
-
         # package everything back into batch_samples
         env_samples = EnvSamplesClass(
             **env_samples_dict, past_return=past_return,
         )
         batch_samples = batch_samples._replace(env=env_samples)
 
-        # test the forward pass
-        self.__call__(batch_samples)
+        # create model to track running mean and std_dev of samples
+        if self._initial_count is not None:
+            self._return_statistics = RunningMeanStd(shape=(),
+                initial_count=self._initial_count)
+        else:
+            self._return_statistics = RunningMeanStd(shape=())
 
         return batch_samples
 
-    def __call__(self, batch_samples: Samples) -> Samples:
+    def __call__(self, batch_samples: Samples, t: Optional[int] = None) -> Samples:
+        if t is not None:
+            raise NotImplementedError
 
         reward = np.asarray(batch_samples.env.reward)
-        done = np.asarray(batch_samples.env.done)
-        past_return = np.asarray(batch_samples.env.past_return)
-        previous_past_return = np.asarray(batch_samples.env.past_return[-1])
-        previous_done = np.asarray(batch_samples.env.done[-1])
+        past_return = batch_samples.env.past_return
+        previous_past_return = np.asarray(past_return[past_return.first - 1])
+        past_return = np.asarray(past_return)
+        done = batch_samples.env.done
+        previous_done = np.asarray(done[done.first - 1])
+        done = np.asarray(done)
 
-        # TODO: modify this function to take just 4 arguments, arrays of different lengths
         compute_past_discount_return(
             reward,
             done,
@@ -101,9 +119,9 @@ class NormalizeRewards(Transform):
             )
 
         # update statistics of discounted return
-        self._reward_statistics.update(past_return)
+        self._return_statistics.update(past_return)
 
-        np.multiply(reward, 1 / (np.sqrt(self._reward_statistics.var + EPSILON)),
+        np.multiply(reward, 1 / (np.sqrt(self._return_statistics.var + EPSILON)),
             out=reward)
 
         if self._do_clip:

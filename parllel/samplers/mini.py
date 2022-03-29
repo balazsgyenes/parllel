@@ -20,11 +20,16 @@ class MiniSampler:
         agent: Handler,
         batch_buffer: Samples,
         get_bootstrap_value: bool = False,
+        step_transform: Transform = None,        
         batch_transform: Transform = None,
     ) -> None:
         self.batch_spec = batch_spec
         self.get_bootstrap_value = get_bootstrap_value
         
+        if step_transform is None:
+            step_transform = lambda x: x
+        self.step_transform = step_transform
+
         if batch_transform is None:
             batch_transform = lambda x: x
         self.batch_transform = batch_transform
@@ -94,6 +99,8 @@ class MiniSampler:
         
         # main sampling loop
         for t in range(self.batch_spec.T):
+            self.batch_samples = self.step_transform(self.batch_buffer, t)
+
             # agent observes environment and outputs actions
             self.agent.step(observation[t], out_action=action[t],
                 out_agent_info=agent_info[t])
