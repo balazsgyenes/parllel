@@ -1,47 +1,62 @@
 from functools import reduce
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from parllel.arrays import Array, buffer_from_example
-from parllel.buffers import Buffer, buffer_map
+from parllel.arrays import buffer_from_example
+from parllel.buffers.utils import buffer_map, buffer_method, buffer_rotate
 from parllel.cages import Cage
-from parllel.handlers.agent import Agent
-from parllel.types.traj_info import TrajInfo
+from parllel.handlers import Handler
+from parllel.transforms import Transform
+from parllel.types import BatchSpec, TrajInfo
+
 from .collections import Samples
+from .sampler import Sampler
 
-class ClassicSampler:
-    """
-    TODO: prevent calls to agent.step for environments that are done and waiting to be reset
-    TODO: we need the step buffers (step_reward and step_action) only because after resets,
-    we want to show the agent a different previous reward and previous action (zeros) than
-    what we save into the samples buffer (the real last reward and action from the traj)
-    Can we make this nicer?
-    """
+
+class RecurrentSampler(Sampler):
     def __init__(self,
-        batch_T: int,
-        batch_B: int,
-        get_bootstrap_value: bool = False,
-        reset_only_after_batch: bool = False,
-    ) -> None:
-        self.batch_T = batch_T
-        self.batch_B = batch_B
-        self.get_bootstrap_value = get_bootstrap_value
-        self.reset_only_after_batch = reset_only_after_batch
-
-    def initialize(self,
-        agent: Agent,
+        batch_spec: BatchSpec,
         envs: Sequence[Cage],
+        agent: Handler,
         batch_buffer: Samples,
+        max_steps_decorrelate: Optional[int] = None,
+        get_bootstrap_value: bool = False,
+        obs_transform: Transform = None,
+        batch_transform: Transform = None,
     ) -> None:
-        self.agent = agent
-        self.envs = tuple(envs)
-        assert len(envs) == self.batch_B
-        self.batch_buffer = batch_buffer
+        for cage in envs:
+            if not cage.wait_before_reset:
+                raise ValueError("RecurrentSampler expects cages that do not "
+                    "reset environments until the end of a batch. Set "
+                    "wait_before_reset=True")
+        
+        super().__init__(
+            batch_spec = batch_spec,
+            envs = envs,
+            agent = agent,
+            batch_buffer = batch_buffer,
+            max_steps_decorrelate = max_steps_decorrelate,
+        )
+
+        self.get_bootstrap_value = get_bootstrap_value
+        
+        if obs_transform is None:
+            obs_transform = lambda x, t: x
+        self.obs_transform = obs_transform
+
+        if batch_transform is None:
+            batch_transform = lambda x: x
+        self.batch_transform = batch_transform
+
+        # prepare cages for sampling
+        self.initialize()
+
+    def initialize(self) -> None:
+        super().initialize()
 
         # create array to hold "previous action" temporarily
-        # TODO: verify this works
-        self.step_action = buffer_from_example(batch_buffer.agent.action[0], (), Array)
+        self._step_action = buffer_from_example(self.batch_buffer.agent.action[0], ())
 
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         # get references to buffer elements
@@ -55,29 +70,43 @@ class ClassicSampler:
             self.batch_buffer.env.done,
             self.batch_buffer.env.env_info,
         )
-        step_action = self.step_action
-        step_reward = self.step_reward
+        step_action = self._step_action
+        
+        # initialize step_action to the final value from the last batch
+        last_T = self.batch_spec.T - 1
+        step_action[...] = action[last_T]
 
         # rotate last values from previous batch to become previous values
-        observation.rotate()
-        # action.rotate()
-        # reward.rotate()
-
-        #TODO: ensure correct initial values for step_action and step_reward
+        buffer_rotate(self.batch_buffer)
 
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
         
         # main sampling loop
-        for t in range(0, self.batch_T):
+        envs_to_step = tuple(enumerate(self.envs))
+        for t in range(self.batch_spec.T):
+
+            envs_to_step = tuple(
+                filter(lambda b_env: not b_env[1].already_done, envs_to_step)
+            )
+
+            # TODO:
+            # filter envs sent to obs_transform so that e.g. statistics are
+            # not affected by environments that are done
+            # probably can make envs_to_step cleaner by maintaining an np array
+            # of indices to step
+
+            # apply any transforms to the observation before the agent steps
+            self.batch_samples = self.obs_transform(self.batch_buffer, t)
+
             # agent observes environment and outputs actions
             # step_action and step_reward are from previous time step (t-1)
-            self.agent.step(observation[t], step_action, step_reward,
-                out_action=step_action, out_agent_info=agent_info[t])
+            self.agent.step(observation[t], step_action, out_action=step_action,
+                out_agent_info=agent_info[t])
 
             for b, env in enumerate(self.envs):
                 env.step_async(step_action[b],
-                    out_obs=observation[t+1, b], out_reward=step_reward[b],
+                    out_obs=observation[t+1, b], out_reward=reward[b],
                     out_done=done[t, b], out_info=env_info[t, b])
 
             # commit step_action to sample buffer, it was written by the agent
@@ -86,12 +115,9 @@ class ClassicSampler:
             for b, env in enumerate(self.envs):
                 env.await_step()
 
-            # commit step_reward to sample buffer, it was written by the environments
-            reward[t] = step_reward
-
             if self.reset_only_after_batch:
                 # no reset is required during batch
-                if np.all(done[t]):
+                if all(env.already_done for env in self.envs):
                     # all environments done, stop sampling early
                     # copy last observations to the end of batch buffer
                     # after the array is rotated, this will become observation[0]
@@ -137,4 +163,5 @@ class ClassicSampler:
         return batch_samples, completed_trajectories
 
     def close(self):
-        pass
+        buffer_method(self._step_action, "close")
+        buffer_method(self._step_action, "destroy")

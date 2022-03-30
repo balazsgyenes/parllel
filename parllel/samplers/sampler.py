@@ -99,7 +99,7 @@ class Sampler(ABC):
 
             # filter out any environments that don't need to be stepped anymore
             envs_to_decorrelate = tuple(
-                filter(lambda i_env: t < n_random_steps[i_env[0]],
+                filter(lambda b_env: t < n_random_steps[b_env[0]],
                        envs_to_decorrelate)
             )
 
