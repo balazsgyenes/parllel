@@ -47,6 +47,12 @@ class Handler:
         else:
             out_value[:] = value
 
+    def reset(self) -> None:
+        self._agent.reset()
+
+    def reset_one(self, env_index: int) -> None:
+        self._agent.reset_one(env_index)
+
     def __getattr__(self, name: str) -> Any:
         if "_agent" in self.__dict__:
             return getattr(self._agent, name)

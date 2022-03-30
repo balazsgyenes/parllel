@@ -15,22 +15,15 @@ from .collections import EnvStep, EnvSpaces
 class Cage:
     """Cages abstract communication between the sampler and the environments.
 
-    Note: a sentinel object is used in place of None where an error
-    should be triggered. None is ignored by NamedArrayTuple, causing operations
-    to silently fail where we want an error to be thrown.
-
-    Args:
-        EnvClass (Callable): TODO
-        env_kwargs (Dict): Key word arguments that should be passed to the
-            `__init__` of `EnvClass`
-        TrajInfoClass (Callable): TODO
-        traj_info_kwargs (Dict): Key word arguments that should be passed to
-            the `__init__` of `TrajInfoClass`
-        wait_before_reset (bool): TODO
-
-    TODO: merge collect_deferred_reset and reset_async. The fact that the reset
-    has already been done in one of these cases is an internal implementation
-    detail
+    :param EnvClass (Callable): Environment class or factory function
+    :param env_kwargs (Dict): Key word arguments that should be passed to the
+        `__init__` of `EnvClass` or to the factory function
+    :param TrajInfoClass (Callable): TrajectoryInfo class or factory function
+    :param traj_info_kwargs (Dict): Key word arguments that should be passed to
+        the `__init__` of `TrajInfoClass` or to the factory function
+    wait_before_reset (bool): If True, environment does not reset when done
+        until `reset_async` is called, and `already_done` is set to True. If
+        False (default), the environment resets immediately.
     """
     def __init__(self,
         EnvClass: Callable,
@@ -158,10 +151,10 @@ class Cage:
         """Take a step with a random action from the env's action space.
         """
         action = self.spaces.action.sample()
-        wait_before_reset = self.wait_before_reset
-        self.wait_before_reset = False
-        self.step_async(action, out_obs, out_reward, out_done, out_info)
-        self.wait_before_reset = wait_before_reset
+
+        # call method in this class explicitly, in case overridden by child
+        Cage.step_async(self, action, out_obs=out_obs, out_reward=out_reward,
+            out_done=out_done, out_info=out_info)
 
         if self._step_result is not None:
             self._step_result = (action, self._step_result)

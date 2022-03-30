@@ -1,4 +1,4 @@
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -7,9 +7,12 @@ from parllel.cages import Cage
 from parllel.handlers import Handler
 from parllel.transforms import Transform
 from parllel.types import BatchSpec, TrajInfo
-from .collections import Samples
 
-class MiniSampler:
+from .collections import Samples
+from .sampler import Sampler
+
+
+class BasicSampler(Sampler):
     """Generates a batch of samples, where environments that are done are reset
     immediately. Use this sampler for non-recurrent agents.
     """
@@ -18,11 +21,24 @@ class MiniSampler:
         envs: Sequence[Cage],
         agent: Handler,
         batch_buffer: Samples,
+        max_steps_decorrelate: Optional[int] = None,
         get_bootstrap_value: bool = False,
         obs_transform: Transform = None,
         batch_transform: Transform = None,
     ) -> None:
-        self.batch_spec = batch_spec
+        for cage in envs:
+            if cage.wait_before_reset:
+                raise ValueError("BasicSampler expects cages that reset"
+                    " environments immediately. Set wait_before_reset=False")
+        
+        super().__init__(
+            batch_spec = batch_spec,
+            envs = envs,
+            agent = agent,
+            batch_buffer = batch_buffer,
+            max_steps_decorrelate = max_steps_decorrelate,
+        )
+
         self.get_bootstrap_value = get_bootstrap_value
         
         if obs_transform is None:
@@ -33,49 +49,8 @@ class MiniSampler:
             batch_transform = lambda x: x
         self.batch_transform = batch_transform
 
-        self.agent = agent
-        self.envs = tuple(envs)
-        assert len(self.envs) == self.batch_spec.B
-        for cage in self.envs:
-            if cage.wait_before_reset:
-                raise ValueError("MiniSampler expects cages that reset"
-                    " environments immediately. Set wait_before_reset=False")
-        self.batch_buffer = batch_buffer
-
-        # bring all environments into a known state
-        self.reset_all()
-
-    def reset_all(self) -> None:
-        """Reset all environments and save to beginning of observation
-        buffer.
-        """
-        observation = self.batch_buffer.env.observation
-        for b, env in enumerate(self.envs):
-            # save reset observation to the end of buffer, since it will be 
-            # rotated to the beginning
-            env.reset_async(out_obs=observation[observation.last + 1, b])
-
-        # reset RNN state of agent, if any
-        self.agent.reset()
-
-        # wait for envs to finish reset
-        for b, env in enumerate(self.envs):
-            env.await_step()
-
-    def get_example_output(self) -> Samples:
-        """Get example of a batch of samples."""
-        # we can't guarantee that there will be any completed trajectories, so
-        # we just ignore them
-        example_batch, _ = self.collect_batch(0)
-
-        self.reset_all()
-
-        return example_batch
-
-    def decorrelate_environments(self) -> None:
-        """Randomly step environments so they are not all synced up."""
-        # TODO: model this off of sampling loop
-        pass
+        # prepare cages for sampling
+        self.initialize()
 
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         # get references to buffer elements
@@ -137,6 +112,3 @@ class MiniSampler:
         batch_samples = buffer_map(np.asarray, batch_samples)
 
         return batch_samples, completed_trajectories
-
-    def close(self) -> Tuple[Sequence[Cage], Handler, Samples]:
-        return self.envs, self.agent, self.batch_buffer

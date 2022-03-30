@@ -8,7 +8,7 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.cages import Cage, ProcessCage
 from parllel.runners.onpolicy import OnPolicyRunner
-from parllel.samplers.mini import MiniSampler
+from parllel.samplers.basic import BasicSampler
 from parllel.samplers.collections import Samples, AgentSamplesWBootstrap, EnvSamples
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
@@ -28,7 +28,7 @@ from build.model import CartPoleFfCategoricalPgModel
 @contextmanager
 def build():
 
-    batch_B = 16
+    batch_B = 4
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
     parallel = True
@@ -139,15 +139,15 @@ def build():
         advantage_transform,
     ])
 
-    sampler = MiniSampler(batch_spec=batch_spec,
+    sampler = BasicSampler(batch_spec=batch_spec,
                           envs=cages,
                           agent=handler,
                           batch_buffer=batch_samples,
+                          max_steps_decorrelate=50,
                           get_bootstrap_value=True,
                           obs_transform=obs_transform,
                           batch_transform=batch_transform,
                           )
-    sampler.decorrelate_environments()
 
     optimizer = torch.optim.Adam(
         agent.parameters(),
@@ -169,7 +169,7 @@ def build():
         yield runner
     
     finally:
-        cages, handler, batch_samples = sampler.close()
+        sampler.close()
         agent.close()
         for cage in cages:
             cage.close()

@@ -6,7 +6,7 @@ from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
 from parllel.buffers import buffer_method
 from parllel.cages import Cage, ProcessCage
 from parllel.handlers import Handler
-from parllel.samplers.mini import MiniSampler
+from parllel.samplers.basic import MiniSampler
 from parllel.samplers.tests.dummy_agent import DummyAgent
 from parllel.samplers.tests.dummy_env import DummyEnv
 from parllel.types.traj_info import TrajInfo

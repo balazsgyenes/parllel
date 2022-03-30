@@ -9,7 +9,7 @@ from parllel.cages import Cage
 from parllel.types import BatchSpec
 
 from .collections import Samples
-from .mini import MiniSampler
+from .basic import MiniSampler
 
 
 class ProfilingSampler(MiniSampler):
