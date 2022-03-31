@@ -1,9 +1,10 @@
 from contextlib import contextmanager
 import multiprocessing as mp
 
+import numpy as np
 import torch
 
-from parllel.buffers import buffer_method
+from parllel.buffers import buffer_map, buffer_method
 from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
     RotatingManagedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.cages import Cage, ProcessCage
@@ -14,6 +15,7 @@ from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
+from parllel.torch.utils import numpify_buffer, torchify_buffer
 from parllel.transforms import Compose
 from parllel.transforms.advantage import EstimateAdvantage
 from parllel.transforms.clip_rewards import ClipRewards
@@ -101,7 +103,10 @@ def build():
 
     # get example output from agent
     example_obs, _, _, _ = example_env_output
-    action, agent_info = handler.dry_run(n_states=batch_spec.B, observation=example_obs)
+    example_obs = torchify_buffer(buffer_map(np.asarray, example_obs))
+    example_agent_step = agent.dry_run(n_states=batch_spec.B,
+        observation=example_obs)
+    action, agent_info = numpify_buffer(example_agent_step)
 
     # allocate batch buffer based on examples
     batch_action = buffer_from_example(action, tuple(batch_spec), ArrayCls)

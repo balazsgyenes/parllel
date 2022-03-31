@@ -1,10 +1,8 @@
-from functools import reduce
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from parllel.arrays import buffer_from_example
-from parllel.buffers.utils import buffer_map, buffer_method, buffer_rotate
+from parllel.buffers.utils import buffer_map, buffer_rotate
 from parllel.cages import Cage
 from parllel.handlers import Handler
 from parllel.transforms import Transform
@@ -25,11 +23,24 @@ class RecurrentSampler(Sampler):
         obs_transform: Transform = None,
         batch_transform: Transform = None,
     ) -> None:
+        """Generates samples for training recurrent agents.
+
+        TODO: obs transform should not include data from invalid time steps,
+        since this would distort statistics. When is valid calculated?
+        """
         for cage in envs:
             if not cage.wait_before_reset:
                 raise ValueError("RecurrentSampler expects cages that do not "
                     "reset environments until the end of a batch. Set "
                     "wait_before_reset=True")
+        
+        try:
+            # try writing beyond the apparent bounds of the action buffer
+            T_last = self.batch_spec.T - 1
+            batch_buffer.agent.action[T_last + 1] = 0
+        except IndexError:
+            raise TypeError("batch_samples.agent.action must be a "
+                "RotatingArray")
         
         super().__init__(
             batch_spec = batch_spec,
@@ -52,11 +63,12 @@ class RecurrentSampler(Sampler):
         # prepare cages for sampling
         self.initialize()
 
-    def initialize(self) -> None:
-        super().initialize()
-
-        # create array to hold "previous action" temporarily
-        self._step_action = buffer_from_example(self.batch_buffer.agent.action[0], ())
+    def reset_agent(self) -> None:
+        super().reset_agent()
+        # zero out previous action of very first step (after rotation)
+        # this matches internal state of agent, which also begins at zero
+        action = self.batch_buffer.agent.action
+        action[action.last] = 0
 
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         # get references to buffer elements
@@ -70,11 +82,8 @@ class RecurrentSampler(Sampler):
             self.batch_buffer.env.done,
             self.batch_buffer.env.env_info,
         )
-        step_action = self._step_action
-        
-        # initialize step_action to the final value from the last batch
+        envs = self.envs
         last_T = self.batch_spec.T - 1
-        step_action[...] = action[last_T]
 
         # rotate last values from previous batch to become previous values
         buffer_rotate(self.batch_buffer)
@@ -83,85 +92,60 @@ class RecurrentSampler(Sampler):
         self.agent.sample_mode(elapsed_steps)
         
         # main sampling loop
-        envs_to_step = tuple(enumerate(self.envs))
+        b_not_done_yet = list(range(len(envs)))
         for t in range(self.batch_spec.T):
 
-            envs_to_step = tuple(
-                filter(lambda b_env: not b_env[1].already_done, envs_to_step)
+            # get a list of environments that are not done yet
+            # we want to avoid stepping these
+            b_not_done_yet = list(
+                filter(lambda b: not envs[b].already_done, b_not_done_yet)
             )
 
-            # TODO:
-            # filter envs sent to obs_transform so that e.g. statistics are
-            # not affected by environments that are done
-            # probably can make envs_to_step cleaner by maintaining an np array
-            # of indices to step
+            if not b_not_done_yet:
+                # all done, we can stop sampling now
+                break
 
             # apply any transforms to the observation before the agent steps
-            self.batch_samples = self.obs_transform(self.batch_buffer, t)
+            self.batch_samples = self.obs_transform(self.batch_buffer,
+                (t, b_not_done_yet))
 
             # agent observes environment and outputs actions
-            # step_action and step_reward are from previous time step (t-1)
-            self.agent.step(observation[t], step_action, out_action=step_action,
+            self.agent.step(observation[t], out_action=action[t],
                 out_agent_info=agent_info[t])
 
-            for b, env in enumerate(self.envs):
-                env.step_async(step_action[b],
+            for b in b_not_done_yet:
+                envs[b].step_async(action[t, b],
                     out_obs=observation[t+1, b], out_reward=reward[b],
                     out_done=done[t, b], out_info=env_info[t, b])
 
-            # commit step_action to sample buffer, it was written by the agent
-            action[t] = step_action
-
-            for b, env in enumerate(self.envs):
-                env.await_step()
-
-            if self.reset_only_after_batch:
-                # no reset is required during batch
-                if all(env.already_done for env in self.envs):
-                    # all environments done, stop sampling early
-                    # copy last observations to the end of batch buffer
-                    # after the array is rotated, this will become observation[0]
-                    observation[self.batch_T] = observation[t+1]
-                    break
-            else:
-                # after step_reward is committed, reset agent, previous action and
-                # previous reward
-                for b, env in enumerate(self.envs):
-                    if done[t, b]:
-                        self.agent.reset_one(env_index=b)
-                        # previous action for next step
-                        step_action[b] = 0
-                        # previous reward for next step
-                        step_reward[b] = 0
-
-        # t is now the index of the last time step in batch
-        # t <= (batch_T - 1)
+            for b in b_not_done_yet:
+                envs[b].await_step()
 
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
             # if environment is already done, this value is invalid, but then
             # it will be ignored anyway
             self.batch_buffer.agent.bootstrap_value[:] = self.agent.value(
-                observation[t+1], action[t], reward[t])
+                observation[last_T + 1])
 
-        if self.reset_only_after_batch:
-            for b, env in enumerate(self.envs):
-                if done[t, b]:
-                    self.agent.reset_one(env_index=b)
-                    # overwrite next previous observation with reset observation
-                    env.collect_reset_obs(out_obs=observation[self.batch_T, b])
-                    # previous action for next batch
-                    step_action[b] = 0
-                    # previous reward for next batch
-                    step_reward[b] = 0
+        for b, env in enumerate(self.envs):
+            if env.already_done:
+                self.agent.reset_one(env_index=b)
+                # overwrite next first observation with reset observation
+                env.reset_async(out_obs=observation[last_T + 1, b])
+                env.await_step()
+                # previous action for next batch
+                action[last_T + 1, b] = 0
 
         # collect all completed trajectories from envs
-        completed_trajectories = [traj for env in self.envs for traj in env.collect_completed_trajs()]
+        completed_trajectories = [
+            traj for env in self.envs for traj
+            in env.collect_completed_trajs()
+            ]
 
-        batch_samples = buffer_map(np.asarray, self.batch_buffer[:(t+1)])
+        batch_samples = self.batch_transform(self.batch_buffer)
+
+        # convert to underlying numpy array
+        batch_samples = buffer_map(np.asarray, batch_samples)
 
         return batch_samples, completed_trajectories
-
-    def close(self):
-        buffer_method(self._step_action, "close")
-        buffer_method(self._step_action, "destroy")

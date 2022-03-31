@@ -65,6 +65,8 @@ class BasicSampler(Sampler):
             self.batch_buffer.env.env_info,
         )
 
+        last_T = self.batch_spec.T - 1
+
         # rotate last values from previous batch to become previous values
         buffer_rotate(self.batch_buffer)
 
@@ -98,7 +100,7 @@ class BasicSampler(Sampler):
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
             self.batch_buffer.agent.bootstrap_value[:] = self.agent.value(
-                observation[self.batch_spec.T])
+                observation[last_T + 1])
 
         # collect all completed trajectories from envs
         completed_trajectories = [

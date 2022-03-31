@@ -22,7 +22,7 @@ class NormalizeObservations(StepTransform):
             changing too quickly during early training
         """
         if initial_count is not None and initial_count < 1.:
-            raise ValueError("Initial must be at least 1")
+            raise ValueError("Initial count must be at least 1")
         self._initial_count = initial_count
 
     def dry_run(self, batch_samples: Samples) -> Samples:

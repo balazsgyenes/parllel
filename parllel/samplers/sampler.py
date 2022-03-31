@@ -46,10 +46,10 @@ class Sampler(ABC):
         """Prepare environments, agents and buffers for sampling.
         """
         self.reset_envs()
-        self.reset_agent()
         self.seed(seed=None)  # TODO: replace with seeding module
         if self.max_steps_decorrelate > 0:
             self.decorrelate_environments()
+        self.reset_agent()
 
     def reset_envs(self) -> None:
         """Reset all environments. Reset observations are written to the end+1

@@ -1,31 +1,25 @@
 from typing import Any, Optional, Union
 
 import numpy as np
+from nptyping import NDArray
 
-from parllel.handlers.agent import Agent, AgentStep
+from parllel.arrays import Array
 from parllel.buffers import Buffer, buffer_map
+
+from .agent import Agent, AgentStep
 
 
 class Handler:
     def __init__(self, agent: Agent) -> None:
         self._agent = agent
 
-    def dry_run(self, n_states: int, observation: Buffer, previous_action: Optional[Buffer] = None,
-                ) -> AgentStep:
-        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
+    def step(self, observation: Buffer[Array], *, env_indices: Union[int, slice] = ...,
+            out_action: Buffer[Array] = None, out_agent_info: Buffer[Array] = None,
+            ) -> Optional[AgentStep]:
 
-        example = self._agent.dry_run(n_states, observation, previous_action)
+        observation: Buffer[NDArray] = buffer_map(np.asarray, observation)
 
-        return example
-
-    def step(self, observation: Buffer, previous_action: Optional[Buffer] = None,
-             *, env_indices: Union[int, slice] = ..., out_action: Buffer = None,
-             out_agent_info: Buffer = None,
-             ) -> Optional[AgentStep]:
-
-        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
-
-        agent_step: AgentStep = self._agent.step(observation, previous_action,
+        agent_step: AgentStep = self._agent.step(observation,
                                                  env_indices=env_indices)
 
         if any(out is None for out in (out_action, out_agent_info)):
@@ -35,12 +29,11 @@ class Handler:
             out_action[:] = action
             out_agent_info[:] = agent_info
 
-    def value(self, observation: Buffer, previous_action: Optional[Buffer] = None,
-              *, out_value: Buffer = None,
-              ) -> Optional[Buffer]:
-        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
+    def value(self, observation: Buffer[Array], *, out_value: Buffer[Array] = None,
+            ) -> Optional[Buffer]:
+        observation = buffer_map(np.asarray, observation)
 
-        value: Buffer = self._agent.value(observation, previous_action)
+        value: Buffer[Array] = self._agent.value(observation)
 
         if out_value is None:
             return value
@@ -52,6 +45,12 @@ class Handler:
 
     def reset_one(self, env_index: int) -> None:
         self._agent.reset_one(env_index)
+
+    def sample_mode(self, elapsed_steps: int) -> None:
+        self._agent.sample_mode(elapsed_steps)
+
+    def close(self) -> None:
+        self._agent.close()
 
     def __getattr__(self, name: str) -> Any:
         if "_agent" in self.__dict__:
