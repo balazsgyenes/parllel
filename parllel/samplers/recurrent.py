@@ -1,10 +1,8 @@
-from multiprocessing.sharedctypes import Value
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from parllel.arrays import buffer_from_example
-from parllel.buffers import NamedArrayTupleClass
+from parllel.buffers.named_tuple import NamedArrayTupleClass
 from parllel.buffers.utils import buffer_map, buffer_rotate
 from parllel.cages import Cage
 from parllel.handlers import Handler
@@ -27,9 +25,6 @@ class RecurrentSampler(Sampler):
             batch_transform: Transform = None,
             ) -> None:
         """Generates samples for training recurrent agents.
-
-        TODO: obs transform should not include data from invalid time steps,
-        since this would distort statistics. When is valid calculated?
         """
         for cage in envs:
             if not cage.wait_before_reset:
@@ -40,8 +35,7 @@ class RecurrentSampler(Sampler):
         # verify that action is a RotatingArray
         try:
             # try writing beyond the apparent bounds of the action buffer
-            T_last = self.batch_spec.T - 1
-            batch_buffer.agent.action[T_last + 1] = 0
+            batch_buffer.agent.action[batch_spec.T] = 0
         except IndexError:
             raise TypeError("batch_buffer.agent.action must be a "
                 "RotatingArray")
@@ -54,7 +48,7 @@ class RecurrentSampler(Sampler):
         # verify that valid is a RotatingArray
         try:
             # try writing beyond the apparent bounds of the action buffer
-            batch_buffer.env.valid[T_last + 1] = 0
+            batch_buffer.env.valid[batch_spec.T] = 0
         except IndexError:
             raise TypeError("batch_buffer.env.valid must be a "
                 "RotatingArray")
@@ -114,8 +108,9 @@ class RecurrentSampler(Sampler):
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
         
-        # first time step is always valid
+        # first time step is always valid, rest are invalid by default
         valid[0] = True
+        valid[1:] = False
 
         # main sampling loop
         b_not_done_yet = list(range(len(envs)))
@@ -160,11 +155,11 @@ class RecurrentSampler(Sampler):
         for b, env in enumerate(self.envs):
             if env.already_done:
                 self.agent.reset_one(env_index=b)
+                # previous action for next batch
+                action[last_T + 1, b] = 0
                 # overwrite next first observation with reset observation
                 env.reset_async(out_obs=observation[last_T + 1, b])
                 env.await_step()
-                # previous action for next batch
-                action[last_T + 1, b] = 0
 
         # collect all completed trajectories from envs
         completed_trajectories = [
@@ -173,6 +168,13 @@ class RecurrentSampler(Sampler):
             ]
 
         batch_samples = self.batch_transform(self.batch_buffer)
+
+        batch_agent = batch_samples.agent
+        NewAgentSamplesCls = NamedArrayTupleClass(batch_agent._typename,
+            batch_agent._fields + ("prev_action",))
+        batch_agent = NewAgentSamplesCls(**batch_agent._asdict(),
+            prev_action=action[action.first - 1 : action.last])
+        batch_samples = batch_samples._replace(agent=batch_agent)
 
         # convert to underlying numpy array
         batch_samples = buffer_map(np.asarray, batch_samples)

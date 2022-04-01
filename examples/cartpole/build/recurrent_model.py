@@ -35,7 +35,7 @@ class CartPoleLstmCategoricalPgModel(nn.Module):
             input_size=mlp_input_size,
             hidden_sizes=pre_lstm_hidden_sizes,
             output_size=None,
-            nonlinearity=hidden_nonlinearity,
+            hidden_nonlinearity=hidden_nonlinearity,
         )
 
         self.lstm = torch.nn.LSTM(
@@ -43,12 +43,12 @@ class CartPoleLstmCategoricalPgModel(nn.Module):
             hidden_size=lstm_size,
         )
 
-        output_size = n_actions * 2 + 1
+        output_size = n_actions + 1
         self.head = MlpModel(
             input_size=lstm_size,
             hidden_sizes=post_lstm_hidden_sizes,
             output_size=output_size,
-            nonlinearity=hidden_nonlinearity,
+            hidden_nonlinearity=hidden_nonlinearity,
         )
 
     def forward(self, observation, previous_action, rnn_state=None):

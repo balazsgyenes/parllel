@@ -90,6 +90,8 @@ class NormalizeRewards(BatchTransform):
         )
         batch_samples = batch_samples._replace(env=env_samples)
 
+        self.only_valid = True if hasattr(batch_samples.env, "valid") else False
+
         # create model to track running mean and std_dev of samples
         if self._initial_count is not None:
             self._return_statistics = RunningMeanStd(shape=(),
@@ -115,10 +117,14 @@ class NormalizeRewards(BatchTransform):
             previous_done,
             self._discount,
             past_return,
-            )
+        )
 
         # update statistics of discounted return
-        self._return_statistics.update(past_return)
+        if self.only_valid:
+            valid = batch_samples.env.valid
+            self._return_statistics.update(past_return[valid])
+        else:
+            self._return_statistics.update(past_return)
 
         reward[:] = reward / (np.sqrt(self._return_statistics.var + EPSILON))
 

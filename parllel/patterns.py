@@ -1,11 +1,11 @@
 from contextlib import contextmanager
 from typing import Callable, Dict, Tuple
 
-from parllel.buffers import buffer_method
+from parllel.buffers import buffer_method, NamedArrayTupleClass
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.cages import Cage, ProcessCage
-from parllel.samplers.collections import EnvSamples
+from parllel.samplers.collections import AgentSamples, EnvSamples
 from parllel.types import BatchSpec
 
 
@@ -18,6 +18,7 @@ def build_cages_and_core_batch_buffers(
     wait_before_reset: bool,
     batch_spec: BatchSpec,
     parallel: bool,
+    recurrent: bool = False, # TODO: please remove me and make the previous_action part of agent_info
 ) -> Tuple:
 
     if parallel:
@@ -47,11 +48,17 @@ def build_cages_and_core_batch_buffers(
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), RotatingArrayCls, name="obs", padding=1)
-    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward", force_float32=True)
+    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward")
     batch_done = buffer_from_dict_example(done, tuple(batch_spec), RotatingArrayCls, name="done", padding=1)
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
-    batch_env_samples = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
-    batch_action = buffer_from_example(action, tuple(batch_spec), ArrayCls)
+    batch_buffer_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
+
+    ActionArrayCls = RotatingArrayCls if recurrent else ArrayCls
+    """In discrete problems, integer actions are used as array indices during
+    optimization. Pytorch requires indices to be 64-bit integers, so we do not
+    convert here.
+    """
+    batch_action = buffer_from_dict_example(action, tuple(batch_spec), ActionArrayCls, name="action", force_32bit=False)
 
     # pass batch buffers to Cage on creation
     if CageCls is ProcessCage:
@@ -61,11 +68,47 @@ def build_cages_and_core_batch_buffers(
     cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
     try:
-        yield cages, batch_action, batch_env_samples
+        yield cages, batch_action, batch_buffer_env
     finally:
         for cage in cages:
             cage.close()
-        buffer_method(batch_action, "close")
-        buffer_method(batch_env_samples, "close")
-        buffer_method(batch_action, "destroy")
-        buffer_method(batch_env_samples, "destroy")
+
+
+def add_bootstrap_value(batch_buffer):
+    batch_agent: AgentSamples = batch_buffer.agent    
+    batch_agent_info = batch_agent.agent_info
+
+    AgentSamplesClass = NamedArrayTupleClass(
+        typename = batch_agent._typename,
+        fields = batch_agent._fields + ("bootstrap_value",)
+    )
+
+    # remove T dimension, creating an array with only (B,) leading dimensions
+    batch_bootstrap_value = buffer_from_example(batch_agent_info.value[0])
+
+    batch_agent = AgentSamplesClass(
+        **batch_agent._asdict(), bootstrap_value=batch_bootstrap_value,
+    )
+    batch_buffer = batch_buffer._replace(agent=batch_agent)
+    
+    return batch_buffer
+
+
+def add_valid(batch_buffer):
+    batch_buffer_env: EnvSamples = batch_buffer.env
+    done = batch_buffer_env.done
+
+    EnvSamplesClass = NamedArrayTupleClass(
+        typename = batch_buffer_env._typename,
+        fields = batch_buffer_env._fields + ("valid",)
+    )
+
+    # allocate new Array objects for advantage and return_
+    batch_valid = buffer_from_example(done)
+
+    batch_buffer_env = EnvSamplesClass(
+        **batch_buffer_env._asdict(), valid=batch_valid,
+    )
+    batch_buffer = batch_buffer._replace(env=batch_buffer_env)
+
+    return batch_buffer

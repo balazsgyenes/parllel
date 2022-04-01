@@ -76,21 +76,22 @@ class PPO:
 
         samples = torchify_buffer(samples)
 
-        # TODO: this is an unreliable way to determine if recurrent
         recurrent = self.agent.recurrent
 
         if recurrent:
             valid = samples.env.valid
+            previous_action = samples.agent.prev_action
             # get rnn hidden state at T=0
             init_rnn_state = samples.agent.agent_info.prev_rnn_state[0]
         else:
             valid = None
+            previous_action = None
             init_rnn_state = None
 
         # pack everything into NamedArrayTuples to enabling slicing
         agent_inputs = PredictInputs(
             observation=samples.env.observation,
-            previous_action=None,  # TODO: add this to sample buffer
+            previous_action=previous_action,
         )
         loss_inputs = LossInputs(
             agent_inputs=agent_inputs,

@@ -55,6 +55,10 @@ class TorchAgent(Agent):
         if self._previous_action is not None:
             self._previous_action[env_index] = 0
 
+    def get_states(self, env_indices: Union[int, slice]):
+        return (self._rnn_states[:, env_indices],
+            self._previous_action[env_indices])
+
     def advance_states(self, next_rnn_states: Buffer, action: Buffer,
             env_indices: Union[int, slice]) -> Buffer[torch.Tensor]:
         if self._rnn_states is not None:
