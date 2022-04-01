@@ -120,7 +120,6 @@ class NormalizeRewards(BatchTransform):
         # update statistics of discounted return
         self._return_statistics.update(past_return)
 
-        np.multiply(reward, 1 / (np.sqrt(self._return_statistics.var + EPSILON)),
-            out=reward)
+        reward[:] = reward / (np.sqrt(self._return_statistics.var + EPSILON))
 
         return batch_samples

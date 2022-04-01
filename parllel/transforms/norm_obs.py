@@ -44,8 +44,7 @@ class NormalizeObservations(StepTransform):
         # update statistics of each element of observation
         self._obs_statistics.update(step_obs)
 
-        np.subtract(step_obs, self._obs_statistics.mean, out=step_obs)
-        np.multiply(step_obs, 1 / (np.sqrt(self._obs_statistics.var + EPSILON)),
-            out=step_obs)
+        step_obs[:] = (step_obs - self._obs_statistics.mean) / (
+            np.sqrt(self._obs_statistics.var + EPSILON))
 
         return batch_samples
