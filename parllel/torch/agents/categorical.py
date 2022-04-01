@@ -16,7 +16,7 @@ from .pg import AgentInfo, AgentPrediction
 class ModelOutputs:
     pi: Buffer
     value: Buffer = None
-    next_rnn_states: Buffer = None
+    next_rnn_state: Buffer = None
 
 
 class CategoricalPgAgent(TorchAgent):
@@ -59,7 +59,7 @@ class CategoricalPgAgent(TorchAgent):
         value = model_outputs.value
 
         # extend rnn_state by the number of environments the agent steps
-        example_rnn_state = model_outputs.next_rnn_states
+        example_rnn_state = model_outputs.next_rnn_state
         if example_rnn_state is not None:
             self.recurrent = True
 
@@ -73,6 +73,7 @@ class CategoricalPgAgent(TorchAgent):
 
             # Stack previous action to allocate a slot for each env
             # Add a new leading dimension
+            # if None, this has no effect
             self._previous_action = buffer_map(previous_action,
                 lambda t: torch.stack((t,) * n_states, dim=0))
 
@@ -106,7 +107,7 @@ class CategoricalPgAgent(TorchAgent):
         value = model_outputs.value
 
         # overwrite save rnn_state and action as inputs to next step
-        prev_rnn_states = self.advance_states(model_outputs.next_rnn_states,
+        prev_rnn_states = self.advance_states(model_outputs.next_rnn_state,
             action, env_indices)
 
         agent_info = AgentInfo(dist_info, value, prev_rnn_states)
