@@ -9,7 +9,7 @@ from parllel.buffers import (Buffer, NamedArrayTuple, NamedTuple,
 from .array import Array
 
 
-def buffer_from_example(example: Buffer[NDArray], leading_dims: Tuple[int, ...],
+def buffer_from_example(example: Buffer, leading_dims: Tuple[int, ...] = (),
     ArrayClass: Optional[Array] = None, **kwargs) -> Buffer[Array]:
     if example is None:
         return None
@@ -21,7 +21,7 @@ def buffer_from_example(example: Buffer[NDArray], leading_dims: Tuple[int, ...],
         shape = leading_dims + example.shape
         dtype = example.dtype
         return type(example)(shape=shape, dtype=dtype, **kwargs)
-    else:
+    else:  # assume np.ndarray
         np_example = np.asarray(example)  # promote scalars to 0d arrays
         shape = leading_dims + np_example.shape
         dtype = np_example.dtype 

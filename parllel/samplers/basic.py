@@ -39,6 +39,11 @@ class BasicSampler(Sampler):
             max_steps_decorrelate = max_steps_decorrelate,
         )
 
+        if get_bootstrap_value and not hasattr(batch_buffer.agent,
+                "bootstrap_value"):
+            raise ValueError("Bootstrap value is written to batch_buffer.agent"
+                ".bootstrap_value, but this field does not exist. Please "
+                "allocate it.")
         self.get_bootstrap_value = get_bootstrap_value
         
         if obs_transform is None:

@@ -34,7 +34,7 @@ class Sampler(ABC):
             T_last = self.batch_spec.T - 1
             batch_buffer.env.observation[T_last + 1] = 0
         except IndexError:
-            raise TypeError("batch_samples.env.observation must be a "
+            raise TypeError("batch_buffer.env.observation must be a "
                 "RotatingArray")
         self.batch_buffer = batch_buffer
 

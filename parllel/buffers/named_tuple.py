@@ -184,7 +184,7 @@ class NamedArrayTuple(NamedTuple, Buffer):
                 try:
                     _ = elem[loc]
                 except IndexError:
-                    raise Exception(f"Occured in '{self._typename}' at field "
+                    raise IndexError(f"Occured in '{self._typename}' at field "
                                     f"'{self._fields[i]}'.") from e
 
     def __setitem__(self, loc: Any, value: Any) -> None:

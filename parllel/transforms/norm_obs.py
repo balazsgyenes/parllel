@@ -29,6 +29,8 @@ class NormalizeObservations(StepTransform):
         # get shape of observation assuming 2 leading dimensions
         obs_shape = batch_samples.env.observation.shape[2:]
 
+        self.only_valid = True if hasattr(batch_samples.env, "valid") else False
+
         # create model to track running mean and std_dev of samples
         if self._initial_count is not None:
             self._obs_statistics = RunningMeanStd(shape=obs_shape,
@@ -42,7 +44,12 @@ class NormalizeObservations(StepTransform):
         step_obs = np.asarray(batch_samples.env.observation[t])
 
         # update statistics of each element of observation
-        self._obs_statistics.update(step_obs)
+        if self.only_valid:
+            valid = batch_samples.env.valid[t]
+            # this fancy indexing operation creates a copy, but that's fine
+            self._obs_statistics.update(step_obs[valid])
+        else:
+            self._obs_statistics.update(step_obs)
 
         step_obs[:] = (step_obs - self._obs_statistics.mean) / (
             np.sqrt(self._obs_statistics.var + EPSILON))

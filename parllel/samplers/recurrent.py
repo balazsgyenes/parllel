@@ -1,7 +1,10 @@
+from multiprocessing.sharedctypes import Value
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from parllel.arrays import buffer_from_example
+from parllel.buffers import NamedArrayTupleClass
 from parllel.buffers.utils import buffer_map, buffer_rotate
 from parllel.cages import Cage
 from parllel.handlers import Handler
@@ -14,15 +17,15 @@ from .sampler import Sampler
 
 class RecurrentSampler(Sampler):
     def __init__(self,
-        batch_spec: BatchSpec,
-        envs: Sequence[Cage],
-        agent: Handler,
-        batch_buffer: Samples,
-        max_steps_decorrelate: Optional[int] = None,
-        get_bootstrap_value: bool = False,
-        obs_transform: Transform = None,
-        batch_transform: Transform = None,
-    ) -> None:
+            batch_spec: BatchSpec,
+            envs: Sequence[Cage],
+            agent: Handler,
+            batch_buffer: Samples,
+            max_steps_decorrelate: Optional[int] = None,
+            get_bootstrap_value: bool = False,
+            obs_transform: Transform = None,
+            batch_transform: Transform = None,
+            ) -> None:
         """Generates samples for training recurrent agents.
 
         TODO: obs transform should not include data from invalid time steps,
@@ -34,14 +37,28 @@ class RecurrentSampler(Sampler):
                     "reset environments until the end of a batch. Set "
                     "wait_before_reset=True")
         
+        # verify that action is a RotatingArray
         try:
             # try writing beyond the apparent bounds of the action buffer
             T_last = self.batch_spec.T - 1
             batch_buffer.agent.action[T_last + 1] = 0
         except IndexError:
-            raise TypeError("batch_samples.agent.action must be a "
+            raise TypeError("batch_buffer.agent.action must be a "
                 "RotatingArray")
         
+        # verify that valid field exists
+        if not hasattr(batch_buffer.env, "valid"):
+            raise ValueError("RecurrentSampler expects a buffer field at "
+                "batch_buffer.env.valid. Please allocate this.")
+
+        # verify that valid is a RotatingArray
+        try:
+            # try writing beyond the apparent bounds of the action buffer
+            batch_buffer.env.valid[T_last + 1] = 0
+        except IndexError:
+            raise TypeError("batch_buffer.env.valid must be a "
+                "RotatingArray")
+
         super().__init__(
             batch_spec = batch_spec,
             envs = envs,
@@ -50,6 +67,11 @@ class RecurrentSampler(Sampler):
             max_steps_decorrelate = max_steps_decorrelate,
         )
 
+        if get_bootstrap_value and not hasattr(batch_buffer.agent,
+                "bootstrap_value"):
+            raise ValueError("Bootstrap value is written to batch_buffer.agent"
+                ".bootstrap_value, but this field does not exist. Please "
+                "allocate it.")
         self.get_bootstrap_value = get_bootstrap_value
         
         if obs_transform is None:
@@ -76,11 +98,12 @@ class RecurrentSampler(Sampler):
             self.batch_buffer.agent.action,
             self.batch_buffer.agent.agent_info,
         )
-        observation, reward, done, env_info = (
+        observation, reward, done, env_info, valid = (
             self.batch_buffer.env.observation,
             self.batch_buffer.env.reward,
             self.batch_buffer.env.done,
             self.batch_buffer.env.env_info,
+            self.batch_buffer.env.valid,
         )
         envs = self.envs
         last_T = self.batch_spec.T - 1
@@ -91,6 +114,9 @@ class RecurrentSampler(Sampler):
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
         
+        # first time step is always valid
+        valid[0] = True
+
         # main sampling loop
         b_not_done_yet = list(range(len(envs)))
         for t in range(self.batch_spec.T):
@@ -106,8 +132,7 @@ class RecurrentSampler(Sampler):
                 break
 
             # apply any transforms to the observation before the agent steps
-            self.batch_samples = self.obs_transform(self.batch_buffer,
-                (t, b_not_done_yet))
+            self.batch_samples = self.obs_transform(self.batch_buffer, t)
 
             # agent observes environment and outputs actions
             self.agent.step(observation[t], out_action=action[t],
@@ -121,6 +146,10 @@ class RecurrentSampler(Sampler):
             for b in b_not_done_yet:
                 envs[b].await_step()
 
+            # calculate validity of samples in next time step
+            # this might be required by the obs_transform
+            valid[t + 1] = np.logical_and(valid[t], np.logical_not(done[t]))
+        
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
             # if environment is already done, this value is invalid, but then
