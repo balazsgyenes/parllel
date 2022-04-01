@@ -53,27 +53,26 @@ class CategoricalPgAgent(TorchAgent):
         model_outputs: ModelOutputs = self.model(*model_inputs)
 
         dist_info = DistInfo(prob=model_outputs.pi)
-        action = self._distribution.sample(dist_info)
 
         # value may be None
         value = model_outputs.value
 
         # extend rnn_state by the number of environments the agent steps
-        example_rnn_state = model_outputs.next_rnn_state
-        if example_rnn_state is not None:
+        rnn_state = model_outputs.next_rnn_state
+        if rnn_state is not None:
             self.recurrent = True
 
-            # Extend an example_rnn_state to allocate enough space for each env.
+            # Extend an rnn_state to allocate enough space for each env.
             # repeat in batch dimension (shape should be [N,B,H])
             self._rnn_states = buffer_map(
                 lambda t: torch.cat((t,) * n_states, dim=1),
-                example_rnn_state,
+                rnn_state,
             )
 
             # Transpose the rnn_state from [N,B,H] --> [B,N,H] for storage.
-            example_rnn_state = buffer_method(example_rnn_state, "transpose", 0, 1)
+            rnn_state = buffer_method(rnn_state, "transpose", 0, 1)
             # remove batch dimension
-            example_rnn_state = example_rnn_state[0]
+            rnn_state = rnn_state[0]
 
             # Stack previous action to allocate a slot for each env
             # Add a new leading dimension
@@ -85,20 +84,20 @@ class CategoricalPgAgent(TorchAgent):
         else:
             self.recurrent = False
 
-        agent_info = AgentInfo(dist_info=dist_info, value=value, prev_rnn_state=example_rnn_state)
-        agent_step = AgentStep(action=action, agent_info=agent_info)
-        return buffer_to_device(agent_step, device="cpu")
+        agent_info = AgentInfo(dist_info=dist_info, value=value,
+            prev_action=previous_action)
+        return buffer_to_device((agent_info, rnn_state), device="cpu")
 
     @torch.no_grad()
     def step(self, observation: Buffer, *, env_indices: Union[int, slice] = ...,
              ) -> AgentStep:
         model_inputs = (observation,)
         model_inputs = buffer_to_device(model_inputs, device=self.device)
+        rnn_states, previous_action = self.get_states(env_indices)
         if self.recurrent:
             # already on device
-            rnn_states, previous_action = self.get_states(env_indices)
-            previous_action = self._distribution.to_onehot(previous_action)
-            model_inputs += (previous_action, rnn_states)
+            prev_act_onehot = self._distribution.to_onehot(previous_action)
+            model_inputs += (prev_act_onehot, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
 
         # sample action from distribution returned by policy
@@ -108,13 +107,19 @@ class CategoricalPgAgent(TorchAgent):
         # value may be None
         value = model_outputs.value
 
-        # overwrite save rnn_state and action as inputs to next step
-        prev_rnn_states = self.advance_states(model_outputs.next_rnn_state,
-            action, env_indices)
+        # overwrite saved rnn_state and action as inputs to next step
+        self.advance_states(model_outputs.next_rnn_state, action, env_indices)
 
-        agent_info = AgentInfo(dist_info, value, prev_rnn_states)
+        agent_info = AgentInfo(dist_info, value, previous_action)
         agent_step = AgentStep(action=action, agent_info=agent_info)
         return buffer_to_device(agent_step, device="cpu")
+
+    @torch.no_grad()
+    def initial_rnn_state(self) -> Buffer:
+        # transpose the rnn_states from [N,B,H] -> [B,N,H] for storage.
+        init_rnn_state, _ = self.get_states(...)
+        init_rnn_state = buffer_method(init_rnn_state, "transpose", 0, 1)
+        return buffer_to_device(init_rnn_state, device="cpu")
 
     @torch.no_grad()
     def value(self, observation: Buffer) -> Buffer:
@@ -122,13 +127,14 @@ class CategoricalPgAgent(TorchAgent):
         model_inputs = buffer_to_device(model_inputs, device=self.device)
         if self.recurrent:
             # already on device
+            rnn_states, previous_action = self.get_states(...)          
             previous_action = self._distribution.to_onehot(self._previous_action)
-            model_inputs += (previous_action, self._rnn_states)
+            model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         value = model_outputs.value
         return buffer_to_device(value, device="cpu")
 
-    def predict(self, observation: Buffer, previous_action: Optional[Buffer] = None,
+    def predict(self, observation: Buffer, agent_info: AgentInfo,
                 init_rnn_state: Optional[Buffer] = None,
                 ) -> AgentPrediction:
         """Performs forward pass on training data, for algorithm."""
@@ -136,11 +142,11 @@ class CategoricalPgAgent(TorchAgent):
         if self.recurrent:
             # rnn_states were saved into the samples buffer as [B,N,H]
             # transform back [B,N,H] --> [N,B,H].
+            previous_action = agent_info.prev_action
             previous_action = self._distribution.to_onehot(previous_action)
             init_rnn_state = buffer_method(init_rnn_state, "transpose", 0, 1)
             init_rnn_state = buffer_method(init_rnn_state, "contiguous")
             model_inputs += (previous_action, init_rnn_state,)
-        model_inputs = buffer_to_device(model_inputs, device=self.device)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         dist_info = DistInfo(prob=model_outputs.pi)
         value = model_outputs.value

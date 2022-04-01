@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from typing import Callable, Dict, Tuple
 
-from parllel.buffers import buffer_method, NamedArrayTupleClass
+from parllel.buffers import NamedArrayTupleClass
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.cages import Cage, ProcessCage
@@ -10,7 +10,7 @@ from parllel.types import BatchSpec
 
 
 @contextmanager
-def build_cages_and_core_batch_buffers(
+def build_cages_and_env_buffers(
     EnvClass: Callable,
     env_kwargs: Dict,
     TrajInfoClass: Callable,
@@ -18,7 +18,6 @@ def build_cages_and_core_batch_buffers(
     wait_before_reset: bool,
     batch_spec: BatchSpec,
     parallel: bool,
-    recurrent: bool = False, # TODO: please remove me and make the previous_action part of agent_info
 ) -> Tuple:
 
     if parallel:
@@ -53,12 +52,11 @@ def build_cages_and_core_batch_buffers(
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
     batch_buffer_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
-    ActionArrayCls = RotatingArrayCls if recurrent else ArrayCls
     """In discrete problems, integer actions are used as array indices during
     optimization. Pytorch requires indices to be 64-bit integers, so we do not
     convert here.
     """
-    batch_action = buffer_from_dict_example(action, tuple(batch_spec), ActionArrayCls, name="action", force_32bit=False)
+    batch_action = buffer_from_dict_example(action, tuple(batch_spec), ArrayCls, name="action", force_32bit=False)
 
     # pass batch buffers to Cage on creation
     if CageCls is ProcessCage:
@@ -72,6 +70,22 @@ def build_cages_and_core_batch_buffers(
     finally:
         for cage in cages:
             cage.close()
+
+
+def add_initial_rnn_state(batch_buffer, example_init_rnn_state):
+    batch_agent: AgentSamples = batch_buffer.agent    
+
+    AgentSamplesClass = NamedArrayTupleClass(
+        typename = batch_agent._typename,
+        fields = batch_agent._fields + ("initial_rnn_state",)
+    )
+
+    batch_agent = AgentSamplesClass(
+        **batch_agent._asdict(), initial_rnn_state=example_init_rnn_state,
+    )
+    batch_buffer = batch_buffer._replace(agent=batch_agent)
+    
+    return batch_buffer
 
 
 def add_bootstrap_value(batch_buffer):

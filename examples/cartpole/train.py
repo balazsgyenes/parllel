@@ -7,7 +7,7 @@ import torch
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import buffer_map, buffer_method
-from parllel.patterns import add_bootstrap_value, build_cages_and_core_batch_buffers
+from parllel.patterns import add_bootstrap_value, build_cages_and_env_buffers
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers.basic import BasicSampler
 from parllel.samplers.collections import Samples, AgentSamples
@@ -55,7 +55,7 @@ def build():
         ArrayCls = Array
         RotatingArrayCls = RotatingArray
 
-    with build_cages_and_core_batch_buffers(
+    with build_cages_and_env_buffers(
             EnvClass=EnvClass,
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
@@ -90,7 +90,7 @@ def build():
         example_obs = torchify_buffer(buffer_map(np.asarray, example_obs))
         example_agent_step = agent.dry_run(n_states=batch_spec.B,
             observation=example_obs)
-        action, agent_info = numpify_buffer(example_agent_step)
+        agent_info, rnn_state = numpify_buffer(example_agent_step)
 
         # allocate batch buffer based on examples
         batch_agent_info = buffer_from_example(agent_info, tuple(batch_spec), ArrayCls)

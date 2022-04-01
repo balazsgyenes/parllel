@@ -31,14 +31,11 @@ class RecurrentSampler(Sampler):
                 raise ValueError("RecurrentSampler expects cages that do not "
                     "reset environments until the end of a batch. Set "
                     "wait_before_reset=True")
-        
-        # verify that action is a RotatingArray
-        try:
-            # try writing beyond the apparent bounds of the action buffer
-            batch_buffer.agent.action[batch_spec.T] = 0
-        except IndexError:
-            raise TypeError("batch_buffer.agent.action must be a "
-                "RotatingArray")
+
+        # verify that initial_rnn_state field exists
+        if not hasattr(batch_buffer.agent, "initial_rnn_state"):
+            raise ValueError("RecurrentSampler expects a buffer field at "
+                "batch_buffer.agent.initial_rnn_state. Please allocate this.")
         
         # verify that valid field exists
         if not hasattr(batch_buffer.env, "valid"):
@@ -63,8 +60,8 @@ class RecurrentSampler(Sampler):
 
         if get_bootstrap_value and not hasattr(batch_buffer.agent,
                 "bootstrap_value"):
-            raise ValueError("Bootstrap value is written to batch_buffer.agent"
-                ".bootstrap_value, but this field does not exist. Please "
+            raise ValueError("Requested bootstrap value from agent, but "
+                "batch_buffer.agent.bootstrap_value does not exist. Please "
                 "allocate it.")
         self.get_bootstrap_value = get_bootstrap_value
         
@@ -78,13 +75,6 @@ class RecurrentSampler(Sampler):
 
         # prepare cages for sampling
         self.initialize()
-
-    def reset_agent(self) -> None:
-        super().reset_agent()
-        # zero out previous action of very first step (after rotation)
-        # this matches internal state of agent, which also begins at zero
-        action = self.batch_buffer.agent.action
-        action[action.last] = 0
 
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         # get references to buffer elements
@@ -107,6 +97,9 @@ class RecurrentSampler(Sampler):
 
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
+        
+        self.batch_buffer.agent.initial_rnn_state[:] = (
+            self.agent.initial_rnn_state())
         
         # first time step is always valid, rest are invalid by default
         valid[0] = True
@@ -155,8 +148,6 @@ class RecurrentSampler(Sampler):
         for b, env in enumerate(self.envs):
             if env.already_done:
                 self.agent.reset_one(env_index=b)
-                # previous action for next batch
-                action[last_T + 1, b] = 0
                 # overwrite next first observation with reset observation
                 env.reset_async(out_obs=observation[last_T + 1, b])
                 env.await_step()
@@ -168,13 +159,6 @@ class RecurrentSampler(Sampler):
             ]
 
         batch_samples = self.batch_transform(self.batch_buffer)
-
-        batch_agent = batch_samples.agent
-        NewAgentSamplesCls = NamedArrayTupleClass(batch_agent._typename,
-            batch_agent._fields + ("prev_action",))
-        batch_agent = NewAgentSamplesCls(**batch_agent._asdict(),
-            prev_action=action[action.first - 1 : action.last])
-        batch_samples = batch_samples._replace(agent=batch_agent)
 
         # convert to underlying numpy array
         batch_samples = buffer_map(np.asarray, batch_samples)

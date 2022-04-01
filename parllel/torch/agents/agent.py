@@ -56,25 +56,27 @@ class TorchAgent(Agent):
             self._previous_action[env_index] = 0
 
     def get_states(self, env_indices: Union[int, slice]):
-        return (self._rnn_states[:, env_indices],
-            self._previous_action[env_indices])
+        # rnn_states has shape [N,B,H]
+        rnn_state = (
+            self._rnn_states[:, env_indices]
+            if self._rnn_states is not None
+            else None
+        )
+        previous_action = (
+            self._previous_action[env_indices]
+            if self._previous_action is not None
+            else None
+        )
+        return rnn_state, previous_action
 
     def advance_states(self, next_rnn_states: Buffer, action: Buffer,
             env_indices: Union[int, slice]) -> Buffer[torch.Tensor]:
         if self._rnn_states is not None:
-            # transpose the rnn_states from [N,B,H] -> [B,N,H] for storage.
-            prev_rnn_state = buffer_method(self._rnn_states[:, env_indices],
-                "transpose", 0, 1)
-
-            # replace old rnn_states with new ones
+            # rnn_states has shape [N,B,H]
             self._rnn_states[:, env_indices] = next_rnn_states
-        else:
-            prev_rnn_state = None
         
         if self._previous_action is not None:
             self._previous_action[env_indices] = action
-        
-        return prev_rnn_state
 
     def parameters(self) -> Iterable[torch.Tensor]:
         return self.model.parameters()

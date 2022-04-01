@@ -7,7 +7,8 @@ import torch
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import buffer_map, buffer_method
-from parllel.patterns import add_bootstrap_value, add_valid, build_cages_and_core_batch_buffers
+from parllel.patterns import (add_bootstrap_value, add_valid, 
+    build_cages_and_env_buffers, add_initial_rnn_state)
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers.recurrent import RecurrentSampler
 from parllel.samplers.collections import Samples, AgentSamples
@@ -55,7 +56,7 @@ def build():
         ArrayCls = Array
         RotatingArrayCls = RotatingArray
 
-    with build_cages_and_core_batch_buffers(
+    with build_cages_and_env_buffers(
             EnvClass=EnvClass,
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
@@ -63,7 +64,6 @@ def build():
             wait_before_reset=True,
             batch_spec=batch_spec,
             parallel=parallel,
-            recurrent=True,
         ) as (cages, batch_action, batch_env):
 
         obs_space, action_space = cages[0].spaces
@@ -94,37 +94,39 @@ def build():
         # get example output from agent
         example_obs, example_action = torchify_buffer(buffer_map(np.asarray,
             (example_obs, example_action)))
-        example_agent_step = agent.dry_run(n_states=batch_spec.B,
+        agent_info, rnn_state = agent.dry_run(n_states=batch_spec.B,
             observation=example_obs, previous_action=example_action)
-        action, agent_info = numpify_buffer(example_agent_step)
+        agent_info, rnn_state = numpify_buffer((agent_info, rnn_state))
 
         # allocate batch buffer based on examples
         batch_agent_info = buffer_from_example(agent_info, tuple(batch_spec), ArrayCls)
         batch_agent = AgentSamples(batch_action, batch_agent_info)
         batch_buffer = Samples(batch_agent, batch_env)
 
+        batch_rnn_state = buffer_from_example(rnn_state, (batch_spec.B,), ArrayCls)
+        batch_buffer = add_initial_rnn_state(batch_buffer, batch_rnn_state)
         batch_buffer = add_bootstrap_value(batch_buffer)
         batch_buffer = add_valid(batch_buffer)
 
         # obs_transform = NormalizeObservations(initial_count=10000)
         # batch_buffer = obs_transform.dry_run(batch_buffer)
 
-        reward_norm_transform = NormalizeRewards(discount=discount)
-        batch_buffer = reward_norm_transform.dry_run(batch_buffer, RotatingArrayCls)
+        # reward_norm_transform = NormalizeRewards(discount=discount)
+        # batch_buffer = reward_norm_transform.dry_run(batch_buffer, RotatingArrayCls)
 
-        reward_clip_transform = ClipRewards(reward_min=reward_min,
-            reward_max=reward_max)
-        batch_buffer = reward_clip_transform.dry_run(batch_buffer)
+        # reward_clip_transform = ClipRewards(reward_min=reward_min,
+        #     reward_max=reward_max)
+        # batch_buffer = reward_clip_transform.dry_run(batch_buffer)
 
         advantage_transform = EstimateAdvantage(discount=discount,
             gae_lambda=gae_lambda)
         batch_buffer = advantage_transform.dry_run(batch_buffer, ArrayCls)
 
-        batch_transform = Compose([
-            reward_norm_transform,
-            reward_clip_transform,
-            advantage_transform,
-        ])
+        # batch_transform = Compose([
+        #     reward_norm_transform,
+        #     reward_clip_transform,
+        #     advantage_transform,
+        # ])
 
         sampler = RecurrentSampler(
             batch_spec=batch_spec,
@@ -134,7 +136,7 @@ def build():
             max_steps_decorrelate=50,
             get_bootstrap_value=True,
             # obs_transform=obs_transform,
-            batch_transform=batch_transform,
+            batch_transform=advantage_transform,
         )
 
         optimizer = torch.optim.Adam(
