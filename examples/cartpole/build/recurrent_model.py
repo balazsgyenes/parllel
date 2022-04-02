@@ -30,9 +30,8 @@ class CartPoleLstmCategoricalPgModel(nn.Module):
         assert isinstance(action_space, spaces.Discrete)
         n_actions = action_space.n
 
-        mlp_input_size = obs_shape
         self.fc = MlpModel(
-            input_size=mlp_input_size,
+            input_size=obs_shape,
             hidden_sizes=pre_lstm_hidden_sizes,
             output_size=None,
             hidden_nonlinearity=hidden_nonlinearity,

@@ -128,7 +128,7 @@ class RecurrentSampler(Sampler):
 
             for b in b_not_done_yet:
                 envs[b].step_async(action[t, b],
-                    out_obs=observation[t+1, b], out_reward=reward[b],
+                    out_obs=observation[t+1, b], out_reward=reward[t, b],
                     out_done=done[t, b], out_info=env_info[t, b])
 
             for b in b_not_done_yet:

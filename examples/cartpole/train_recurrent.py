@@ -108,25 +108,25 @@ def build():
         batch_buffer = add_bootstrap_value(batch_buffer)
         batch_buffer = add_valid(batch_buffer)
 
-        # obs_transform = NormalizeObservations(initial_count=10000)
-        # batch_buffer = obs_transform.dry_run(batch_buffer)
+        obs_transform = NormalizeObservations(initial_count=10000)
+        batch_buffer = obs_transform.dry_run(batch_buffer)
 
-        # reward_norm_transform = NormalizeRewards(discount=discount)
-        # batch_buffer = reward_norm_transform.dry_run(batch_buffer, RotatingArrayCls)
+        reward_norm_transform = NormalizeRewards(discount=discount)
+        batch_buffer = reward_norm_transform.dry_run(batch_buffer, RotatingArrayCls)
 
-        # reward_clip_transform = ClipRewards(reward_min=reward_min,
-        #     reward_max=reward_max)
-        # batch_buffer = reward_clip_transform.dry_run(batch_buffer)
+        reward_clip_transform = ClipRewards(reward_min=reward_min,
+            reward_max=reward_max)
+        batch_buffer = reward_clip_transform.dry_run(batch_buffer)
 
         advantage_transform = EstimateAdvantage(discount=discount,
             gae_lambda=gae_lambda)
         batch_buffer = advantage_transform.dry_run(batch_buffer, ArrayCls)
 
-        # batch_transform = Compose([
-        #     reward_norm_transform,
-        #     reward_clip_transform,
-        #     advantage_transform,
-        # ])
+        batch_transform = Compose([
+            reward_norm_transform,
+            reward_clip_transform,
+            advantage_transform,
+        ])
 
         sampler = RecurrentSampler(
             batch_spec=batch_spec,
@@ -135,8 +135,8 @@ def build():
             batch_buffer=batch_buffer,
             max_steps_decorrelate=50,
             get_bootstrap_value=True,
-            # obs_transform=obs_transform,
-            batch_transform=advantage_transform,
+            obs_transform=obs_transform,
+            batch_transform=batch_transform,
         )
 
         optimizer = torch.optim.Adam(
