@@ -72,9 +72,9 @@ def build():
         model = CartPoleLstmCategoricalPgModel(
             obs_space=obs_space,
             action_space=action_space,
-            pre_lstm_hidden_sizes=[64, 64],
+            pre_lstm_hidden_sizes=32,
             lstm_size=16,
-            post_lstm_hidden_sizes=None,
+            post_lstm_hidden_sizes=32,
             hidden_nonlinearity=torch.nn.Tanh,
             )
         distribution = Categorical(dim=action_space.n)

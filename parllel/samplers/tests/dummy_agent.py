@@ -1,49 +1,49 @@
-from typing import Union
+from typing import Optional, Union
 
+import gym
 import numpy as np
 from nptyping import NDArray
 
-from parllel.buffers import Buffer, NamedTupleClass, buffer_method
+from parllel.buffers import Buffer, NamedTupleClass, buffer_method, buffer_map
 from parllel.handlers import Agent, AgentStep
 
 
-DummyAgentInfo = NamedTupleClass("DummyAgentInfo", ["observation"])
-DummyRecurrentAgentInfo = NamedTupleClass("DummyAgentInfo", ["observation", "previous_action"])
+DummyAgentInfo = NamedTupleClass("DummyAgentInfo", ["observation", "state"])
 
 
 class DummyAgent(Agent):
-    def __init__(self, recurrent: bool = False) -> None:
-        super().__init__()
+    def __init__(self, action_space: gym.Space, observation_space: gym.Space,
+            recurrent: bool = False) -> None:
+        self.action_space = action_space
+        self.observation_space = observation_space
         self.recurrent = recurrent
-        self.InfoCls = DummyRecurrentAgentInfo if recurrent else DummyAgentInfo
     
-    def initialize(self, example_inputs, n_states: int) -> AgentStep:
-        self._n_states = n_states
-        self.reset()
-        observation, previous_action = example_inputs
+    def dry_run(self, n_states: int, observation: Buffer):
         agent_info = (buffer_method(observation, "copy"),)
         if self.recurrent:
-            agent_info += (buffer_method(previous_action, "copy"),)
-        return AgentStep(
-            action = 1,
-            agent_info = self.InfoCls(*agent_info)
-        )
-
+            self._n_states = n_states
+            self._states = np.zeros(shape=(n_states,))
+            state = self._states[0].copy()
+            agent_info += (state,)
+        agent_info = DummyAgentInfo(*agent_info)
+        return agent_info, state
+        
     def reset(self) -> None:
-        self._rnn_states: NDArray = np.zeros(shape=(self._n_states,), dtype=np.int32)
+        self._states[:] = np.arange(self._n_states)
     
     def reset_one(self, env_index: int) -> None:
-        self._rnn_states[env_index] = 0
+        self._states[env_index] = env_index
 
-    def step(self, observation: Buffer, previous_action: Buffer, *, env_ids: Union[int, slice] = slice(None)) -> AgentStep:
-        self._rnn_states[env_ids] += 1
+    def step(self, observation: Buffer, *, env_indices: Union[int, slice] = ...,
+             ) -> AgentStep:
         agent_info = (buffer_method(observation, "copy"),)
         if self.recurrent:
-            agent_info += (buffer_method(previous_action, "copy"),)
+            agent_info += (self._states[env_indices].copy(),)
+            self._states[env_indices] += np.arange(self._n_states)[env_indices]
         return AgentStep(
-            action = self._rnn_states[env_ids].copy(),
-            agent_info = self.InfoCls(*agent_info),
+            action = self._states[env_indices].copy() * 10,
+            agent_info = DummyAgentInfo(*agent_info),
         )
 
-    def value(self, observation: Buffer, previous_action: Buffer, *, env_ids: Union[int, slice] = slice(None)) -> Buffer:
-        return self._rnn_states[env_ids].copy() * 10
+    def value(self, observation: Buffer) -> Buffer:
+        return self._states.copy() * 10
