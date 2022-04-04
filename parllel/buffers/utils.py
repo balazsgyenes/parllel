@@ -1,5 +1,8 @@
 from typing import Any, Callable, Union
 
+import numpy as np
+from nptyping import NDArray
+
 from .buffer import Buffer, LeafType
 from .named_tuple import NamedTuple, NamedArrayTuple
 
@@ -83,3 +86,7 @@ def buffer_rotate(buffer: Union[Buffer, tuple]) -> Buffer:
     if hasattr(buffer, "rotate"):
         buffer.rotate()
     return buffer
+
+
+def buffer_asarray(buffer: Buffer) -> Buffer[NDArray]:
+    return buffer_map(np.asarray, buffer)

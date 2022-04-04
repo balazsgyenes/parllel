@@ -92,8 +92,7 @@ def build():
         example_action = batch_action[0, 0]
 
         # get example output from agent
-        example_obs, example_action = torchify_buffer(buffer_map(np.asarray,
-            (example_obs, example_action)))
+        example_obs, example_action = torchify_buffer((example_obs, example_action))
         agent_info, rnn_state = agent.dry_run(n_states=batch_spec.B,
             observation=example_obs, previous_action=example_action)
         agent_info, rnn_state = numpify_buffer((agent_info, rnn_state))

@@ -1,44 +1,25 @@
+from abc import ABC, abstractmethod
 from typing import Any, Optional, Union
 
-import numpy as np
-from nptyping import NDArray
-
 from parllel.arrays import Array
-from parllel.buffers import Buffer, buffer_map
+from parllel.buffers import Buffer
 
 from .agent import Agent, AgentStep
 
 
-class Handler:
+class Handler(ABC):
     def __init__(self, agent: Agent) -> None:
         self._agent = agent
 
+    @abstractmethod
     def step(self, observation: Buffer[Array], *, env_indices: Union[int, slice] = ...,
             out_action: Buffer[Array] = None, out_agent_info: Buffer[Array] = None,
             ) -> Optional[AgentStep]:
-
-        observation: Buffer[NDArray] = buffer_map(np.asarray, observation)
-
-        agent_step: AgentStep = self._agent.step(observation,
-                                                 env_indices=env_indices)
-
-        if any(out is None for out in (out_action, out_agent_info)):
-            return agent_step
-        else:
-            action, agent_info = agent_step
-            out_action[:] = action
-            out_agent_info[:] = agent_info
+        pass
 
     def value(self, observation: Buffer[Array], *, out_value: Buffer[Array] = None,
             ) -> Optional[Buffer]:
-        observation = buffer_map(np.asarray, observation)
-
-        value: Buffer[Array] = self._agent.value(observation)
-
-        if out_value is None:
-            return value
-        else:
-            out_value[:] = value
+        raise NotImplementedError
 
     def reset(self) -> None:
         self._agent.reset()

@@ -1,8 +1,6 @@
 from typing import List, Optional, Sequence, Tuple
 
-import numpy as np
-
-from parllel.buffers.utils import buffer_map, buffer_rotate
+from parllel.buffers.utils import buffer_asarray, buffer_rotate
 from parllel.cages import Cage
 from parllel.handlers import Handler
 from parllel.transforms import Transform
@@ -104,8 +102,10 @@ class BasicSampler(Sampler):
 
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
-            self.batch_buffer.agent.bootstrap_value[:] = self.agent.value(
-                observation[last_T + 1])
+            self.agent.value(
+                observation[last_T + 1],
+                out_value=self.batch_buffer.agent.bootstrap_value,
+            )
 
         # collect all completed trajectories from envs
         completed_trajectories = [
@@ -116,6 +116,6 @@ class BasicSampler(Sampler):
         batch_samples = self.batch_transform(self.batch_buffer)
 
         # convert to underlying numpy array
-        batch_samples = buffer_map(np.asarray, batch_samples)
+        batch_samples = buffer_asarray(batch_samples)
 
         return batch_samples, completed_trajectories

@@ -1,11 +1,10 @@
 from typing import Optional, Union
 
-import numpy as np
 from nptyping import NDArray
 from torch import Tensor
 
 from parllel.arrays import Array
-from parllel.buffers import Buffer, buffer_map
+from parllel.buffers import Buffer, buffer_asarray
 from parllel.handlers import Handler, AgentStep
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.utils import numpify_buffer, torchify_buffer
@@ -19,7 +18,6 @@ class TorchHandler(Handler):
             Union[int, slice] = ..., out_action: Buffer[Array] = None,
             out_agent_info: Buffer[Array] = None) -> Optional[AgentStep]:
         
-        observation: Buffer[NDArray] = buffer_map(np.asarray, observation)
         observation: Buffer[Tensor] = torchify_buffer(observation)
 
         agent_step: AgentStep = self._agent.step(observation,
@@ -37,7 +35,6 @@ class TorchHandler(Handler):
     def value(self, observation: Buffer[Array], *,
             out_value: Buffer[Array] = None) -> Optional[Buffer]:
         
-        observation: Buffer[NDArray] = buffer_map(np.asarray, observation)
         observation: Buffer[Tensor] = torchify_buffer(observation)
 
         value: Buffer[Tensor] = self._agent.value(observation)
