@@ -55,28 +55,22 @@ class TorchAgent(Agent):
         if self._previous_action is not None:
             self._previous_action[env_index] = 0
 
-    def get_states(self, env_indices: Union[int, slice]):
+    def _get_states(self, env_indices: Union[int, slice]):
         # rnn_states has shape [N,B,H]
-        rnn_state = (
-            self._rnn_states[:, env_indices]
-            if self._rnn_states is not None
-            else None
-        )
-        previous_action = (
-            self._previous_action[env_indices]
-            if self._previous_action is not None
-            else None
-        )
+        rnn_state = self._rnn_states[:, env_indices]
+        previous_action = self._previous_action[env_indices]
         return rnn_state, previous_action
 
-    def advance_states(self, next_rnn_states: Buffer, action: Buffer,
+    def _advance_states(self, next_rnn_states: Buffer, action: Buffer,
             env_indices: Union[int, slice]) -> Buffer[torch.Tensor]:
-        if self._rnn_states is not None:
-            # rnn_states has shape [N,B,H]
-            self._rnn_states[:, env_indices] = next_rnn_states
+        # rnn_states has shape [N,B,H]
+        self._rnn_states[:, env_indices] = next_rnn_states
         
-        if self._previous_action is not None:
-            self._previous_action[env_indices] = action
+        # copy previous state before advancing, so that it it not overwritten
+        previous_action = self._previous_action[env_indices].clone().detach()
+        self._previous_action[env_indices] = action
+
+        return previous_action
 
     def parameters(self) -> Iterable[torch.Tensor]:
         return self.model.parameters()

@@ -93,11 +93,11 @@ class CategoricalPgAgent(TorchAgent):
              ) -> AgentStep:
         model_inputs = (observation,)
         model_inputs = buffer_to_device(model_inputs, device=self.device)
-        rnn_states, previous_action = self.get_states(env_indices)
         if self.recurrent:
             # already on device
-            prev_act_onehot = self._distribution.to_onehot(previous_action)
-            model_inputs += (prev_act_onehot, rnn_states)
+            rnn_states, previous_action = self._get_states(env_indices)
+            previous_action = self._distribution.to_onehot(previous_action)
+            model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
 
         # sample action from distribution returned by policy
@@ -107,8 +107,12 @@ class CategoricalPgAgent(TorchAgent):
         # value may be None
         value = model_outputs.value
 
-        # overwrite saved rnn_state and action as inputs to next step
-        self.advance_states(model_outputs.next_rnn_state, action, env_indices)
+        if self.recurrent:
+            # overwrite saved rnn_state and action as inputs to next step
+            previous_action = self._advance_states(
+                model_outputs.next_rnn_state, action, env_indices)
+        else:
+            previous_action = None
 
         agent_info = AgentInfo(dist_info, value, previous_action)
         agent_step = AgentStep(action=action, agent_info=agent_info)
@@ -117,7 +121,7 @@ class CategoricalPgAgent(TorchAgent):
     @torch.no_grad()
     def initial_rnn_state(self) -> Buffer:
         # transpose the rnn_states from [N,B,H] -> [B,N,H] for storage.
-        init_rnn_state, _ = self.get_states(...)
+        init_rnn_state, _ = self._get_states(...)
         init_rnn_state = buffer_method(init_rnn_state, "transpose", 0, 1)
         return buffer_to_device(init_rnn_state, device="cpu")
 
@@ -127,7 +131,7 @@ class CategoricalPgAgent(TorchAgent):
         model_inputs = buffer_to_device(model_inputs, device=self.device)
         if self.recurrent:
             # already on device
-            rnn_states, previous_action = self.get_states(...)          
+            rnn_states, previous_action = self._get_states(...)          
             previous_action = self._distribution.to_onehot(self._previous_action)
             model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
