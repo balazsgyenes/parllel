@@ -7,7 +7,7 @@ from itertools import repeat
 import string
 from typing import Any, Dict, Iterable, NoReturn, Tuple, Union
 
-from parllel.buffers.buffer import Buffer
+from .buffer import Buffer
 
 
 RESERVED_NAMES = ("get", "items")

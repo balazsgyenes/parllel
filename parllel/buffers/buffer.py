@@ -16,8 +16,10 @@ LeafType = TypeVar('LeafType')
 
 class Buffer(ABC, Generic[LeafType]):
     """A buffer represents a tree-like structure, where the non-leaf nodes are
-    either tuples, NamedTuples, or NamedArrayTuples, and the leaf nodes are
-    Array objects, numpy arrays, torch tensors, etc.
+    either NamedArrayTuples, and the leaf nodes are array-like data containers,
+    such as Arrays, numpy ndarrays, torch tensors, etc. For convenience, many
+    buffer utility methods also support tuples and NamedTuples of leaf nodes,
+    but these are not true Buffers.
     """
     @property
     def index_history(self) -> Tuple[Indices, ...]:

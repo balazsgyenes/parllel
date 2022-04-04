@@ -1,6 +1,6 @@
 from typing import Any, Callable, Union
 
-from parllel.buffers import Buffer, LeafType
+from .buffer import Buffer, LeafType
 from .named_tuple import NamedTuple, NamedArrayTuple
 
 

@@ -1,8 +1,7 @@
 from functools import reduce
 from typing import Optional, Sequence, Tuple
 
-from parllel.arrays import SharedMemoryArray, ManagedMemoryArray
-from parllel.buffers import Buffer, Indices
+from .buffer import Buffer, Indices
 
 
 class BufferRegistry:
@@ -20,9 +19,6 @@ class BufferRegistry:
         else:
             if buffer is None:
                 return
-            assert isinstance(buffer, (SharedMemoryArray, ManagedMemoryArray)), (
-                "Only arrays in shared memory (or managed shared memory) can "
-                "be moved between processes.")
             self._registry[buffer.buffer_id] = buffer
 
     def reduce_buffer(self, buffer: Buffer):
@@ -44,6 +40,7 @@ class BufferRegistry:
         return reduce(lambda buf, index: buf[index], index_history, base)
 
     def close(self):
-        for _, buffer in self._registry.items():
-            if isinstance(buffer, (SharedMemoryArray, ManagedMemoryArray)):
+        for buffer in self._registry.values():
+            if not isinstance(buffer, tuple):
+                # leaf node
                 buffer.close()
