@@ -1,6 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Any, Generic, Tuple, TypeVar, Union
+from typing import Generic, Tuple, TypeVar, Union
 
 
 # A single index element, e.g. arr[3:6]
@@ -32,16 +32,4 @@ class Buffer(ABC, Generic[LeafType]):
 
     @abstractmethod
     def __getitem__(self, location: Indices) -> Union[Buffer[LeafType], LeafType]:
-        pass
-
-
-class VoidBuffer(Buffer):
-    def __init__(self) -> None:
-        self._buffer_id = id(self)
-        self._index_history = []
-
-    def __getitem__(self, location: Indices) -> Union[Buffer[LeafType], LeafType]:
-        return self
-
-    def __setitem__(self, location: Indices, value: Any) -> None:
         pass
