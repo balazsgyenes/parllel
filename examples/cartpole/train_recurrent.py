@@ -6,7 +6,7 @@ import torch
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
-from parllel.buffers import buffer_map, buffer_method
+from parllel.buffers import buffer_method
 from parllel.patterns import (add_bootstrap_value, add_valid, 
     build_cages_and_env_buffers, add_initial_rnn_state)
 from parllel.runners.onpolicy import OnPolicyRunner
@@ -78,7 +78,7 @@ def build():
             hidden_nonlinearity=torch.nn.Tanh,
             )
         distribution = Categorical(dim=action_space.n)
-        device = torch.device("cpu")
+        device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
 
         # instantiate model and agent
         agent = CategoricalPgAgent(model=model, distribution=distribution, device=device)
@@ -94,7 +94,7 @@ def build():
         # get example output from agent
         example_obs, example_action = torchify_buffer((example_obs, example_action))
         agent_info, rnn_state = agent.dry_run(n_states=batch_spec.B,
-            observation=example_obs, previous_action=example_action)
+            observation=example_obs, example_action=example_action)
         agent_info, rnn_state = numpify_buffer((agent_info, rnn_state))
 
         # allocate batch buffer based on examples

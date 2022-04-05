@@ -104,6 +104,8 @@ class PPO:
         loss_inputs, init_rnn_state = buffer_to_device(
             (loss_inputs, init_rnn_state), device=self.agent.device)
 
+        self.agent.train_mode(elapsed_steps)
+
         T, B = self.batch_spec
         
         # If recurrent, use whole trajectories, only shuffle B; else shuffle all.

@@ -39,12 +39,12 @@ class CategoricalPgAgent(TorchAgent):
 
     @torch.no_grad()
     def dry_run(self, n_states: int, observation: Buffer,
-            previous_action: Optional[Buffer] = None) -> AgentStep:
+            example_action: Optional[Buffer] = None) -> AgentStep:
         
         model_inputs = (observation,)
 
-        if previous_action is not None:
-            prev_act_onehot = self._distribution.to_onehot(previous_action)
+        if example_action is not None:
+            prev_act_onehot = self._distribution.to_onehot(example_action)
             model_inputs += (prev_act_onehot,)
         
         # model will generate an rnn_state even if we don't pass one
@@ -77,15 +77,17 @@ class CategoricalPgAgent(TorchAgent):
             # Stack previous action to allocate a slot for each env
             # Add a new leading dimension
             # if None, this has no effect
-            self._previous_action = buffer_map(
+            previous_action = buffer_map(
                 lambda t: torch.stack((t,) * n_states, dim=0),
-                previous_action,
+                example_action,
             )
+            self._previous_action = buffer_to_device(previous_action,
+                device=self.device)
         else:
             self.recurrent = False
 
         agent_info = AgentInfo(dist_info=dist_info, value=value,
-            prev_action=previous_action)
+            prev_action=example_action)
         return buffer_to_device((agent_info, rnn_state), device="cpu")
 
     @torch.no_grad()
@@ -155,5 +157,4 @@ class CategoricalPgAgent(TorchAgent):
         dist_info = DistInfo(prob=model_outputs.pi)
         value = model_outputs.value
         prediction = AgentPrediction(dist_info, value)
-        # prediction = buffer_to_device(prediction, device="cpu")
         return prediction
