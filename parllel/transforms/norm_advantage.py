@@ -1,7 +1,7 @@
 import numpy as np
 from nptyping import NDArray
 
-from parllel.samplers import Samples
+from parllel.buffers import Samples
 
 from .transform import BatchTransform
 

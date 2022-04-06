@@ -6,7 +6,7 @@ from parllel.handlers import Handler
 from parllel.transforms import Transform
 from parllel.types import BatchSpec, TrajInfo
 
-from .collections import Samples
+from parllel.buffers import Samples
 from .sampler import Sampler
 
 

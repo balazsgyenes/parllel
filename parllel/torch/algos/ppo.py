@@ -3,7 +3,7 @@ import torch.optim
 import numpy as np
 
 from parllel.buffers import NamedArrayTupleClass
-from parllel.samplers import Samples
+from parllel.buffers import Samples
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
 from parllel.torch.utils import buffer_to_device, torchify_buffer, valid_mean

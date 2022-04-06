@@ -4,6 +4,9 @@ from .named_tuple import (
     NamedArrayTuple, NamedArrayTupleClass,
     NamedArrayTupleClass_like, dict_to_namedtuple, namedtuple_to_dict,
 )
+from .samples import (
+    Samples, AgentSamples, EnvSamples,
+)
 from .utils import (
     buffer_method, buffer_map, buffer_asarray,
 )
@@ -13,5 +16,6 @@ __all__ = [
     NamedTuple, NamedTupleClass,
     NamedArrayTuple, NamedArrayTupleClass,
     NamedArrayTupleClass_like, dict_to_namedtuple, namedtuple_to_dict,
+    Samples, AgentSamples, EnvSamples,
     buffer_method, buffer_map, buffer_asarray,
 ]

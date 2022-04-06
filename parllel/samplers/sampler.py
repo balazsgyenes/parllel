@@ -8,7 +8,7 @@ from parllel.cages import Cage
 from parllel.handlers import Handler
 from parllel.types import BatchSpec, TrajInfo
 
-from .collections import Samples
+from parllel.buffers import Samples
 
 
 class Sampler(ABC):

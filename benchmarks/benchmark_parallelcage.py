@@ -14,7 +14,7 @@ from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
 from parllel.cages import Cage, ProcessCage
 from parllel.cages.tests.dummy import DummyEnv
 from parllel.cages.profiling import ProfilingProcessCage
-from parllel.samplers.collections import Samples, AgentSamples, EnvSamples
+from parllel.buffers import Samples, AgentSamples, EnvSamples
 from parllel.samplers.profiling import ProfilingSampler
 from parllel.types import BatchSpec, TrajInfo
 

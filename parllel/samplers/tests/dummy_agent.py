@@ -8,7 +8,7 @@ from parllel.arrays.utils import buffer_from_dict_example, buffer_from_example
 from parllel.arrays import Array, buffer_from_dict_example
 from parllel.buffers import Buffer, NamedTupleClass, buffer_method
 from parllel.handlers import Agent, AgentStep
-from parllel.samplers import AgentSamples
+from parllel.buffers import AgentSamples
 from parllel.types import BatchSpec
 
 

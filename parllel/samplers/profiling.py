@@ -8,7 +8,7 @@ import numpy as np
 from parllel.cages import Cage
 from parllel.types import BatchSpec
 
-from .collections import Samples
+from parllel.buffers import Samples
 from .basic import MiniSampler
 
 

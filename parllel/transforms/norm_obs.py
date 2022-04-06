@@ -2,7 +2,7 @@ from typing import Optional
 
 import numpy as np
 
-from parllel.samplers import Samples
+from parllel.buffers import Samples
 
 from .running_mean_std import RunningMeanStd
 from .transform import StepTransform

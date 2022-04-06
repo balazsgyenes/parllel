@@ -1,4 +1,4 @@
-from .collections import Samples, EnvSamples, AgentSamples
+from parllel.buffers import Samples, EnvSamples, AgentSamples
 from .sampler import Sampler
 
 __all__ = [

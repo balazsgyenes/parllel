@@ -8,7 +8,7 @@ from nptyping import NDArray
 
 from parllel.arrays import Array, RotatingArray, buffer_from_dict_example
 from parllel.buffers import Buffer, NamedTuple
-from parllel.samplers import EnvSamples
+from parllel.buffers import EnvSamples
 from parllel.types import BatchSpec
 
 

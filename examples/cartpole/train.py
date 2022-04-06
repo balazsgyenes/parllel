@@ -10,7 +10,7 @@ from parllel.buffers import buffer_map, buffer_method
 from parllel.patterns import add_bootstrap_value, build_cages_and_env_buffers
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers.basic import BasicSampler
-from parllel.samplers.collections import Samples, AgentSamples
+from parllel.buffers import Samples, AgentSamples
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical

@@ -5,7 +5,7 @@ from parllel.buffers import NamedArrayTupleClass
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.cages import Cage, ProcessCage
-from parllel.samplers.collections import AgentSamples, EnvSamples
+from parllel.buffers import AgentSamples, EnvSamples
 from parllel.types import BatchSpec
 
 

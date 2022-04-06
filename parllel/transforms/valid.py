@@ -4,7 +4,7 @@ from nptyping import NDArray
 
 from parllel.arrays import Array
 from parllel.buffers import NamedArrayTupleClass
-from parllel.samplers import Samples, EnvSamples
+from parllel.buffers import Samples, EnvSamples
 
 from .transform import BatchTransform
 

@@ -6,7 +6,7 @@ import numpy as np
 from parllel.arrays import Array, RotatingArray, buffer_from_dict_example
 from parllel.buffers import NamedArrayTuple, buffer_asarray, buffer_method
 from parllel.cages import Cage
-from parllel.samplers import Samples, AgentSamples, EnvSamples
+from parllel.buffers import Samples, AgentSamples, EnvSamples
 from parllel.types import BatchSpec, MultiAgentTrajInfo, TrajInfo
 
 from parllel.samplers.basic import BasicSampler

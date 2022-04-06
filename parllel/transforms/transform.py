@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Sequence, Tuple
 
-from parllel.samplers import Samples
+from parllel.buffers import Samples
 
 
 class Transform(ABC):
