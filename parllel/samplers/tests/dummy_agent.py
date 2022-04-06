@@ -1,14 +1,13 @@
-from typing import Optional, Union
+from typing import Union
 
 import gym
 import numpy as np
 from numpy import random
-from nptyping import NDArray
 from parllel.arrays.utils import buffer_from_dict_example, buffer_from_example
 
 from parllel.arrays import Array, buffer_from_dict_example
-from parllel.buffers import Buffer, NamedTupleClass, buffer_method, buffer_asarray
-from parllel.handlers import Agent, AgentStep, Handler
+from parllel.buffers import Buffer, NamedTupleClass, buffer_method
+from parllel.handlers import Agent, AgentStep
 from parllel.samplers import AgentSamples
 from parllel.types import BatchSpec
 
@@ -31,7 +30,7 @@ class DummyAgent(Agent):
         batch_info = buffer_from_dict_example(
             {"observation": self.observation_space.sample()},
             (n_batches * batch_spec.T, batch_spec.B), Array, name="agentinfo")
-        self._agent_samples = AgentSamples(batch_action, batch_info)
+        self._samples = AgentSamples(batch_action, batch_info)
         self._values = buffer_from_example(np.array(0, dtype=np.float32),
             (n_batches, batch_spec.B), Array)
 
@@ -52,8 +51,8 @@ class DummyAgent(Agent):
              ) -> AgentStep:
         action = self.action_space.sample()
         agent_info = DummyAgentInfo(buffer_method(observation, "copy"))
-        self._agent_samples.action[self._step_ctr] = action
-        self._agent_samples.agent_info[self._step_ctr] = agent_info
+        self._samples.action[self._step_ctr] = action
+        self._samples.agent_info[self._step_ctr] = agent_info
         self._step_ctr += 1
 
         # if self.recurrent:
@@ -69,39 +68,9 @@ class DummyAgent(Agent):
         return value
 
     @property
-    def agent_samples(self):
-        return self._agent_samples
+    def samples(self):
+        return self._samples
 
     @property
     def values(self):
         return self._values
-
-
-class DummyHandler(Handler):
-    def step(self, observation: Buffer[Array], *, env_indices:
-            Union[int, slice] = ..., out_action: Buffer[Array] = None,
-            out_agent_info: Buffer[Array] = None) -> Optional[AgentStep]:
-        
-        observation: Buffer[NDArray] = buffer_asarray(observation)
-
-        agent_step: AgentStep = self._agent.step(observation,
-            env_indices=env_indices)
-
-        if any(out is None for out in (out_action, out_agent_info)):
-            return agent_step
-        else:
-            action, agent_info = agent_step
-            out_action[:] = action
-            out_agent_info[:] = agent_info
-
-    def value(self, observation: Buffer[Array], *,
-            out_value: Buffer[Array] = None) -> Optional[Buffer]:
-        
-        observation: Buffer[NDArray] = buffer_asarray(observation)
-
-        value: Buffer[NDArray] = self._agent.value(observation)
-
-        if out_value is None:
-            return value
-        else:
-            out_value[:] = value

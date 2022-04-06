@@ -1,7 +1,7 @@
 from .batch_spec import BatchSpec
-from .traj_info import TrajInfo
+from .traj_info import MultiAgentTrajInfo, TrajInfo
 
 __all__ = [
     BatchSpec,
-    TrajInfo,
+    MultiAgentTrajInfo, TrajInfo,
 ]

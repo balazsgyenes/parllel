@@ -6,7 +6,7 @@ from gym.wrappers import TimeLimit as GymTimeLimit
 
 from parllel.arrays import Array
 from parllel.buffers import Buffer, buffer_asarray
-from parllel.buffers.named_tuple import namedtuple_to_dict
+from parllel.buffers.named_tuple import dict_to_namedtuple, namedtuple_to_dict
 from parllel.types.traj_info import TrajInfo
 
 from .collections import EnvStep, EnvSpaces
@@ -151,6 +151,7 @@ class Cage:
         """Take a step with a random action from the env's action space.
         """
         action = self.spaces.action.sample()
+        action = dict_to_namedtuple(action, "action")
 
         # call method in this class explicitly, in case overridden by child
         Cage.step_async(self, action, out_obs=out_obs, out_reward=out_reward,

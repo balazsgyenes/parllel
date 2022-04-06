@@ -15,10 +15,10 @@ from parllel.types import BatchSpec
 class DummyEnv(gym.Env):
     def __init__(self, action_space: gym.Space, observation_space: gym.Space,
             episode_length: int, batch_spec: BatchSpec, n_batches: int,
-            multi_reward: bool = False) -> None:
+            multireward: bool = False) -> None:
         self.observation_space = observation_space
         self.action_space = action_space
-        if multi_reward:
+        if multireward:
             self.reward_space = spaces.Dict({
                 "alice": spaces.Box(-10, 10, shape=()),
                 "bob": spaces.Box(-10, 10, shape=()),
@@ -38,7 +38,7 @@ class DummyEnv(gym.Env):
             (n_batches * batch_spec.T,), Array, name="done")
         batch_info = buffer_from_dict_example({"action": self.action_space.sample()},
             (n_batches * batch_spec.T,), Array, name="envinfo")
-        self._env_samples = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
+        self._samples = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
     def step(self, action: NDArray) -> Tuple[Buffer, NDArray, bool, NamedTuple]:
         obs = self.observation_space.sample()
@@ -46,14 +46,17 @@ class DummyEnv(gym.Env):
         done = self._traj_counter >= self._episode_length
         env_info = {"action": copy.deepcopy(action)}
 
+        # check the call stack to determine if this is a "real sample" or not
+        # if just getting example or decorrelating, keep overwriting "reset"
+        # observation
         names = [frame.name for frame in traceback.extract_stack()]
         if "random_step_async" in names or "get_example_output" in names:
-            self._env_samples.observation[0] = obs
+            self._samples.observation[0] = obs
         else:
-            self._env_samples.observation[self._step_ctr + 1] = obs
-            self._env_samples.reward[self._step_ctr] = reward
-            self._env_samples.done[self._step_ctr] = done
-            self._env_samples.env_info[self._step_ctr] = env_info
+            self._samples.observation[self._step_ctr + 1] = obs
+            self._samples.reward[self._step_ctr] = reward
+            self._samples.done[self._step_ctr] = done
+            self._samples.env_info[self._step_ctr] = env_info
             self._step_ctr += 1
 
         self._traj_counter += 1
@@ -62,9 +65,9 @@ class DummyEnv(gym.Env):
     def reset(self) -> NDArray:
         self._traj_counter = 0
         obs = self.observation_space.sample()
-        self._env_samples.observation[self._step_ctr] = obs
+        self._samples.observation[self._step_ctr] = obs
         return obs
 
     @property
-    def env_samples(self):
-        return self._env_samples
+    def samples(self):
+        return self._samples
