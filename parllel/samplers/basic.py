@@ -1,10 +1,10 @@
 from typing import List, Optional, Sequence, Tuple
 
 from parllel.buffers.utils import buffer_asarray, buffer_rotate
-from parllel.cages import Cage
+from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
 from parllel.transforms import Transform
-from parllel.types import BatchSpec, TrajInfo
+from parllel.types import BatchSpec
 
 from parllel.buffers import Samples
 from .sampler import Sampler

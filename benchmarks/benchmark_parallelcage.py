@@ -11,12 +11,12 @@ from gym.wrappers import TimeLimit
 from parllel.buffers import buffer_method
 from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
     RotatingManagedMemoryArray, buffer_from_example, buffer_from_dict_example)
-from parllel.cages import Cage, ProcessCage
+from parllel.cages import Cage, ProcessCage, TrajInfo
 from parllel.cages.tests.dummy import DummyEnv
 from parllel.cages.profiling import ProfilingProcessCage
 from parllel.buffers import Samples, AgentSamples, EnvSamples
 from parllel.samplers.profiling import ProfilingSampler
-from parllel.types import BatchSpec, TrajInfo
+from parllel.types import BatchSpec
 
 
 def make_dummy_env(step_duration: float) -> gym.Env:

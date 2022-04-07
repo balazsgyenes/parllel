@@ -12,6 +12,7 @@ from parllel.patterns import (add_bootstrap_value, add_valid,
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers.recurrent import RecurrentSampler
 from parllel.buffers import Samples, AgentSamples
+from parllel.cages import TrajInfo
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
@@ -22,7 +23,7 @@ from parllel.transforms.advantage import EstimateAdvantage
 from parllel.transforms.clip_rewards import ClipRewards
 from parllel.transforms.norm_obs import NormalizeObservations
 from parllel.transforms.norm_rewards import NormalizeRewards
-from parllel.types import BatchSpec, TrajInfo
+from parllel.types import BatchSpec
 
 from build.make_env import make_env
 from build.recurrent_model import CartPoleLstmCategoricalPgModel

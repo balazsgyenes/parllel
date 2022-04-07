@@ -4,9 +4,9 @@ from typing import List, Optional, Sequence, Tuple
 import numpy as np
 from numpy import random
 
-from parllel.cages import Cage
+from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
-from parllel.types import BatchSpec, TrajInfo
+from parllel.types import BatchSpec
 
 from parllel.buffers import Samples
 

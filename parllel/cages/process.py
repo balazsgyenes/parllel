@@ -8,10 +8,10 @@ from parllel.arrays import Array, ManagedMemoryArray
 from parllel.buffers import Buffer
 from parllel.buffers.registry import BufferRegistry
 from parllel.buffers.utils import buffer_all
-from parllel.types.traj_info import TrajInfo
 
 from .cage import Cage
 from .collections import EnvStep, EnvSpaces
+from .traj_info import TrajInfo
 
 
 class Command(enum.Enum):
