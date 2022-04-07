@@ -7,6 +7,7 @@ from gym import spaces
 from nptyping import NDArray
 
 from parllel.arrays import Array, RotatingArray, buffer_from_dict_example
+from parllel.arrays.utils import buffer_from_example
 from parllel.buffers import Buffer, NamedTuple
 from parllel.buffers import EnvSamples
 from parllel.types import BatchSpec
@@ -39,6 +40,8 @@ class DummyEnv(gym.Env):
         batch_info = buffer_from_dict_example({"action": self.action_space.sample()},
             (n_batches * batch_spec.T,), Array, name="envinfo")
         self._samples = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
+        self._batch_resets = buffer_from_example(True,
+            (n_batches * batch_spec.T,), RotatingArray, padding=1)
 
     def step(self, action: NDArray) -> Tuple[Buffer, NDArray, bool, NamedTuple]:
         obs = self.observation_space.sample()
@@ -66,8 +69,13 @@ class DummyEnv(gym.Env):
         self._traj_counter = 0
         obs = self.observation_space.sample()
         self._samples.observation[self._step_ctr] = obs
+        self._batch_resets[self._step_ctr - 1] = True
         return obs
 
     @property
     def samples(self):
         return self._samples
+
+    @property
+    def resets(self):
+        return self._batch_resets
