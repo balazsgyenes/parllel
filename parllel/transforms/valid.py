@@ -3,8 +3,7 @@ import numpy as np
 from nptyping import NDArray
 
 from parllel.arrays import Array
-from parllel.buffers import NamedArrayTupleClass
-from parllel.buffers import Samples, EnvSamples
+from parllel.buffers import EnvSamples, NamedArrayTupleClass, Samples
 
 from .transform import BatchTransform
 

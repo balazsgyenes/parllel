@@ -1,3 +1,6 @@
+# dependencies
+import parllel.buffers
+
 from .array import Array
 from .rotating import RotatingArray
 from .sharedmemory import SharedMemoryArray, RotatingSharedMemoryArray

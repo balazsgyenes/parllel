@@ -5,19 +5,18 @@ from typing import Optional, Sequence
 
 import numpy as np
 
+from parllel.buffers import Samples
 from parllel.cages import Cage
 from parllel.types import BatchSpec
 
-from parllel.buffers import Samples
-from .basic import MiniSampler
+from .sampler import Sampler
 
 
-class ProfilingSampler(MiniSampler):
+class ProfilingSampler(Sampler):
     def __init__(self, batch_spec: BatchSpec, envs: Sequence[Cage], batch_buffer: Samples,
                 n_iterations: int, profile_path: Optional[Path] = None
                 ) -> None:
-        super().__init__(batch_spec, envs, agent=None, batch_buffer=batch_buffer,
-            get_bootstrap_value=False)
+        super().__init__(batch_spec, envs, agent=None, batch_buffer=batch_buffer)
 
         self.n_iterations = n_iterations
         self.profile_path = profile_path
@@ -26,21 +25,12 @@ class ProfilingSampler(MiniSampler):
         self.durations = np.zeros((batch_spec.T,), dtype=float)
         self.profiler = cProfile.Profile() if profile_path is not None else None
     
-    def reset_all(self) -> None:
-        """Reset all environments and save to beginning of observation
-        buffer.
-        """
-        observation = self.batch_buffer.env.observation
-        for b, env in enumerate(self.envs):
-            # save reset observation to the end of buffer, since it will be 
-            # rotated to the beginning
-            env.reset_async(out_obs=observation[observation.last + 1, b])
-
+    def reset_agent(self) -> None:
         # skip reseting agent
+        pass
 
-        # wait for envs to finish reset
-        for b, env in enumerate(self.envs):
-            env.await_step()
+    def collect_batch(self, elapsed_steps: int) -> None:
+        pass
 
     def time_batches(self):
         batch_T, batch_B = self.batch_spec

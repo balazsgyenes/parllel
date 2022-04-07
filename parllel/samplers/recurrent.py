@@ -2,13 +2,13 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from parllel.buffers.utils import buffer_asarray, buffer_rotate
+from parllel.buffers import Samples, buffer_asarray
+from parllel.buffers.utils import buffer_rotate
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
 from parllel.transforms import Transform
 from parllel.types import BatchSpec
 
-from parllel.buffers import Samples
 from .sampler import Sampler
 
 

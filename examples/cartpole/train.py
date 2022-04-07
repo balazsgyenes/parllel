@@ -1,27 +1,22 @@
 from contextlib import contextmanager
 import multiprocessing as mp
 
-import numpy as np
 import torch
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
-from parllel.buffers import buffer_map, buffer_method
+from parllel.buffers import AgentSamples, buffer_method, Samples
+from parllel.cages import TrajInfo
 from parllel.patterns import add_bootstrap_value, build_cages_and_env_buffers
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers.basic import BasicSampler
-from parllel.buffers import Samples, AgentSamples
-from parllel.cages import TrajInfo
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.torch.utils import numpify_buffer, torchify_buffer
-from parllel.transforms import Compose
-from parllel.transforms.advantage import EstimateAdvantage
-from parllel.transforms.clip_rewards import ClipRewards
-from parllel.transforms.norm_obs import NormalizeObservations
-from parllel.transforms.norm_rewards import NormalizeRewards
+from parllel.transforms import (ClipRewards, Compose, EstimateAdvantage,
+    NormalizeAdvantage, NormalizeObservations, NormalizeRewards)
 from parllel.types import BatchSpec
 
 from build.make_env import make_env
@@ -114,10 +109,14 @@ def build():
             gae_lambda=gae_lambda)
         batch_buffer = advantage_transform.dry_run(batch_buffer, ArrayCls)
 
+        advantage_norm_transform = NormalizeAdvantage()
+        batch_buffer = advantage_norm_transform.dry_run(batch_buffer)
+
         batch_transform = Compose([
             reward_norm_transform,
             reward_clip_transform,
             advantage_transform,
+            advantage_norm_transform,
         ])
 
         sampler = BasicSampler(

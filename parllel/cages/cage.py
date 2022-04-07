@@ -4,8 +4,8 @@ import gym
 from gym.wrappers import TimeLimit as GymTimeLimit
 
 from parllel.arrays import Array
-from parllel.buffers import Buffer, buffer_asarray
-from parllel.buffers.named_tuple import dict_to_namedtuple, namedtuple_to_dict
+from parllel.buffers import (Buffer, buffer_asarray, dict_to_namedtuple,
+    namedtuple_to_dict)
 
 from .collections import EnvStep, EnvSpaces
 from .traj_info import TrajInfo

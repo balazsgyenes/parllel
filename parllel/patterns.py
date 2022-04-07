@@ -1,11 +1,10 @@
 from contextlib import contextmanager
 from typing import Callable, Dict, Tuple
 
-from parllel.buffers import NamedArrayTupleClass
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
+from parllel.buffers import AgentSamples, EnvSamples, NamedArrayTupleClass
 from parllel.cages import Cage, ProcessCage
-from parllel.buffers import AgentSamples, EnvSamples
 from parllel.types import BatchSpec
 
 

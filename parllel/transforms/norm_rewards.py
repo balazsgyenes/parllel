@@ -5,8 +5,7 @@ from nptyping import NDArray
 from numba import njit
 
 from parllel.arrays import Array, RotatingArray
-from parllel.buffers import NamedArrayTupleClass
-from parllel.buffers import Samples, EnvSamples
+from parllel.buffers import EnvSamples, NamedArrayTupleClass, Samples
 
 from .running_mean_std import RunningMeanStd
 from .transform import BatchTransform
