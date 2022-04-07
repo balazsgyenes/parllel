@@ -156,9 +156,10 @@ class RecurrentSampler(Sampler):
 
         # collect all completed trajectories from envs
         completed_trajectories = [
-            traj for env in self.envs for traj
-            in env.collect_completed_trajs()
-            ]
+            traj
+            for env in self.envs
+            for traj in env.collect_completed_trajs()
+        ]
 
         batch_samples = self.batch_transform(self.batch_buffer)
 

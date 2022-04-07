@@ -1,5 +1,7 @@
 from typing import List, Optional, Sequence, Tuple
 
+import numpy as np
+
 from parllel.buffers import Samples, buffer_asarray
 from parllel.buffers.utils import buffer_rotate
 from parllel.cages import Cage, TrajInfo
@@ -96,10 +98,9 @@ class BasicSampler(Sampler):
 
             # if environment is done, reset agent
             # environment has already been reset inside cage
-            for b, env in enumerate(self.envs):
-                if done[t, b]:
-                    self.agent.reset_one(env_index=b)
-
+            if np.any(dones := done[t]):
+                self.agent.reset_one(dones)
+        
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
             self.agent.value(
@@ -109,9 +110,10 @@ class BasicSampler(Sampler):
 
         # collect all completed trajectories from envs
         completed_trajectories = [
-            traj for env in self.envs for traj
-            in env.collect_completed_trajs()
-            ]
+            traj
+            for env in self.envs
+            for traj in env.collect_completed_trajs()
+        ]
 
         batch_samples = self.batch_transform(self.batch_buffer)
 
