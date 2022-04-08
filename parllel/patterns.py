@@ -71,7 +71,7 @@ def build_cages_and_env_buffers(
             cage.close()
 
 
-def add_initial_rnn_state(batch_buffer, example_init_rnn_state):
+def add_initial_rnn_state(batch_buffer, batch_init_rnn):
     batch_agent: AgentSamples = batch_buffer.agent    
 
     AgentSamplesClass = NamedArrayTupleClass(
@@ -80,7 +80,7 @@ def add_initial_rnn_state(batch_buffer, example_init_rnn_state):
     )
 
     batch_agent = AgentSamplesClass(
-        **batch_agent._asdict(), initial_rnn_state=example_init_rnn_state,
+        **batch_agent._asdict(), initial_rnn_state=batch_init_rnn,
     )
     batch_buffer = batch_buffer._replace(agent=batch_agent)
     

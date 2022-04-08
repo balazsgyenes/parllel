@@ -54,12 +54,21 @@ class DummyAgent(Agent):
         self._states[self._step_ctr] = 0
     
     def reset_one(self, env_index: int) -> None:
+        if self.recurrent:
+            # sampling batch may have stopped early
+            batch_ctr = (self._step_ctr - 1) // self.batch_spec.T + 1
+            # advance counter to the next batch
+            self._step_ctr = batch_ctr * self.batch_spec.T
         self._batch_resets[self._step_ctr - 1, env_index] = True
         self._states[self._step_ctr, env_index] = 0
 
     def initial_rnn_state(self) -> Buffer:
+        # sampling batch may have stopped early
+        batch_ctr = (self._step_ctr - 1) // self.batch_spec.T + 1
+        # advance counter to the next batch
+        self._step_ctr = batch_ctr * self.batch_spec.T
+        
         init_rnn_state = self.rng.random(self.batch_spec.B)
-        batch_ctr = (self._step_ctr - 1) // self.batch_spec.T
         self._init_rnn_states[batch_ctr] = init_rnn_state
         return init_rnn_state
 
@@ -79,8 +88,8 @@ class DummyAgent(Agent):
         return AgentStep(action, agent_info)
 
     def value(self, observation: Buffer) -> Buffer:
-        value = self.rng.random(self.batch_spec.B)
         batch_ctr = (self._step_ctr - 1) // self.batch_spec.T
+        value = self.rng.random(self.batch_spec.B)
         self._values[batch_ctr] = value
         return value
 
@@ -95,6 +104,10 @@ class DummyAgent(Agent):
     @property
     def resets(self):
         return self._batch_resets
+
+    @property
+    def init_rnn_states(self):
+        return self._init_rnn_states
 
     @property
     def states(self):

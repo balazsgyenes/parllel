@@ -1,6 +1,5 @@
 import pytest
 
-from gym import spaces
 import numpy as np
 
 from parllel.arrays import (Array, RotatingArray, buffer_from_example,
@@ -8,81 +7,27 @@ from parllel.arrays import (Array, RotatingArray, buffer_from_example,
 from parllel.buffers import (AgentSamples, EnvSamples, NamedArrayTuple,
     NamedArrayTupleClass, Samples, buffer_method)
 from parllel.cages import Cage, MultiAgentTrajInfo, TrajInfo
-from parllel.types import BatchSpec
 
-from parllel.samplers.basic import BasicSampler
+from parllel.samplers.recurrent import RecurrentSampler
 from parllel.samplers.tests.dummy_env import DummyEnv
 from parllel.samplers.tests.dummy_agent import DummyAgent
 from parllel.samplers.tests.dummy_handler import DummyHandler
+from parllel.samplers.tests.test_basic import (N_BATCHES, batch_spec,
+    observation_space, action_space, max_decorrelation_steps, multireward,
+    get_bootstrap)
 
 
-N_BATCHES = 3
-EPISODE_LENGTH_START = 8
-EPISODE_LENGTH_STEP = 12
-
-@pytest.fixture(
-    params=[(32, 4), (32, 1), (1, 4)],
-    ids=["batch=32x4", "batch=32x1", "batch=1x4"],
-    scope="module",
-)
-def batch_spec(request):
-    T, B = request.param
-    return BatchSpec(T, B)
-
-@pytest.fixture(
-    params=[
-        spaces.Box(-10, 10, (4,)),
-        spaces.Dict({"alice": spaces.Box(-10, 10, (4,)), "bob": spaces.Box(-10, 10, (2,))}),
-    ],
-    ids=["obs=Box", "obs=Dict"],
-    scope="module",
-)
-def observation_space(request):
-    return request.param
-
-@pytest.fixture(
-    params=[
-        spaces.Discrete(2),
-        spaces.Box(-10, 10, (4,)),
-        spaces.Dict({"alice": spaces.Box(-10, 10, (3,)), "bob": spaces.Box(-10, 10, (6,))}),
-    ],
-    ids=["action=Discrete", "action=Box", "action=Dict"],
-    scope="module",
-)
-def action_space(request):
-    return request.param
-
-@pytest.fixture(
-    params=[0, 25],
-    ids=["decorrelation=0", "decorrelation=25"],
-    scope="module",
-)
-def max_decorrelation_steps(request):
-    return request.param
-
-@pytest.fixture(
-    params=[False, True],
-    ids=["singleagent", "multiagent"],
-    scope="module",
-)
-def multireward(request):
-    return request.param
-
-@pytest.fixture(
-    params=[False, True],
-    ids=["nobootstrap", "bootstrapvalue"],
-    scope="module",
-)
-def get_bootstrap(request):
-    return request.param
+@pytest.fixture(params=[(8, 12), (6, 2)])
+def episode_lengths(request, batch_spec):
+    start, step = request.param
+    return list(range(
+        start,
+        start + step * batch_spec.B,
+        step,
+    ))
 
 @pytest.fixture
-def envs(action_space, observation_space, batch_spec, multireward):
-    episode_lengths = range(
-        EPISODE_LENGTH_START,
-        EPISODE_LENGTH_START + EPISODE_LENGTH_STEP * batch_spec.B,
-        EPISODE_LENGTH_STEP,
-    )
+def envs(action_space, observation_space, batch_spec, multireward, episode_lengths):
     cages = [Cage(
         EnvClass=DummyEnv,
         env_kwargs=dict(
@@ -92,10 +37,11 @@ def envs(action_space, observation_space, batch_spec, multireward):
             batch_spec=batch_spec,
             n_batches=N_BATCHES,
             multireward=multireward,
+            wait_before_reset=True,
         ),
         TrajInfoClass=MultiAgentTrajInfo if multireward else TrajInfo,
         traj_info_kwargs={},
-        wait_before_reset=False,
+        wait_before_reset=True,
     ) for length in episode_lengths]
 
     yield cages
@@ -110,7 +56,7 @@ def agent(action_space, observation_space, batch_spec):
         observation_space=observation_space,
         batch_spec=batch_spec,
         n_batches=N_BATCHES,
-        recurrent=False,
+        recurrent=True,
     )
     handler = DummyHandler(agent)
     return handler
@@ -130,25 +76,40 @@ def batch_buffer(action_space, observation_space, batch_spec, envs, agent, get_b
         Array, name="done")
     batch_info = buffer_from_dict_example(info, tuple(batch_spec),
         Array, name="envinfo")
-    batch_env = EnvSamples(batch_observation, batch_reward,
-        batch_done, batch_info)
+    batch_valid = buffer_from_dict_example(done, tuple(batch_spec),
+        RotatingArray, name="valid")
+
+    EnvSamplesWValid = NamedArrayTupleClass(
+        typename = EnvSamples._typename,
+        fields = EnvSamples._fields + ("valid",),
+    )
+
+    batch_env = EnvSamplesWValid(batch_observation, batch_reward,
+        batch_done, batch_info, batch_valid)
     batch_action = buffer_from_dict_example(action_space.sample(),
         tuple(batch_spec), Array, name="action")
     batch_agent_info = buffer_from_example(agent_info,
         tuple(batch_spec), Array, name="agentinfo")
 
+    AgentSamplesWRnnState = NamedArrayTupleClass(
+        typename = AgentSamples._typename,
+        fields = AgentSamples._fields + ("initial_rnn_state",)
+    )
+    batch_init_rnn = buffer_from_example(np.array(0, np.float32),
+            (batch_spec.B,), Array)
+
     if get_bootstrap:
         AgentSamplesWBootstrap = NamedArrayTupleClass(
-            typename = AgentSamples._typename,
-            fields = AgentSamples._fields + ("bootstrap_value",)
+            typename = AgentSamplesWRnnState._typename,
+            fields = AgentSamplesWRnnState._fields + ("bootstrap_value",)
         )
         batch_bootstrap_value = buffer_from_example(np.array(0, np.float32),
             (batch_spec.B,), Array)
 
         batch_agent = AgentSamplesWBootstrap(batch_action, batch_agent_info,
-            batch_bootstrap_value)
+            batch_init_rnn, batch_bootstrap_value)
     else:
-        batch_agent = AgentSamples(batch_action, batch_agent_info)
+        batch_agent = AgentSamplesWRnnState(batch_action, batch_agent_info, batch_init_rnn)
 
     batch_buffer = Samples(batch_agent, batch_env)
         
@@ -161,7 +122,7 @@ def batch_buffer(action_space, observation_space, batch_spec, envs, agent, get_b
     buffer_method(batch_buffer, "close")
     buffer_method(batch_buffer, "destroy")
 
-@pytest.fixture(params=[BasicSampler])
+@pytest.fixture(params=[RecurrentSampler])
 def samples(request, batch_spec, envs, agent, batch_buffer,
         max_decorrelation_steps, get_bootstrap):
     SamplerClass = request.param
@@ -196,7 +157,7 @@ def buffer_equal(ref, test, /, name=""):
     else:
         assert np.array_equal(ref, test), name
 
-class TestBasicSampler:
+class TestRecurrentSampler:
     def test_batches(self, samples, envs, agent, batch_spec, max_decorrelation_steps, get_bootstrap):
         batches, _ = samples
 
@@ -214,43 +175,60 @@ class TestBasicSampler:
 
             time_slice = slice(i * batch_spec.T, (i + 1) * batch_spec.T)
 
+            valid = batch.env.valid
+
             # verify that the agent samples are those generated by the agent
             # if bootstrap value exists in batch.agent, it is ignored because
             # only fields in ref_agent_samples are checked
-            buffer_equal(agent.samples[time_slice], batch.agent, f"batch{(i+1)}.agent")
+            buffer_equal(agent.samples.action[time_slice][valid],
+                         batch.agent.action[valid],
+                         f"batch{(i+1)}.agent")
+            buffer_equal(agent.samples.agent_info[time_slice][valid],
+                         batch.agent.agent_info[valid],
+                         f"batch{(i+1)}.agent")
 
-            # check that agent was reset only on done
-            assert np.array_equal(agent.resets[time_slice], batch.env.done)
-            
-            # check that agent state is always 0 after reset
-            previous_time = slice(i * batch_spec.T - 1, (i + 1) * batch_spec.T - 1)
-            previous_reset = agent.resets[previous_time]
-            assert np.all(agent.states[time_slice][previous_reset] == 0)
+            # check agent resets at the end of batch if a done occurred
+            done_envs = np.any(batch.env.done, axis=0)
+            assert np.array_equal(agent.resets[time_slice][-1], done_envs)
+            assert not np.any(agent.resets[time_slice][:-1])
 
-            # check that agent state is otherwise not 0
-            assert not np.any(agent.states[time_slice][~np.asarray(previous_reset)] == 0)
-            
+            # check that agent state is 0 at beginning of next batch for those
+            # environments that were done during this batch
+            assert np.all(agent.states[(i + 1) * batch_spec.T, done_envs] == 0)
+
+            # verify init_rnn_state
+            buffer_equal(batch.agent.initial_rnn_state, agent.init_rnn_states[i])
+
             if get_bootstrap:
                 # check bootstrap values
                 buffer_equal(batch.agent.bootstrap_value, agent.values[i])
             
             for b, env in enumerate(envs):
+                b_valid = valid[:, b]
+
+                # verify that steps before and including done are valid
+                # and steps after done after invalid
+                t_done = np.argwhere(env._env.samples.done[time_slice])
+                after_first_done = t_done[0, 0] + 1 if len(t_done) else batch_spec.T
+                assert np.all(b_valid[:after_first_done])
+                assert not np.any(b_valid[after_first_done:])
+
                 # verify that the env samples are those generated by the env
-                buffer_equal(env._env.samples[time_slice],
-                             batch.env[:, b],
+                buffer_equal(env._env.samples[time_slice][b_valid],
+                             batch.env[:, b][b_valid],
                              f"batch{(i+1)}_env")
 
                 # verify that the env saw the correct action at each step
-                buffer_equal(env._env.samples.env_info.action[time_slice],
-                             batch.agent.action[:, b],
+                buffer_equal(env._env.samples.env_info.action[time_slice][b_valid],
+                             batch.agent.action[:, b][b_valid],
                              f"batch{(i+1)}_action")
 
                 # verify that the agent saw the correct observation at each step
-                buffer_equal(agent.samples.agent_info.observation[time_slice, b],
-                             batch.env.observation[:, b],
+                buffer_equal(agent.samples.agent_info.observation[time_slice, b][b_valid],
+                             batch.env.observation[:, b][b_valid],
                              f"batch{(i+1)}_observation")
 
                 # check that environment was reset only on done
-                ref_resets = env._env.resets[time_slice]
-                test_dones = batch.env.done[:, b]
+                ref_resets = env._env.resets[time_slice][b_valid]
+                test_dones = batch.env.done[:, b][b_valid]
                 assert np.array_equal(ref_resets, test_dones)
