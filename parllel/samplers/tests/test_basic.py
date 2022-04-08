@@ -87,7 +87,7 @@ def envs(action_space, observation_space, batch_spec, multireward):
             n_batches=N_BATCHES,
             multireward=multireward,
         ),
-        TrajInfoClass=MultiAgentTrajInfo if multireward else TrajInfo ,
+        TrajInfoClass=MultiAgentTrajInfo if multireward else TrajInfo,
         traj_info_kwargs={},
         wait_before_reset=False,
     ) for length in episode_lengths]
@@ -110,9 +110,10 @@ def agent(action_space, observation_space, batch_spec):
     return handler
 
 @pytest.fixture
-def batch_buffer(action_space, observation_space, batch_spec, envs, get_bootstrap):
+def batch_buffer(action_space, observation_space, batch_spec, envs, agent, get_bootstrap):
     # get example output from env
     obs, reward, done, info = envs[0].get_example_output()
+    agent_info = agent.dry_run()
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec),
@@ -127,8 +128,7 @@ def batch_buffer(action_space, observation_space, batch_spec, envs, get_bootstra
         batch_done, batch_info)
     batch_action = buffer_from_dict_example(action_space.sample(),
         tuple(batch_spec), Array, name="action")
-    batch_agent_info = buffer_from_dict_example(
-        {"observation": observation_space.sample()},
+    batch_agent_info = buffer_from_example(agent_info,
         tuple(batch_spec), Array, name="agentinfo")
 
     if get_bootstrap:
@@ -196,6 +196,7 @@ class TestBasicSampler:
 
         # verify that agent was reset before very first batch
         assert np.all(agent.resets[agent.resets.first - 1])
+        assert np.all(agent.states[0] == 0.)
 
         if not max_decorrelation_steps:
             # verify that environments were all reset before very first batch
@@ -235,6 +236,14 @@ class TestBasicSampler:
                 test_dones = batch.env.done[:, b]
                 assert np.array_equal(ref_resets, test_dones)
                 assert np.array_equal(ref_agent_resets, test_dones)
+
+                # check that agent state is always 0 after reset
+                previous_time = slice(i * batch_spec.T - 1, (i + 1) * batch_spec.T - 1)
+                previous_reset = env._env.resets[previous_time]
+                assert np.all(agent.states[time_slice, b][previous_reset] == 0)
+
+                # check that agent state is otherwise not 0
+                assert not np.any(agent.states[time_slice, b][~np.asarray(previous_reset)] == 0)
 
             if get_bootstrap:
                 # check bootstrap values
