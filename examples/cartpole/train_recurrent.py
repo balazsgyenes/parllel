@@ -30,7 +30,7 @@ def build():
     batch_B = 16
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = False
+    parallel = True
     EnvClass=make_env
     env_kwargs={
         "max_episode_steps": 1000,
@@ -165,6 +165,6 @@ def build():
     
 
 if __name__ == "__main__":
-    mp.set_start_method("fork")
+    mp.set_start_method("spawn")
     with build() as runner:
         runner.run()

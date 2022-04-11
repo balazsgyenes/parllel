@@ -4,8 +4,8 @@ import gym
 from gym.wrappers import TimeLimit as GymTimeLimit
 
 from parllel.arrays import Array
-from parllel.buffers import (Buffer, buffer_asarray, dict_to_namedtuple,
-    namedtuple_to_dict)
+from parllel.buffers import (Buffer, NamedTuple, buffer_asarray,
+    dict_to_namedtuple, namedtuple_to_dict)
 
 from .collections import EnvStep, EnvSpaces
 from .traj_info import TrajInfo
@@ -125,12 +125,13 @@ class Cage:
             out_reward[:] = reward
             out_done[:] = done
             out_info[:] = env_info
+            self._step_result = self._already_done
 
     def _defer_env_reset(self) -> None:
         self._reset_obs = self._env.reset()
         self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
 
-    def await_step(self) -> Union[EnvStep, Tuple[Buffer, EnvStep], Buffer]:
+    def await_step(self) -> Union[EnvStep, Tuple[Buffer, ...], Buffer, bool]:
         result = self._step_result
         self._step_result = None
         return result
@@ -156,10 +157,11 @@ class Cage:
         Cage.step_async(self, action, out_obs=out_obs, out_reward=out_reward,
             out_done=out_done, out_info=out_info)
 
-        if self._step_result is not None:
-            self._step_result = (action, self._step_result)
+        if isinstance(self._step_result, NamedTuple):
+            self._step_result = (action, *self._step_result)
         else:
             out_action[:] = action
+            self._step_result = self._already_done
 
     def reset_async(self, *, out_obs: Buffer = None) -> None:
         if self._already_done:
@@ -174,6 +176,7 @@ class Cage:
             self._step_result = _reset_obs
         else:
             out_obs[:] = _reset_obs
+            self._step_result = self._already_done
 
     def close(self) -> None:
         self._env.close()
