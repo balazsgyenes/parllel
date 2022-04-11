@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -39,7 +39,7 @@ class CategoricalPgAgent(TorchAgent):
 
     @torch.no_grad()
     def dry_run(self, n_states: int, observation: Buffer,
-            example_action: Optional[Buffer] = None) -> AgentStep:
+            example_action: Optional[Buffer] = None) -> Tuple[AgentInfo, Buffer]:
         
         model_inputs = (observation,)
 

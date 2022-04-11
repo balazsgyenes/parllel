@@ -21,6 +21,10 @@ class Handler(ABC):
             ) -> Optional[Buffer]:
         raise NotImplementedError
 
+    def initial_rnn_state(self, *, out_rnn_state: Buffer[Array] = None,
+            )-> Buffer:
+        raise NotImplementedError
+
     def reset(self) -> None:
         self._agent.reset()
 

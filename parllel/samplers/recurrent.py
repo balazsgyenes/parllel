@@ -97,8 +97,8 @@ class RecurrentSampler(Sampler):
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
         
-        self.batch_buffer.agent.initial_rnn_state[:] = (
-            self.agent.initial_rnn_state()
+        self.agent.initial_rnn_state(
+            out_rnn_state=self.batch_buffer.agent.initial_rnn_state
         )
         
         # first time step is always valid, rest are invalid by default

@@ -15,6 +15,9 @@ class Agent(ABC):
     def value(self, observation: Buffer) -> Buffer:
         raise NotImplementedError
 
+    def initial_rnn_state(self) -> Buffer:
+        raise NotImplementedError
+
     def reset(self) -> None:
         pass
 

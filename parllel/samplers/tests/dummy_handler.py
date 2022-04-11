@@ -35,3 +35,12 @@ class DummyHandler(Handler):
             return value
         else:
             out_value[:] = value
+
+    def initial_rnn_state(self, *, out_rnn_state: Buffer[Array] = None,
+            )-> Buffer:
+        init_rnn_state: Buffer[NDArray] = self._agent.initial_rnn_state()
+
+        if out_rnn_state is None:
+            return init_rnn_state
+        else:
+            out_rnn_state[:] = init_rnn_state
