@@ -5,8 +5,7 @@ from nptyping import NDArray
 from numba import njit
 
 from parllel.arrays import Array, RotatingArray
-from parllel.buffers import NamedArrayTupleClass
-from parllel.samplers import Samples, EnvSamples
+from parllel.buffers import EnvSamples, NamedArrayTupleClass, Samples
 
 from .running_mean_std import RunningMeanStd
 from .transform import BatchTransform
@@ -60,7 +59,7 @@ class NormalizeRewards(BatchTransform):
         """
         self._discount = discount
         if initial_count is not None and initial_count < 1.:
-            raise ValueError("Initial must be at least 1")
+            raise ValueError("Initial count must be at least 1")
         self._initial_count = initial_count
     
     def dry_run(self, batch_samples: Samples, RotatingArrayCls: Array) -> Samples:
@@ -90,6 +89,8 @@ class NormalizeRewards(BatchTransform):
         )
         batch_samples = batch_samples._replace(env=env_samples)
 
+        self.only_valid = True if hasattr(batch_samples.env, "valid") else False
+
         # create model to track running mean and std_dev of samples
         if self._initial_count is not None:
             self._return_statistics = RunningMeanStd(shape=(),
@@ -115,12 +116,15 @@ class NormalizeRewards(BatchTransform):
             previous_done,
             self._discount,
             past_return,
-            )
+        )
 
         # update statistics of discounted return
-        self._return_statistics.update(past_return)
+        if self.only_valid:
+            valid = batch_samples.env.valid
+            self._return_statistics.update(past_return[valid])
+        else:
+            self._return_statistics.update(past_return)
 
-        np.multiply(reward, 1 / (np.sqrt(self._return_statistics.var + EPSILON)),
-            out=reward)
+        reward[:] = reward / (np.sqrt(self._return_statistics.var + EPSILON))
 
         return batch_samples

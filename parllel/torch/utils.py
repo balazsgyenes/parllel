@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 
+from parllel.buffers import NamedTuple
+
 
 def select_at_indexes(indexes, tensor):
     """Returns the contents of ``tensor`` at the multi-dimensional integer
@@ -94,14 +96,14 @@ def torchify_buffer(buffer):
     tensors are left alone."""
     if isinstance(buffer, tuple):
         contents = tuple(torchify_buffer(b) for b in buffer)
-        if type(buffer) is tuple:
-            return contents
-        # buffer: NamedTuple
-        return buffer._make(contents)
+        if isinstance(buffer, NamedTuple):
+            return buffer._make(contents)
+        # buffer is a tuple
+        return contents
 
-    if isinstance(buffer, np.ndarray):
-        return torch.from_numpy(buffer)
-    return buffer
+    if buffer is None:
+        return None
+    return torch.from_numpy(np.asarray(buffer))
 
 
 def numpify_buffer(buffer):
@@ -112,10 +114,10 @@ def numpify_buffer(buffer):
     arrays are left alone."""
     if isinstance(buffer, tuple):
         contents = tuple(numpify_buffer(b) for b in buffer)
-        if type(buffer) is tuple:
-            return contents
-        # buffer: NamedTuple
-        return buffer._make(contents)
+        if isinstance(buffer, NamedTuple):
+            return buffer._make(contents)
+        # buffer is a tuple
+        return contents
     
     if isinstance(buffer, torch.Tensor):
         return buffer.cpu().numpy()
@@ -129,12 +131,14 @@ def buffer_to_device(buffer, device=None):
     new, matching structure will be returned."""
     if isinstance(buffer, tuple):
         contents = tuple(buffer_to_device(b, device=device) for b in buffer)
-        if type(buffer) is tuple:
-            return contents
-        return buffer._make(contents)
+        if isinstance(buffer, NamedTuple):
+            return buffer._make(contents)
+        # buffer is a tuple
+        return contents
 
     if buffer is None:
         return
-    if isinstance(buffer, torch.Tensor):
+    try:
         return buffer.to(device)
-    raise TypeError(f"Cannot move {type(buffer)} object to device.")
+    except AttributeError as e:
+        raise TypeError(f"Cannot move {type(buffer)} object to device.") from e

@@ -14,7 +14,7 @@ class CartPoleFfCategoricalPgModel(nn.Module):
                  obs_space: spaces.Box,
                  action_space: spaces.Discrete,
                  hidden_sizes: Union[int, List[int], None],
-                 hidden_nonlinearity: nn.Module = nn.Tanh,
+                 hidden_nonlinearity: nn.Module,
                  ) -> None:
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
@@ -35,7 +35,7 @@ class CartPoleFfCategoricalPgModel(nn.Module):
                            hidden_nonlinearity=hidden_nonlinearity,
                            )
 
-    def forward(self, observation, previous_action=None, init_rnn_state=None):
+    def forward(self, observation):
         lead_dim, T, B, _ = infer_leading_dims(observation, 1)
 
         pi = F.softmax(self.pi(observation.view(T * B, -1)), dim=-1)

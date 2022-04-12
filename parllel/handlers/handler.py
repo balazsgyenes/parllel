@@ -1,51 +1,41 @@
+from abc import ABC, abstractmethod
 from typing import Any, Optional, Union
 
-import numpy as np
+from parllel.arrays import Array
+from parllel.buffers import Buffer
 
-from parllel.handlers.agent import Agent, AgentStep
-from parllel.buffers import Buffer, buffer_map
+from .agent import Agent, AgentStep
 
 
-class Handler:
+class Handler(ABC):
     def __init__(self, agent: Agent) -> None:
         self._agent = agent
 
-    def dry_run(self, n_states: int, observation: Buffer, previous_action: Optional[Buffer] = None,
-                ) -> AgentStep:
-        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
+    @abstractmethod
+    def step(self, observation: Buffer[Array], *, env_indices: Union[int, slice] = ...,
+            out_action: Buffer[Array] = None, out_agent_info: Buffer[Array] = None,
+            ) -> Optional[AgentStep]:
+        pass
 
-        example = self._agent.dry_run(n_states, observation, previous_action)
+    def value(self, observation: Buffer[Array], *, out_value: Buffer[Array] = None,
+            ) -> Optional[Buffer]:
+        raise NotImplementedError
 
-        return example
+    def initial_rnn_state(self, *, out_rnn_state: Buffer[Array] = None,
+            )-> Buffer:
+        raise NotImplementedError
 
-    def step(self, observation: Buffer, previous_action: Optional[Buffer] = None,
-             *, env_indices: Union[int, slice] = ..., out_action: Buffer = None,
-             out_agent_info: Buffer = None,
-             ) -> Optional[AgentStep]:
+    def reset(self) -> None:
+        self._agent.reset()
 
-        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
+    def reset_one(self, env_index: int) -> None:
+        self._agent.reset_one(env_index)
 
-        agent_step: AgentStep = self._agent.step(observation, previous_action,
-                                                 env_indices=env_indices)
+    def sample_mode(self, elapsed_steps: int) -> None:
+        self._agent.sample_mode(elapsed_steps)
 
-        if any(out is None for out in (out_action, out_agent_info)):
-            return agent_step
-        else:
-            action, agent_info = agent_step
-            out_action[:] = action
-            out_agent_info[:] = agent_info
-
-    def value(self, observation: Buffer, previous_action: Optional[Buffer] = None,
-              *, out_value: Buffer = None,
-              ) -> Optional[Buffer]:
-        observation, previous_action = buffer_map(np.asarray,(observation, previous_action))
-
-        value: Buffer = self._agent.value(observation, previous_action)
-
-        if out_value is None:
-            return value
-        else:
-            out_value[:] = value
+    def close(self) -> None:
+        self._agent.close()
 
     def __getattr__(self, name: str) -> Any:
         if "_agent" in self.__dict__:

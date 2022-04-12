@@ -8,15 +8,14 @@ from gym.envs.classic_control import CartPoleEnv
 from gym import spaces
 from gym.wrappers import TimeLimit
 
-from parllel.buffers import buffer_method
 from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
     RotatingManagedMemoryArray, buffer_from_example, buffer_from_dict_example)
-from parllel.cages import Cage, ProcessCage
+from parllel.buffers import AgentSamples, buffer_method, EnvSamples, Samples
+from parllel.cages import Cage, ProcessCage, TrajInfo
 from parllel.cages.tests.dummy import DummyEnv
 from parllel.cages.profiling import ProfilingProcessCage
-from parllel.samplers.collections import Samples, AgentSamples, EnvSamples
 from parllel.samplers.profiling import ProfilingSampler
-from parllel.types import BatchSpec, TrajInfo
+from parllel.types import BatchSpec
 
 
 def make_dummy_env(step_duration: float) -> gym.Env:
@@ -76,7 +75,7 @@ def build(config, parallel, profile_path):
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), RotatingArrayCls, name="obs", padding=1)
-    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward", force_float32=True)
+    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward", force_32bit=True)
     batch_done = buffer_from_dict_example(done, tuple(batch_spec), ArrayCls, name="done")
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
     batch_env_samples = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)

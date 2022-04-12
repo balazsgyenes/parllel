@@ -7,7 +7,7 @@ from itertools import repeat
 import string
 from typing import Any, Dict, Iterable, NoReturn, Tuple, Union
 
-from parllel.buffers.buffer import Buffer
+from .buffer import Buffer
 
 
 RESERVED_NAMES = ("get", "items")
@@ -184,7 +184,7 @@ class NamedArrayTuple(NamedTuple, Buffer):
                 try:
                     _ = elem[loc]
                 except IndexError:
-                    raise Exception(f"Occured in '{self._typename}' at field "
+                    raise IndexError(f"Occured in '{self._typename}' at field "
                                     f"'{self._fields[i]}'.") from e
 
     def __setitem__(self, loc: Any, value: Any) -> None:
