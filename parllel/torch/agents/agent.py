@@ -1,11 +1,9 @@
-from typing import Iterable, Tuple, Union
+from typing import Iterable, Union
 
 import torch
 
-from parllel.arrays import Array
-from parllel.buffers import Buffer, buffer_method
-from parllel.cages.collections import EnvSpaces
-from parllel.handlers import Agent, AgentStep
+from parllel.buffers import Buffer
+from parllel.handlers import Agent
 from parllel.torch.distributions.base import Distribution
 
 
@@ -27,7 +25,7 @@ class TorchAgent(Agent):
         return self._device
 
     def __init__(self, model: torch.nn.Module, distribution: Distribution,
-            device: torch.device = None) -> AgentStep:
+            device: torch.device = None):
         self._model = model
         self._distribution = distribution
 
@@ -39,6 +37,7 @@ class TorchAgent(Agent):
         self._device = device
 
         self._mode = None
+        self.recurrent = False
         self._rnn_states = None
         self._previous_action = None
 

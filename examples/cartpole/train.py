@@ -14,7 +14,6 @@ from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
-from parllel.torch.utils import numpify_buffer, torchify_buffer
 from parllel.transforms import (ClipRewards, Compose, EstimateAdvantage,
     NormalizeAdvantage, NormalizeObservations, NormalizeRewards)
 from parllel.types import BatchSpec
@@ -71,25 +70,24 @@ def build():
             hidden_nonlinearity=torch.nn.Tanh,
             )
         distribution = Categorical(dim=action_space.n)
-        device = torch.device("cpu")
+        device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
 
         # instantiate model and agent
-        agent = CategoricalPgAgent(model=model, distribution=distribution, device=device)
-        handler = TorchHandler(agent=agent)
+        agent = CategoricalPgAgent(
+            model=model, distribution=distribution, observation_space=obs_space,
+            action_space=action_space, n_states=batch_spec.B, device=device)
+        agent = TorchHandler(agent=agent)
 
         # write dict into namedarraytuple and read it back out. this ensures the
         # example is in a standard format (i.e. namedarraytuple).
-        batch_env.observation[0, 0] = obs_space.sample()
-        example_obs = batch_env.observation[0, 0]
-
+        batch_env.observation[0] = obs_space.sample()
+        example_obs = batch_env.observation[0]
+        
         # get example output from agent
-        example_obs = torchify_buffer(example_obs)
-        example_agent_step = agent.dry_run(n_states=batch_spec.B,
-            observation=example_obs)
-        agent_info, rnn_state = numpify_buffer(example_agent_step)
+        _, agent_info = agent.step(example_obs)
 
         # allocate batch buffer based on examples
-        batch_agent_info = buffer_from_example(agent_info, tuple(batch_spec), ArrayCls)
+        batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), ArrayCls)
         batch_agent = AgentSamples(batch_action, batch_agent_info)
         batch_buffer = Samples(batch_agent, batch_env)
 
@@ -122,7 +120,7 @@ def build():
         sampler = BasicSampler(
             batch_spec=batch_spec,
             envs=cages,
-            agent=handler,
+            agent=agent,
             batch_buffer=batch_buffer,
             max_steps_decorrelate=50,
             get_bootstrap_value=True,
@@ -138,12 +136,12 @@ def build():
         # create algorithm
         algorithm = PPO(
             batch_spec=batch_spec,
-            agent=handler,
+            agent=agent,
             optimizer=optimizer,
         )
 
         # create runner
-        runner = OnPolicyRunner(sampler=sampler, agent=handler, algorithm=algorithm,
+        runner = OnPolicyRunner(sampler=sampler, agent=agent, algorithm=algorithm,
                                 n_steps = n_steps, batch_spec=batch_spec)
 
         try:
@@ -151,7 +149,7 @@ def build():
         
         finally:
             sampler.close()
-            handler.close()
+            agent.close()
             buffer_method(batch_buffer, "close")
             buffer_method(batch_buffer, "destroy")
     

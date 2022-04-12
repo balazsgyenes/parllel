@@ -1,12 +1,14 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
+import gym
 import torch
 
-from parllel.buffers import Buffer, buffer_map, buffer_method
+from parllel.buffers import Buffer, buffer_map, buffer_method, dict_to_namedtuple
+from parllel.buffers.utils import buffer_asarray
 from parllel.handlers.agent import AgentStep
 from parllel.torch.distributions.categorical import Categorical, DistInfo
-from parllel.torch.utils import buffer_to_device
+from parllel.torch.utils import buffer_to_device, torchify_buffer
 
 from .agent import TorchAgent
 from .pg import AgentInfo, AgentPrediction
@@ -32,63 +34,51 @@ class CategoricalPgAgent(TorchAgent):
         - return type is the ModelOutputs dataclass defined in this module
     """
     def __init__(self, model: torch.nn.Module, distribution: Categorical,
-                 device: torch.device = None,
+                 observation_space: gym.Space, action_space: gym.Space,
+                 n_states: int, device: torch.device = None,
+                 recurrent: bool = False,
                  ) -> None:
         super().__init__(model, distribution, device)
-        self.recurrent = None
 
-    @torch.no_grad()
-    def dry_run(self, n_states: int, observation: Buffer,
-            example_action: Optional[Buffer] = None) -> Tuple[AgentInfo, Buffer]:
-        
-        model_inputs = (observation,)
+        self._observation_space = observation_space
+        self._action_space = action_space
+        self.recurrent = recurrent
 
-        if example_action is not None:
-            prev_act_onehot = self._distribution.to_onehot(example_action)
-            model_inputs += (prev_act_onehot,)
+        example_obs = self._observation_space.sample()
+        example_obs = dict_to_namedtuple(example_obs, "observation")
+        example_obs = torchify_buffer(buffer_asarray(example_obs))
+        example_inputs = (example_obs,)
         
+        if self.recurrent:
+            example_action = self._action_space.sample()
+            example_action = dict_to_namedtuple(example_action, "action")
+            example_action = torchify_buffer(buffer_asarray(example_action))
+            example_act_onehot = self.distribution.to_onehot(example_action)
+            example_inputs += (example_act_onehot,)
+
         # model will generate an rnn_state even if we don't pass one
-        model_inputs = buffer_to_device(model_inputs, device=self.device)
+        example_inputs = buffer_to_device(example_inputs, device=self.device)
 
-        model_outputs: ModelOutputs = self.model(*model_inputs)
+        with torch.no_grad():
+            model_outputs: ModelOutputs = self.model(*example_inputs)
 
-        dist_info = DistInfo(prob=model_outputs.pi)
-
-        # value may be None
-        value = model_outputs.value
-
-        # extend rnn_state by the number of environments the agent steps
-        rnn_state = model_outputs.next_rnn_state
-        if rnn_state is not None:
-            self.recurrent = True
-
-            # Extend an rnn_state to allocate enough space for each env.
+        if self.recurrent:
+            # Extend an rnn_state to allocate a slot for each env.
             # repeat in batch dimension (shape should be [N,B,H])
+            rnn_state = model_outputs.next_rnn_state
             self._rnn_states = buffer_map(
                 lambda t: torch.cat((t,) * n_states, dim=1),
                 rnn_state,
             )
 
-            # Transpose the rnn_state from [N,B,H] --> [B,N,H] for storage.
-            rnn_state = buffer_method(rnn_state, "transpose", 0, 1)
-            # remove batch dimension
-            rnn_state = rnn_state[0]
-
             # Stack previous action to allocate a slot for each env
             # Add a new leading dimension
-            # if None, this has no effect
             previous_action = buffer_map(
                 lambda t: torch.stack((t,) * n_states, dim=0),
                 example_action,
             )
             self._previous_action = buffer_to_device(previous_action,
                 device=self.device)
-        else:
-            self.recurrent = False
-
-        agent_info = AgentInfo(dist_info=dist_info, value=value,
-            prev_action=example_action)
-        return buffer_to_device((agent_info, rnn_state), device="cpu")
 
     @torch.no_grad()
     def step(self, observation: Buffer, *, env_indices: Union[int, slice] = ...,
@@ -98,13 +88,13 @@ class CategoricalPgAgent(TorchAgent):
         if self.recurrent:
             # already on device
             rnn_states, previous_action = self._get_states(env_indices)
-            previous_action = self._distribution.to_onehot(previous_action)
+            previous_action = self.distribution.to_onehot(previous_action)
             model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
 
         # sample action from distribution returned by policy
         dist_info = DistInfo(prob=model_outputs.pi)
-        action = self._distribution.sample(dist_info)
+        action = self.distribution.sample(dist_info)
 
         # value may be None
         value = model_outputs.value
@@ -134,7 +124,7 @@ class CategoricalPgAgent(TorchAgent):
         if self.recurrent:
             # already on device
             rnn_states, previous_action = self._get_states(...)          
-            previous_action = self._distribution.to_onehot(self._previous_action)
+            previous_action = self.distribution.to_onehot(self._previous_action)
             model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         value = model_outputs.value
@@ -149,7 +139,7 @@ class CategoricalPgAgent(TorchAgent):
             # rnn_states were saved into the samples buffer as [B,N,H]
             # transform back [B,N,H] --> [N,B,H].
             previous_action = agent_info.prev_action
-            previous_action = self._distribution.to_onehot(previous_action)
+            previous_action = self.distribution.to_onehot(previous_action)
             init_rnn_state = buffer_method(init_rnn_state, "transpose", 0, 1)
             init_rnn_state = buffer_method(init_rnn_state, "contiguous")
             model_inputs += (previous_action, init_rnn_state,)
