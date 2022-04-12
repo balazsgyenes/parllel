@@ -19,7 +19,7 @@ from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
-from build.make_env import make_env
+from build.cartpole import make_cartpole
 from build.recurrent_model import CartPoleLstmCategoricalPgModel
 
 
@@ -30,7 +30,7 @@ def build():
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
     parallel = True
-    EnvClass=make_env
+    EnvClass=make_cartpole
     env_kwargs={
         "max_episode_steps": 1000,
     }
