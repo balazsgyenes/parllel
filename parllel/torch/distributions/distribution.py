@@ -25,21 +25,14 @@ class Distribution(ABC):
         """
         raise NotImplementedError
 
-    def mean_kl(self, old_dist_info, new_dist_info, valid):
-        """
-        Compute the mean KL divergence over a data batch, possible ignoring data
-        marked as invalid.
-        """
-        raise NotImplementedError
-
-    def log_likelihood(self, x, dist_info):
+    def log_likelihood(self, x, /, dist_info):
         """
         Compute log-likelihood of samples ``x`` at distributions described in
         ``dist_info`` (i.e. can have same leading dimensions [T, B]).
         """
         raise NotImplementedError
 
-    def likelihood_ratio(self, x, old_dist_info, new_dist_info):
+    def likelihood_ratio(self, x, /, old_dist_info, new_dist_info):
         """
         Compute likelihood ratio of samples ``x`` at new distributions over
         old distributions (usually ``new_dist_info`` is variable for
@@ -54,15 +47,24 @@ class Distribution(ABC):
         """
         raise NotImplementedError
 
+    def mean_kl(self, old_dist_info, new_dist_info, valid = None):
+        """Compute the mean KL divergence over a data batch, possible ignoring
+        data marked as invalid.
+        """
+        raise valid_mean(self.kl(old_dist_info, new_dist_info), valid)
+
     def perplexity(self, dist_info):
         """Exponential of the entropy, maybe useful for logging."""
         return torch.exp(self.entropy(dist_info))
 
-    def mean_entropy(self, dist_info, valid=None):
-        """In case some sophisticated mean is needed (e.g. internally
-        ignoring select parts of action space), can override."""
+    def mean_entropy(self, dist_info, valid = None):
+        """Compute the mean entropy over a data batch, possible ignoring
+        data marked as invalid.
+        """
         return valid_mean(self.entropy(dist_info), valid)
 
-    def mean_perplexity(self, dist_info, valid=None):
-        """Exponential of the entropy, maybe useful for logging."""
+    def mean_perplexity(self, dist_info, valid = None):
+        """Compute the mean perplexity over a data batch, possible ignoring
+        data marked as invalid.
+        """
         return valid_mean(self.perplexity(dist_info), valid)

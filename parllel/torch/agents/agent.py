@@ -4,7 +4,7 @@ import torch
 
 from parllel.buffers import Buffer
 from parllel.handlers import Agent
-from parllel.torch.distributions.base import Distribution
+from parllel.torch.distributions import Distribution
 
 
 class TorchAgent(Agent):

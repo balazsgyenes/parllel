@@ -14,7 +14,7 @@ from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers.basic import BasicSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
-from parllel.torch.distributions.categorical import Categorical
+from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
 from parllel.types import BatchSpec

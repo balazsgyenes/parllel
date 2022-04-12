@@ -1,3 +1,5 @@
+from typing import Optional, Tuple
+
 import numpy as np
 import torch
 
@@ -38,14 +40,23 @@ def from_onehot(onehot, dim=-1, dtype=None):
     return indexes
 
 
-def valid_mean(tensor, valid=None, dim=None):
-    """Mean of ``tensor``, accounting for optional mask ``valid``,
-    optionally along a dimension."""
-    dim = () if dim is None else dim
+def valid_mean(tensor: torch.Tensor, valid: Optional[torch.Tensor] = None,
+        dim: Optional[Tuple[int, ...]] = None):
+    """Mean of ``tensor``, accounting for optional mask ``valid``, optionally
+    along a dimension. Valid mask is "broadcast" across trailing dimensions of
+    tensor, if tensor has more dimensions than valid.
+    """
     if valid is None:
+        dim = () if dim is None else dim
         return tensor.mean(dim=dim)
-    valid = valid.type(tensor.dtype)  # Convert as needed.
-    return (tensor * valid).sum(dim=dim) / valid.sum(dim=dim)
+    if dim is None:
+        # broadcasts over trailing dimensions
+        # e.g. if tensor has shape [T,B,N] and valid has [T,B]
+        return tensor[valid].mean()
+    # add extra trailing dimensions to valid mask
+    valid = valid[(...,) + (None,) * (tensor.ndims - valid.ndims)]
+    masked_tensor = tensor * valid
+    return masked_tensor.sum(dim=dim) / masked_tensor.count_nonzero(dim=dim)
 
 
 def infer_leading_dims(tensor, dim):
