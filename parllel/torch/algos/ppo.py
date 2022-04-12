@@ -3,7 +3,7 @@ import torch.optim
 import numpy as np
 
 from parllel.buffers import NamedArrayTupleClass
-from parllel.samplers import Samples
+from parllel.buffers import Samples
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
 from parllel.torch.utils import buffer_to_device, torchify_buffer, valid_mean
@@ -11,7 +11,7 @@ from parllel.types import BatchSpec
 
 
 PredictInputs = NamedArrayTupleClass("PredictInputs",
-    ["observation", "previous_action"])
+    ["observation", "agent_info"])
 
 
 LossInputs = NamedArrayTupleClass("LossInputs",
@@ -76,13 +76,11 @@ class PPO:
 
         samples = torchify_buffer(samples)
 
-        # TODO: this is an unreliable way to determine if recurrent
         recurrent = self.agent.recurrent
 
         if recurrent:
             valid = samples.env.valid
-            # get rnn hidden state at T=0
-            init_rnn_state = samples.agent.agent_info.prev_rnn_state[0]
+            init_rnn_state = samples.agent.initial_rnn_state
         else:
             valid = None
             init_rnn_state = None
@@ -90,7 +88,7 @@ class PPO:
         # pack everything into NamedArrayTuples to enabling slicing
         agent_inputs = PredictInputs(
             observation=samples.env.observation,
-            previous_action=None,  # TODO: add this to sample buffer
+            agent_info=samples.agent.agent_info,
         )
         loss_inputs = LossInputs(
             agent_inputs=agent_inputs,
@@ -102,10 +100,11 @@ class PPO:
             old_values=samples.agent.agent_info.value
         )
         # Move everything to device once, index there.
-        # init_rnn_state is handled separately because it must be indexed separately
-        # we have already indexed the T dimension above, we must now only index B
-        loss_inputs, init_rnn_state = buffer_to_device((loss_inputs, init_rnn_state),
-            device=self.agent.device)
+        # init_rnn_state is handled separately because it has no leading T dim
+        loss_inputs, init_rnn_state = buffer_to_device(
+            (loss_inputs, init_rnn_state), device=self.agent.device)
+
+        self.agent.train_mode(elapsed_steps)
 
         T, B = self.batch_spec
         
@@ -113,7 +112,7 @@ class PPO:
         batch_size = B if recurrent else T * B
         minibatch_size = batch_size // self.minibatches
         for _ in range(self.epochs):
-            for idxs in iterate_mb_idxs(batch_size, minibatch_size, self.rng):
+            for idxs in minibatch_indices(batch_size, minibatch_size, self.rng):
                 if recurrent:
                     T_idxs = slice(None) # take entire trajectory
                     B_idxs = idxs # use shuffled indices for B dimension
@@ -190,7 +189,7 @@ class PPO:
         return loss, entropy, perplexity
 
 
-def iterate_mb_idxs(data_length: int, minibatch_size: int, rng: np.random.Generator = None):
+def minibatch_indices(data_length: int, minibatch_size: int, rng: np.random.Generator = None):
     """Yields minibatches of indexes, to use as a for-loop iterator, with
     option to shuffle.
     """

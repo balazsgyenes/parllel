@@ -10,7 +10,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
 ## Design Decisions
 
 - Add dependency injection to increase composability of different types. As much as possible, objects should not be responsible for initializing their dependent objects (e.g. sampler should not have to initialize collectors, agent, etc.). The initialization process is handled in the top-level script, assisted by patterns, functions that act as shortcuts for common use cases.
-- The user should be able to easily control the contents of the sampler buffer. For this reason, the sampler should be kept as simple as possible to facilitate the writing of new sampler classes. Wherever possible, reading and writing data should be transparent (although this may be difficult if it also needs to be parallel).
+- The user should be able to easily control the contents of the sampler buffer. For this reason, the sampler should be kept as simple as possible to facilitate the writing of new sampler classes. Out arguments (e.g. `out_observation`) make reading and writing data transparent.
 - Initialization takes as input an example of the input the object will see during the training loop, and return an example of its output. This allows all objects to pre-allocate memory and data types for efficiency, without hard-coding dependencies.
 - Code for RL and code for optimization should remain separated. Instead of combining these objects through inheritance, one should wrap the other (e.g. Handler wraps Agent instead of handler code being in base class of Agent).
 - Sampler has explicit control of the agent's state to allow for maximum control of sampling schemes. For comparison, rlpyt mandated specialized alternating agents for alternating sampling.
@@ -23,13 +23,11 @@ rlpyt is a great piece of software, but there are several pain points when it co
 
 ## Long-Term Design Issues
 
-- In recurrent problems, all agent state should be handled in the same way. rnn_state is outputted by the agent and saved to agent_info. However, previous_action is maintained by the batch buffer as if it were the same as the action. However, previous action differs from action at the beginning of each trajectory, so they are not the same. This is only remedied because only the first time step can be the beginning of a trajectory (in recurrent problems), so this is explicitly handled by the sampler. But strictly speaking, prev_action should be a separate buffer field under agent_info.
-    - If we maintained the current solution, sequence replay buffers would need to detect resets. Actions would need to be copied into RotatingArray, and previous_action immediately before a reset would need to be zeroed out.
-    - Are rnn_states after the first time step in a batch even needed? They probably take up a fair amount of space. Another solution would be to create a separate batch buffer field for the initial values of agent state (e.g. rnn_state, prev_action), and `agent_info.rnn_state` is otherwise set to None (which disables writes). The remaining state values can then be "reconstructed" in the algorithm.
 - The TrajInfo is currently handled by the cage, where agent info (e.g. value estimates, etc.) are not available. Is this an issue?
     - The purpose of TrajInfo is just to be able to collect episodic information, which is not available from the samples buffer (because episodes are interrupted by batch boundaries)
 - How can we abstract how agents/models are shared across processes? Add a `models()` method to the agent for the handler to access all the models that need to be shared.
 - Is there any way to recover the final observation from a trajectory, after the env is done but before reset? Is there any use case for this?
+- Handler's main job is to handle out_args, but it's not clear if this is needed. If this is removed, then torchifying buffers can become the responsibility of the agent. In this case, handler would be optional and base handler would be deleted (torch handler only, if at all). Also, handler wouldn’t appear in most type hints (e.g. in the sampler).
 - Can we avoid defining a rigid interface to the Handler/Agent/Model? How can a user add another argument to the agent/model, and what is the use case for this? (e.g. agent_ids for multi-agent case)
 - What object(s) are responsible for array allocation for the batch buffer. This batch buffer is basically global state, so it falls under the responsibility of the build function, but Transform types currently allocate their own additional Arrays.
 - With complete control of the pipe and pickler, we should be able to make buffer registration a lot more seamless. Can we implement pytorch's approach, where arrays are automatically copied into shared memory (and registered) the first time they are moved between processes?
@@ -55,12 +53,14 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Callbacks?
 - Algos
     - Any many more methods that subclasses could overwrite (e.g. `construct_agent_inputs` in PPO)
+    - DDPG
     - Jax PPO :)
 - Agents/Distributions
+    - Remove `dry_run`. Instead, pass action and obs spaces on init and allocate there. Obs (and in recurrent case also action) space is sampled, converted to namedarraytuple, torchified, and passed to model. Example return types can be retrieved using `step` and `init_rnn_state`.
     - Ensemble agent
     - Ensemble distribution
 - Arrays
-    - **!!** Add `first` and `last` attributes to base `Array` class.
+    - **!!** Rename attributes `first` to `begin` and `last` to `end`. Remove the `-1` offset in `end` index, such that normal index `-1` corresponds to `end - 1`.
     - SwitchingArray wraps two arrays and switches between them on `rotate`. This is useful for asynchronous sampling, where different parts of the array are simultaneously written to by the sampler and read from by the algorithm.
         - Overloading `rotate` is useful because the batch buffer is already rotated before each batch.
         - SwitchingRotatingArray needs to add 4x padding or maybe we should just allocate 2 arrays.
@@ -70,10 +70,12 @@ rlpyt is a great piece of software, but there are several pain points when it co
         - `Array` already abstracts indexing items of arrays, where for numpy arrays this results in a copy. Add support for indexing Array with an array or list of integers without copying (this also results in a copy when used on numpy arrays)
         - Array equality check verifies that buffer ids and (internal) current_indices are the same (because indices in standard form should be equivalent). This allows the `SynchronizedProcessCage` to check whether the expected array slice was passed.
 - Buffers
+    - **!!** In `buffer_from_[dict_]example`, remove support for creating from `Array` example. Move features for cleaning up example and forcing 32 bit types into `buffer_from_example`. Instead, add `array_like` and `rotating_array_like` for explicitly creating an Array object of the desired memory type.
     - `buffer_get_attr` and `buffer_set_attr`
     - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
 - Cages:
-    - **!!** Actually implement `already_done` in `ProcessCage`.
+    - In `ProcessCage`, cleanup the data that gets sent through the pipe, ensuring `already_done` is always correct.
+    - Remove `get_example_outputs`. This function can be replaced by random_step_async.
     - Add `__getattr__`, `__setattr__`, and `env_method` methods to Cage, allowing direct access to env.
     - If `set_samples_buffer` is called on a SharedMemoryArray, it verifies that the buffers are registered before sending the reduced buffer across the pipe. This allows for consistent use in all cases, and supports configurations like a replay buffer in shared memory with ProcessCage.
     - `SynchronizedProcessCage`, where a single Event object is shared among multiple Cages, such that all begin stepping as soon as one of them is called to step. Based on how Events are shared, this supports alternating sampling too.
@@ -82,8 +84,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - VectorizedCage, similar to VecEnc in StableBaselines3, which allows for multiple environments in a single process.
     - **??** Add argument to `ProcessCage` to choose between process creation methods
 - Handler:
-    - Preallocate torch tensor version of batch buffer so that it does not have to be converted at each step (benchmark first to see if this is significant)
-    - Implement CPU sampling by spawning an agent with a model parameters on the CPU
+    - Implement CPU sampling by duplicating the agent with a model parameters on the CPU. Handler overrides `sampling_mode` and `training_mode`, etc. to know when to sync model parameters.
 - Patterns
     - Include default parameter sets for things like algorithms. Remove all default values in algorithm `__init__` methods.
 - Replay buffers
@@ -93,13 +94,8 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Add logging and checkpointing
     - Add `OffPolicyRunner`
     - Add runner that just runs trained policy and renders it
+    - Add `ChainRunner`, which chains multiple Runners to execute in sequence. `ChainRunner` must implement some resource management, such that resources for a runner are not created until needed, and destroyed after they are no longer needed. This is difficult because it's likely that some resources are shared between runners.
 - Samplers
-    - **!!** RecurrentSampler, which feeds the agent its `prev_action` and resets environments only between batches.
-        - Move `previous_action` into the agent state. Reset it in the agent when `reset_one` is called.
-        - Add `previous_action` to the batch buffer and ensure that it is properly zeroed for environments that are reset, e.g. by writing 0 to the last + 1 position at the end of the batch
-        - Add mechanism for including `previous_action` in the samples buffer if the agent/algo requires it. Right now it's entirely up to the Sampler what gets passed to the agent, but the algo needs to know this too.
-    - Add sampler tests.
-        - Also test transform handling in samplers using dummy transforms, and verify that they receive the proper samples in the proper order (e.g. no observation normalization for environments in RecurrentSampler that are already done)
     - All samplers call `set_samples_buffer` on the cages at least once (AsynchronousSampler calls before each batch), where each cage is passed the Array slice where it should write. 
     - AlternatingSampler, which alternates stepping half of the envs at a time to provide better performance for slow environments.
     - AsynchronousSampler, which samples in a child process while the algorithm is optimizing.
@@ -109,13 +105,16 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Transforms
     - Add `stats` attribute to normalizing transforms (and anything else in the transform that is stateful and could be logged)
     - Multiagent versions of transforms (e.g. advantage estimation)
+    - Add test for `NormalizeObservation` transformation, which verifies that environments that are already done are not factored into running statistics.
 - Misc
     - Add simple interface to Stable Baselines in the form of a gym wrapper that looks like the parallel vector wrapper but preallocates memory.
 
 
 ## Bugs
 
-- BUG: fix memory leak when using `fork` start method
+- BUG: fix memory leak when using `fork` start method and ManagedMemoryArrays ( https://bugs.python.org/issue38119 )
+- BUG: pip [automatic package discovery](https://setuptools.pypa.io/en/latest/userguide/package_discovery.html#automatic-discovery) no longer works, so setup.py needs to be fixed
+- BUG: debugging in VS Code in parallel mode fails because NamedTuple has no `__getstate__` method.
 
 ## To benchmark
 - Reading/writing to arrays in shared/managed memory vs. local memory

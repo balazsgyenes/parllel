@@ -1,36 +1,28 @@
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, List, Tuple, Union
 
-import numpy as np
 import gym
 from gym.wrappers import TimeLimit as GymTimeLimit
 
 from parllel.arrays import Array
-from parllel.buffers import Buffer, buffer_map
-from parllel.buffers.named_tuple import namedtuple_to_dict
-from parllel.types.traj_info import TrajInfo
+from parllel.buffers import (Buffer, NamedTuple, buffer_asarray,
+    dict_to_namedtuple, namedtuple_to_dict)
 
 from .collections import EnvStep, EnvSpaces
+from .traj_info import TrajInfo
 
 
 class Cage:
     """Cages abstract communication between the sampler and the environments.
 
-    Note: a sentinel object is used in place of None where an error
-    should be triggered. None is ignored by NamedArrayTuple, causing operations
-    to silently fail where we want an error to be thrown.
-
-    Args:
-        EnvClass (Callable): TODO
-        env_kwargs (Dict): Key word arguments that should be passed to the
-            `__init__` of `EnvClass`
-        TrajInfoClass (Callable): TODO
-        traj_info_kwargs (Dict): Key word arguments that should be passed to
-            the `__init__` of `TrajInfoClass`
-        wait_before_reset (bool): TODO
-
-    TODO: merge collect_deferred_reset and reset_async. The fact that the reset
-    has already been done in one of these cases is an internal implementation
-    detail
+    :param EnvClass (Callable): Environment class or factory function
+    :param env_kwargs (Dict): Key word arguments that should be passed to the
+        `__init__` of `EnvClass` or to the factory function
+    :param TrajInfoClass (Callable): TrajectoryInfo class or factory function
+    :param traj_info_kwargs (Dict): Key word arguments that should be passed to
+        the `__init__` of `TrajInfoClass` or to the factory function
+    wait_before_reset (bool): If True, environment does not reset when done
+        until `reset_async` is called, and `already_done` is set to True. If
+        False (default), the environment resets immediately.
     """
     def __init__(self,
         EnvClass: Callable,
@@ -104,7 +96,7 @@ class Cage:
         """If any out parameter is given, they must all be given. 
         """
         # get underlying numpy arrays and convert to dict if needed
-        action = buffer_map(np.asarray, action)
+        action = buffer_asarray(action)
         action = namedtuple_to_dict(action)
 
         obs, reward, done, env_info = self._env.step(action)
@@ -133,12 +125,13 @@ class Cage:
             out_reward[:] = reward
             out_done[:] = done
             out_info[:] = env_info
+            self._step_result = self._already_done
 
     def _defer_env_reset(self) -> None:
         self._reset_obs = self._env.reset()
         self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
 
-    def await_step(self) -> Union[EnvStep, Tuple[Buffer, EnvStep], Buffer]:
+    def await_step(self) -> Union[EnvStep, Tuple[Buffer, ...], Buffer, bool]:
         result = self._step_result
         self._step_result = None
         return result
@@ -158,15 +151,17 @@ class Cage:
         """Take a step with a random action from the env's action space.
         """
         action = self.spaces.action.sample()
-        wait_before_reset = self.wait_before_reset
-        self.wait_before_reset = False
-        self.step_async(action, out_obs, out_reward, out_done, out_info)
-        self.wait_before_reset = wait_before_reset
+        action = dict_to_namedtuple(action, "action")
 
-        if self._step_result is not None:
-            self._step_result = (action, self._step_result)
+        # call method in this class explicitly, in case overridden by child
+        Cage.step_async(self, action, out_obs=out_obs, out_reward=out_reward,
+            out_done=out_done, out_info=out_info)
+
+        if isinstance(self._step_result, NamedTuple):
+            self._step_result = (action, *self._step_result)
         else:
             out_action[:] = action
+            self._step_result = self._already_done
 
     def reset_async(self, *, out_obs: Buffer = None) -> None:
         if self._already_done:
@@ -181,6 +176,7 @@ class Cage:
             self._step_result = _reset_obs
         else:
             out_obs[:] = _reset_obs
+            self._step_result = self._already_done
 
     def close(self) -> None:
         self._env.close()

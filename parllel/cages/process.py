@@ -8,10 +8,10 @@ from parllel.arrays import Array, ManagedMemoryArray
 from parllel.buffers import Buffer
 from parllel.buffers.registry import BufferRegistry
 from parllel.buffers.utils import buffer_all
-from parllel.types.traj_info import TrajInfo
 
 from .cage import Cage
 from .collections import EnvStep, EnvSpaces
+from .traj_info import TrajInfo
 
 
 class Command(enum.Enum):
@@ -101,9 +101,26 @@ class ProcessCage(Cage, mp.Process):
         self._reset_thread.start()
 
     def await_step(self) -> Union[EnvStep, Tuple[Buffer, EnvStep], Buffer]:
-        assert self._last_command in {Command.step, Command.random_step, Command.reset_async}
+        result = self._parent_pipe.recv()
+        if isinstance(result, bool):
+            assert self._last_command in {Command.step, Command.random_step,
+                Command.reset_async}
+            # obs, reward, done, info already written to out_args
+            self._already_done = result
+        else:
+            if self._last_command is Command.step:
+                # obs, reward, done, info = result
+                self._already_done = result[2]
+            elif self._last_command is Command.random_step:
+                # action, obs, reward, done, info = result
+                self._already_done = result[3]
+            elif self._last_command is Command.reset_async:
+                # reset just completed
+                self._already_done = False
+            else:
+                raise AssertionError
         self._last_command = None
-        return self._parent_pipe.recv()
+        return result
 
     def collect_completed_trajs(self) -> List[TrajInfo]:
         assert self._last_command is None
@@ -174,7 +191,7 @@ class ProcessCage(Cage, mp.Process):
                 action, out_obs, out_reward, out_done, out_info = data
                 super().step_async(action, out_obs=out_obs, out_reward=out_reward,
                     out_done=out_done, out_info=out_info)
-                step_result: Optional[EnvStep] = super().await_step()
+                step_result: Union[EnvStep, bool] = super().await_step()
                 self._child_pipe.send(step_result)
 
             elif command == Command.collect_completed_trajs:
@@ -187,7 +204,7 @@ class ProcessCage(Cage, mp.Process):
                 out_action, out_obs, out_reward, out_done, out_info = data
                 super().random_step_async(out_action=out_action, out_obs=out_obs,
                     out_reward=out_reward, out_done=out_done, out_info=out_info)
-                step_result: Tuple[Buffer, EnvStep] = super().await_step()
+                step_result: Union[Tuple[Buffer, ...], bool] = super().await_step()
                 self._child_pipe.send(step_result)
 
             elif command == Command.reset_async:
@@ -197,7 +214,7 @@ class ProcessCage(Cage, mp.Process):
                     self._reset_thread.join()
                     self._reset_thread = None
                 super().reset_async(out_obs=out_obs)
-                reset_obs: Buffer = super().await_step()
+                reset_obs: Union[Buffer, bool] = super().await_step()
                 self._child_pipe.send(reset_obs)
 
             elif command == Command.close:

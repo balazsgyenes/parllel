@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -16,18 +16,17 @@ from .pg import AgentInfo, AgentPrediction
 class ModelOutputs:
     pi: Buffer
     value: Buffer = None
-    next_rnn_states: Buffer = None
+    next_rnn_state: Buffer = None
 
 
 class CategoricalPgAgent(TorchAgent):
-    """
-    Agent for policy gradient algorithm using categorical action distribution.
-    Same as ``GausssianPgAgent`` and related classes, except uses
-    ``Categorical`` distribution, and has a different interface to the model
+    """Agent for policy gradient algorithm using categorical action
+    distribution for discrete action spaces. Same as `GaussianPgAgent` except
+    with `Categorical` distribution, and has a different interface to the model
     (model here outputs discrete probabilities in place of means and log_stds,
     while both output the value estimate).
 
-    Assumptions on the model:
+    Assumptions of the model:
         - input arguments must include observation, may include previous_action,
             and may include rnn_states as an optional argument (in this order)
         - return type is the ModelOutputs dataclass defined in this module
@@ -36,119 +35,126 @@ class CategoricalPgAgent(TorchAgent):
                  device: torch.device = None,
                  ) -> None:
         super().__init__(model, distribution, device)
-        self.recurrent = False
+        self.recurrent = None
 
     @torch.no_grad()
-    def dry_run(self, n_states: int, observation: Buffer, previous_action: Optional[Buffer] = None,
-                ) -> AgentStep:
+    def dry_run(self, n_states: int, observation: Buffer,
+            example_action: Optional[Buffer] = None) -> Tuple[AgentInfo, Buffer]:
+        
         model_inputs = (observation,)
 
-        if previous_action is not None:
-            previous_action = self._distribution.to_onehot(previous_action)
-            model_inputs += (previous_action,)
-
+        if example_action is not None:
+            prev_act_onehot = self._distribution.to_onehot(example_action)
+            model_inputs += (prev_act_onehot,)
+        
+        # model will generate an rnn_state even if we don't pass one
         model_inputs = buffer_to_device(model_inputs, device=self.device)
 
         model_outputs: ModelOutputs = self.model(*model_inputs)
 
         dist_info = DistInfo(prob=model_outputs.pi)
-        action = self.distribution.sample(dist_info)
 
         # value may be None
         value = model_outputs.value
 
         # extend rnn_state by the number of environments the agent steps
-        example_rnn_state = model_outputs.next_rnn_states
-        if example_rnn_state is not None:
+        rnn_state = model_outputs.next_rnn_state
+        if rnn_state is not None:
             self.recurrent = True
 
-            def extend_rnn_state(example_rnn_state):
-                """Extend an example_rnn_state to allocate enough space for
-                each env.
-                """
-                # duplicate as many times as requested
-                rnn_states = (example_rnn_state) * n_states
-                # concatenate in B dimension (shape should be [N,B,H])
-                return torch.cat(rnn_states, dim=1)
-
-            self._rnn_states = buffer_map(example_rnn_state, extend_rnn_state)
+            # Extend an rnn_state to allocate enough space for each env.
+            # repeat in batch dimension (shape should be [N,B,H])
+            self._rnn_states = buffer_map(
+                lambda t: torch.cat((t,) * n_states, dim=1),
+                rnn_state,
+            )
 
             # Transpose the rnn_state from [N,B,H] --> [B,N,H] for storage.
-            example_rnn_state = buffer_method(example_rnn_state, "transpose", 0, 1)
+            rnn_state = buffer_method(rnn_state, "transpose", 0, 1)
+            # remove batch dimension
+            rnn_state = rnn_state[0]
 
-            # TODO: verify leading dimensions of rnn_state, is the batch dimension empty?
-            raise NotImplementedError
+            # Stack previous action to allocate a slot for each env
+            # Add a new leading dimension
+            # if None, this has no effect
+            previous_action = buffer_map(
+                lambda t: torch.stack((t,) * n_states, dim=0),
+                example_action,
+            )
+            self._previous_action = buffer_to_device(previous_action,
+                device=self.device)
         else:
-            self._rnn_states = None
+            self.recurrent = False
 
-        agent_info = AgentInfo(dist_info=dist_info, value=value, prev_rnn_state=example_rnn_state)
-        agent_step = AgentStep(action=action, agent_info=agent_info)
-        return buffer_to_device(agent_step, device="cpu")
+        agent_info = AgentInfo(dist_info=dist_info, value=value,
+            prev_action=example_action)
+        return buffer_to_device((agent_info, rnn_state), device="cpu")
 
     @torch.no_grad()
-    def step(self, observation: Buffer, previous_action: Optional[Buffer] = None,
-             *, env_indices: Union[int, slice] = ...,
+    def step(self, observation: Buffer, *, env_indices: Union[int, slice] = ...,
              ) -> AgentStep:
         model_inputs = (observation,)
-        if previous_action is not None:
-            previous_action = self._distribution.to_onehot(previous_action)
-            model_inputs += (previous_action,)
         model_inputs = buffer_to_device(model_inputs, device=self.device)
         if self.recurrent:
-            model_inputs += (self._rnn_states,)  # already on device
+            # already on device
+            rnn_states, previous_action = self._get_states(env_indices)
+            previous_action = self._distribution.to_onehot(previous_action)
+            model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
 
         # sample action from distribution returned by policy
         dist_info = DistInfo(prob=model_outputs.pi)
-        action = self.distribution.sample(dist_info)
+        action = self._distribution.sample(dist_info)
 
         # value may be None
         value = model_outputs.value
 
-        # save previous rnn states to samples buffer
-        # transpose the rnn_states from [N,B,H] --> [B,N,H] for storage.
-        prev_rnn_states = buffer_method(self._rnn_states, "transpose", 0, 1)
+        if self.recurrent:
+            # overwrite saved rnn_state and action as inputs to next step
+            previous_action = self._advance_states(
+                model_outputs.next_rnn_state, action, env_indices)
+        else:
+            previous_action = None
 
-        # overwrite self._rnn_states with new rnn_states (although it may be None)
-        # keep on device
-        self.advance_rnn_states(model_outputs.next_rnn_states, env_indices)
-
-        agent_info = AgentInfo(dist_info, value, prev_rnn_states)
+        agent_info = AgentInfo(dist_info, value, previous_action)
         agent_step = AgentStep(action=action, agent_info=agent_info)
         return buffer_to_device(agent_step, device="cpu")
 
     @torch.no_grad()
-    def value(self, observation: Buffer, previous_action: Optional[Buffer] = None,
-             ) -> Buffer:
+    def initial_rnn_state(self) -> Buffer:
+        # transpose the rnn_states from [N,B,H] -> [B,N,H] for storage.
+        init_rnn_state, _ = self._get_states(...)
+        init_rnn_state = buffer_method(init_rnn_state, "transpose", 0, 1)
+        return buffer_to_device(init_rnn_state, device="cpu")
+
+    @torch.no_grad()
+    def value(self, observation: Buffer) -> Buffer:
         model_inputs = (observation,)
-        if previous_action is not None:
-            previous_action = self._distribution.to_onehot(previous_action)
-            model_inputs += (previous_action,)
         model_inputs = buffer_to_device(model_inputs, device=self.device)
         if self.recurrent:
-            model_inputs += (self._rnn_states,)  # already on device
+            # already on device
+            rnn_states, previous_action = self._get_states(...)          
+            previous_action = self._distribution.to_onehot(self._previous_action)
+            model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         value = model_outputs.value
         return buffer_to_device(value, device="cpu")
 
-    def predict(self, observation: Buffer, previous_action: Optional[Buffer] = None,
-                init_rnn_states: Buffer = None,
+    def predict(self, observation: Buffer, agent_info: AgentInfo,
+                init_rnn_state: Optional[Buffer] = None,
                 ) -> AgentPrediction:
         """Performs forward pass on training data, for algorithm."""
         model_inputs = (observation,)
-        if previous_action is not None:
-            previous_action = self._distribution.to_onehot(previous_action)
-            model_inputs += (previous_action,)
         if self.recurrent:
             # rnn_states were saved into the samples buffer as [B,N,H]
             # transform back [B,N,H] --> [N,B,H].
+            previous_action = agent_info.prev_action
+            previous_action = self._distribution.to_onehot(previous_action)
             init_rnn_state = buffer_method(init_rnn_state, "transpose", 0, 1)
             init_rnn_state = buffer_method(init_rnn_state, "contiguous")
-            model_inputs += (init_rnn_states,)
-        model_inputs = buffer_to_device(model_inputs, device=self.device)
+            model_inputs += (previous_action, init_rnn_state,)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         dist_info = DistInfo(prob=model_outputs.pi)
         value = model_outputs.value
         prediction = AgentPrediction(dist_info, value)
-        # prediction = buffer_to_device(prediction, device="cpu")
         return prediction

@@ -2,7 +2,7 @@ from typing import Optional
 
 import numpy as np
 
-from parllel.samplers import Samples
+from parllel.buffers import Samples
 
 from .transform import BatchTransform
 
@@ -33,6 +33,6 @@ class ClipRewards(BatchTransform):
     def __call__(self, batch_samples: Samples) -> Samples:
         reward = np.asarray(batch_samples.env.reward)
 
-        np.clip(reward, self._reward_min, self._reward_max, out=reward)
+        reward[:] = np.clip(reward, self._reward_min, self._reward_max)
         
         return batch_samples

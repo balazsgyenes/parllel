@@ -7,9 +7,10 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
-from parllel.patterns import add_bootstrap_value, build_cages_and_env_buffers
+from parllel.patterns import (add_bootstrap_value, add_valid, 
+    build_cages_and_env_buffers, add_initial_rnn_state)
 from parllel.runners.onpolicy import OnPolicyRunner
-from parllel.samplers.basic import BasicSampler
+from parllel.samplers.recurrent import RecurrentSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
@@ -20,7 +21,7 @@ from parllel.transforms import (ClipRewards, Compose, EstimateAdvantage,
 from parllel.types import BatchSpec
 
 from build.make_env import make_env
-from build.model import CartPoleFfCategoricalPgModel
+from build.recurrent_model import CartPoleLstmCategoricalPgModel
 
 
 @contextmanager
@@ -56,7 +57,7 @@ def build():
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
             traj_info_kwargs=traj_info_kwargs,
-            wait_before_reset=False,
+            wait_before_reset=True,
             batch_spec=batch_spec,
             parallel=parallel,
         ) as (cages, batch_action, batch_env):
@@ -64,14 +65,16 @@ def build():
         obs_space, action_space = cages[0].spaces
 
         # instantiate model and agent
-        model = CartPoleFfCategoricalPgModel(
+        model = CartPoleLstmCategoricalPgModel(
             obs_space=obs_space,
             action_space=action_space,
-            hidden_sizes=[64, 64],
+            pre_lstm_hidden_sizes=32,
+            lstm_size=16,
+            post_lstm_hidden_sizes=32,
             hidden_nonlinearity=torch.nn.Tanh,
             )
         distribution = Categorical(dim=action_space.n)
-        device = torch.device("cpu")
+        device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
 
         # instantiate model and agent
         agent = CategoricalPgAgent(model=model, distribution=distribution, device=device)
@@ -80,20 +83,25 @@ def build():
         # write dict into namedarraytuple and read it back out. this ensures the
         # example is in a standard format (i.e. namedarraytuple).
         batch_env.observation[0, 0] = obs_space.sample()
+        batch_action[0, 0] = action_space.sample()
         example_obs = batch_env.observation[0, 0]
+        example_action = batch_action[0, 0]
 
         # get example output from agent
-        example_obs = torchify_buffer(example_obs)
-        example_agent_step = agent.dry_run(n_states=batch_spec.B,
-            observation=example_obs)
-        agent_info, rnn_state = numpify_buffer(example_agent_step)
+        example_obs, example_action = torchify_buffer((example_obs, example_action))
+        agent_info, rnn_state = agent.dry_run(n_states=batch_spec.B,
+            observation=example_obs, example_action=example_action)
+        agent_info, rnn_state = numpify_buffer((agent_info, rnn_state))
 
         # allocate batch buffer based on examples
         batch_agent_info = buffer_from_example(agent_info, tuple(batch_spec), ArrayCls)
         batch_agent = AgentSamples(batch_action, batch_agent_info)
         batch_buffer = Samples(batch_agent, batch_env)
 
+        batch_rnn_state = buffer_from_example(rnn_state, (batch_spec.B,), ArrayCls)
+        batch_buffer = add_initial_rnn_state(batch_buffer, batch_rnn_state)
         batch_buffer = add_bootstrap_value(batch_buffer)
+        batch_buffer = add_valid(batch_buffer)
 
         obs_transform = NormalizeObservations(initial_count=10000)
         batch_buffer = obs_transform.dry_run(batch_buffer)
@@ -119,7 +127,7 @@ def build():
             advantage_norm_transform,
         ])
 
-        sampler = BasicSampler(
+        sampler = RecurrentSampler(
             batch_spec=batch_spec,
             envs=cages,
             agent=handler,
