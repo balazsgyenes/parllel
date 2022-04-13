@@ -8,7 +8,7 @@ from parllel.torch.distributions import Distribution
 
 
 class TorchAgent(Agent):
-    """The agent manages as a model and a sampling state for each environment
+    """The agent manages a model and a sampling state for each environment
     instance. Outputs from the model are converted into actions during
     sampling, usually with the help of a distribution.
     """

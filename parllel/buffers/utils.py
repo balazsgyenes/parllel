@@ -1,4 +1,4 @@
-from typing import Any, Callable, Union
+from typing import Any, Callable, Iterable, Union
 
 import numpy as np
 from nptyping import NDArray
@@ -90,3 +90,32 @@ def buffer_rotate(buffer: Union[Buffer, tuple]) -> Buffer:
 
 def buffer_asarray(buffer: Buffer) -> Buffer[NDArray]:
     return buffer_map(np.asarray, buffer)
+
+
+def collate_buffers(buffers: Iterable[NamedTuple], names=None, typename=None):
+    """Takes a sequence of NamedTuples and returns an instance of this
+    NamedTuple, where the corresponding leaf nodes are from all elements in the
+    sequence have been joined into NamedTuples. The new leaf NamedTuples have
+    fields according to `names`. If names is not given, buffers must itself be
+    NamedTuple of NamedTuples, and names will be the fields of the top-level
+    NamedTuple.
+
+    Based on Pytorch default_collate:
+    https://github.com/pytorch/pytorch/blob/master/torch/utils/data/_utils/collate.py
+    """
+    # gets one element even if buffers is NamedArrayTuple
+    elem = tuple(buffers)[0]
+
+    # in first call, gets the fields of the top-level NamedTuple
+    # recursive calls always just pass on this buffers
+    names = names or buffers._fields
+
+    if isinstance(elem, NamedTuple):
+        # zip(* pattern results in a transpose
+        return elem._make(collate_buffers(matching_elems, names, field)
+                            for *matching_elems, field
+                            in zip(*buffers, elem._fields))
+
+    # base case
+    # the leaves of the new buffer are NamedTuples of the previous leaf nodes
+    return NamedTuple.__new__(NamedTuple, typename, names, buffers)
