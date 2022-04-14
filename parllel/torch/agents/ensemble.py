@@ -19,13 +19,10 @@ class AgentProfile:
         obs_key: the part of the observation that this agent sees. None passes
             the whole observation.
         action_key: the part of action for which this agent is responsible.
-        name: name of real agent, useful for debugging only
     """
     instance: TorchAgent
     obs_key: Optional[str]
     action_key: str
-    reward_key: Optional[str] = None
-    name: Optional[str] = None
 
 
 class EnsembleAgent(TorchAgent):
