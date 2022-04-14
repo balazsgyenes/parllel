@@ -4,7 +4,7 @@ import numpy as np
 from nptyping import NDArray
 
 from .buffer import Buffer, LeafType
-from .named_tuple import NamedTuple, NamedArrayTuple
+from .named_tuple import NamedTuple, NamedArrayTuple, NamedTupleClass
 
 
 def buffer_method(buffer: Union[Buffer, tuple], method_name: str, *args, **kwargs) -> Buffer:
@@ -118,4 +118,4 @@ def collate_buffers(buffers: Iterable[NamedTuple], names=None, typename=None):
 
     # base case
     # the leaves of the new buffer are NamedTuples of the previous leaf nodes
-    return NamedTuple.__new__(NamedTuple, typename, names, buffers)
+    return NamedTupleClass(typename, names)(*buffers)
