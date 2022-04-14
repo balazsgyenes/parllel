@@ -2,7 +2,7 @@ import numpy as np
 from nptyping import NDArray
 
 
-def broadcast_across_trailing(*arrays: NDArray):
+def broadcast_left_to_right(*arrays: NDArray):
     max_ndim = max(array.ndim for array in arrays)
 
     return (

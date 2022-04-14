@@ -1,14 +1,25 @@
+import enum
+
 import numpy as np
 
 from parllel.arrays import Array
-from parllel.buffers import EnvSamples, NamedArrayTupleClass, Samples
+from parllel.buffers import EnvSamples, NamedTuple, NamedArrayTupleClass, Samples
 
 from .advantage import compute_discount_return, compute_gae_advantage
 from .transform import BatchTransform
-from .numpy import broadcast_across_trailing
+from .numpy import broadcast_left_to_right
 
 
-class EstimatePerAgentAdvantage(BatchTransform):
+class ProblemType(enum.Enum):
+    # common reward, common value estimate
+    central_critic = 0
+    # common reward, unique value estimates from each agent
+    independent_critics = 1
+    # unique rewards for each agent, unique value estimates
+    markov_game = 3
+
+
+class EstimateMultiAgentAdvantage(BatchTransform):
     def __init__(self, discount: float, gae_lambda: float) -> None:
         """Computes per-agent advantage based on a shared reward and agent-
         specific value estimates.
@@ -38,6 +49,7 @@ class EstimatePerAgentAdvantage(BatchTransform):
         # get convenient local references
         env_samples: EnvSamples = batch_samples.env
         reward = env_samples.reward
+        value = batch_samples.agent.agent_info.value
 
         # create new NamedArrayTuple for env samples with additional fields
         EnvSamplesClass = NamedArrayTupleClass(
@@ -45,9 +57,23 @@ class EstimatePerAgentAdvantage(BatchTransform):
             fields = env_samples._fields + ("advantage", "return_")
         )
 
+        # determine number of reward values and value estimates
+        if isinstance(value, NamedTuple):
+            n_agents = len(value)
+            advantage_shape = reward.shape + (n_agents,)
+            return_shape = reward.shape + (n_agents,)
+            if isinstance(reward, NamedTuple):
+                self.problem_type = ProblemType.independent_critics
+            else:
+                self.problem_type = ProblemType.markov_game
+        else:
+            advantage_shape = reward.shape + (1,)
+            return_shape = reward.shape + (1,)
+            self.problem_type = ProblemType.central_critic
+
         # allocate new Array objects for advantage and return_
-        advantage = ArrayCls(shape=reward.shape, dtype=reward.dtype)
-        return_ = ArrayCls(shape=reward.shape, dtype=reward.dtype)
+        advantage = ArrayCls(shape=advantage_shape, dtype=reward.dtype)
+        return_ = ArrayCls(shape=return_shape, dtype=reward.dtype)
 
         # package everything back into batch_samples
         env_samples = EnvSamplesClass(
@@ -63,34 +89,46 @@ class EstimatePerAgentAdvantage(BatchTransform):
         dict reward, dict value (stochastic game)
         scalar reward, scalar value (central critic, expand advantage)
         """
-
-        reward = (
-            np.stack(reward, axis=-1)
-            if isinstance(reward := np.asarray(batch_samples.env.reward), tuple)
-            else np.asarray(reward)
-        )
+        reward = batch_samples.env.reward
         done = np.asarray(batch_samples.env.done)
-        value = (
-            np.stack(value, axis=-1)
-            if isinstance(value := batch_samples.agent.agent_info.value, tuple)
-            else np.asarray(value)
-        )
-        reward, done, value = broadcast_across_trailing(reward, done, value)
-        
-        bootstrap_value = (
-            np.stack(bootstrap_value, axis=-1)
-            if isinstance(bootstrap_value := batch_samples.agent.bootstrap_value, tuple)
-            else bootstrap_value
-        )
+        value = batch_samples.agent.agent_info.value
+        bootstrap_value = batch_samples.agent.bootstrap_value
+        advantage = np.asarray(batch_samples.env.advantage)
+        return_ = np.asarray(batch_samples.env.return_)
 
-        self.estimator(
-            reward,
-            value,
-            done,
-            bootstrap_value,
-            self._discount,
-            self._lambda,
-            np.asarray(batch_samples.env.advantage),
-            np.asarray(batch_samples.env.return_),
+        if self.problem_type is not ProblemType.central_critic:
+            # definitely need to stack value and bootstrap value
+            if self.problem_type is ProblemType.markov_game:
+                # stack rewards for each agent in the same order as in value
+                # and bootstrap value. the subagents might not be defined in
+                # the same order in the agent as they are in the environment
+
+                reward = np.stack(
+                    (
+                        getattr(reward, agent_key)
+                        for agent_key in value._fields
+                    ),
+                    axis=-1,
+                )
+            else:
+                reward = np.asarray(reward)
+            
+            value = np.stack(value, axis=-1)
+            bootstrap_value = np.stack(bootstrap_value, axis=-1)
+        else:
+            value = np.asarray(value)
+            bootstrap_value = np.asarray(bootstrap_value)
+
+        # add T dimension to bootstrap_value so it can be broadcast with
+        # advantage and other arrays
+        bootstrap_value = np.expand_dims(bootstrap_value, axis=0)
+
+        # if missing, add singleton trailing dimensions to arrays until they
+        # all have the same dimensionality
+        advantage, reward, done, value = broadcast_left_to_right(
+            advantage, reward, done, value
         )
+        
+        self.estimator(reward, value, done, bootstrap_value, self._discount,
+            self._lambda, advantage, return_)
         return batch_samples
