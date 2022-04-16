@@ -11,6 +11,7 @@ from hera_gym.wrappers import (
 from gym.wrappers import (
     TimeLimit,
 )
+from hera_gym.pyglet import set_default_pyglet_options
 
 
 def make_cameracartpole(
@@ -20,6 +21,8 @@ def make_cameracartpole(
     observe_state: bool = False,
 ) -> Env:
 
+    set_default_pyglet_options(headless=True)
+
     env = CartPoleEnv()
 
     # add time limit
@@ -28,7 +31,6 @@ def make_cameracartpole(
     # replace state observations with pixel observations
     env = PixelObservationWrapper(
         env,
-        render_shape=(400, 600, 3),
         pixel_key="pixels" if observe_state else None,
         state_key="state" if observe_state else None,
     )
