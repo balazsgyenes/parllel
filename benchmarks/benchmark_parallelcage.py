@@ -116,7 +116,9 @@ def build(config, parallel, profile_path):
     
 
 if __name__ == "__main__":
-    mp.set_start_method("fork")
+    import platform
+    if platform.system() == "Darwin":
+        mp.set_start_method("spawn")
 
     parallel = True
     profile_path = None

@@ -1,3 +1,4 @@
+import platform
 from typing import Tuple
 
 from gym import Env
@@ -21,7 +22,8 @@ def make_cameracartpole(
     observe_state: bool = False,
 ) -> Env:
 
-    set_default_pyglet_options(headless=True)
+    headless = platform.system() == "Linux"
+    set_default_pyglet_options(headless=headless)
 
     env = CartPoleEnv()
 
