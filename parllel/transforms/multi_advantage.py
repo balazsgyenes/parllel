@@ -11,18 +11,20 @@ from .numpy import broadcast_left_to_right
 
 
 class ProblemType(enum.Enum):
-    # common reward, common value estimate
-    central_critic = 0
-    # common reward, unique value estimates from each agent
+    # single reward, single value estimate
+    single_critic = 0
+    # single reward, unique value estimates for each distribution
     independent_critics = 1
-    # unique rewards for each agent, unique value estimates
+    # unique rewards for each distribution, unique value estimates
     markov_game = 3
 
 
 class EstimateMultiAgentAdvantage(BatchTransform):
     def __init__(self, discount: float, gae_lambda: float) -> None:
         """Computes per-agent advantage based on a shared reward and agent-
-        specific value estimates.
+        specific value estimates. This wrapper should be used any time the
+        agent has a MultiDistribution, either because it is an EnsembleAgent,
+        or because it outputs e.g. both discrete and continuous actions.
         
         Requires fields:
             - .env.reward
@@ -68,8 +70,8 @@ class EstimateMultiAgentAdvantage(BatchTransform):
                 self.problem_type = ProblemType.markov_game
         else:
             advantage_shape = reward.shape + (1,)
-            return_shape = reward.shape + (1,)
-            self.problem_type = ProblemType.central_critic
+            return_shape = reward.shape
+            self.problem_type = ProblemType.single_critic
 
         # allocate new Array objects for advantage and return_
         advantage = ArrayCls(shape=advantage_shape, dtype=reward.dtype)
@@ -96,8 +98,15 @@ class EstimateMultiAgentAdvantage(BatchTransform):
         advantage = np.asarray(batch_samples.env.advantage)
         return_ = np.asarray(batch_samples.env.return_)
 
-        if self.problem_type is not ProblemType.central_critic:
+        if self.problem_type is ProblemType.single_critic:
+            value = np.asarray(value)
+            bootstrap_value = np.asarray(bootstrap_value)
+            reward = np.asarray(reward)
+        else:
             # definitely need to stack value and bootstrap value
+            value = np.stack(value, axis=-1)
+            bootstrap_value = np.stack(bootstrap_value, axis=-1)
+
             if self.problem_type is ProblemType.markov_game:
                 # stack rewards for each agent in the same order as in value
                 # and bootstrap value. the subagents might not be defined in
@@ -112,12 +121,6 @@ class EstimateMultiAgentAdvantage(BatchTransform):
                 )
             else:
                 reward = np.asarray(reward)
-            
-            value = np.stack(value, axis=-1)
-            bootstrap_value = np.stack(bootstrap_value, axis=-1)
-        else:
-            value = np.asarray(value)
-            bootstrap_value = np.asarray(bootstrap_value)
 
         # add T dimension to bootstrap_value so it can be broadcast with
         # advantage and other arrays
