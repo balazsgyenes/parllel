@@ -113,7 +113,7 @@ def build():
         batch_buffer, step_transforms = add_obs_normalization(
             batch_buffer,
             step_transforms,
-            initial_count=10000
+            initial_count=10000,
         )
 
         batch_buffer, batch_transforms = add_reward_normalization(
