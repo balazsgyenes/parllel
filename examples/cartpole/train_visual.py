@@ -8,21 +8,18 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
-    add_reward_clipping, add_reward_normalization, add_valid,
-    build_cages_and_env_buffers, add_initial_rnn_state)
+    add_reward_clipping, add_reward_normalization, build_cages_and_env_buffers)
 from parllel.runners.onpolicy import OnPolicyRunner
-from parllel.samplers.recurrent import RecurrentSampler
+from parllel.samplers.basic import BasicSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
-from parllel.torch.agents.ensemble import AgentProfile
-from parllel.torch.agents.independent import IndependentPgAgents
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
-from build.cameracartpole import make_cameracartpole
-from build.recurrent_model import CartPoleLstmCategoricalPgModel
+from build.visualcartpole import make_visualcartpole
+from build.visual_model import VisualCartPoleFfCategoricalPgModel
 
 
 @contextmanager
@@ -32,9 +29,9 @@ def build():
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
     parallel = False
-    EnvClass=make_cameracartpole
+    EnvClass=make_visualcartpole
     env_kwargs={
-        # "max_episode_steps": 1000,
+        "max_episode_steps": 1000,
     }
     TrajInfoClass = TrajInfo
     traj_info_kwargs = {}
@@ -58,7 +55,7 @@ def build():
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
             traj_info_kwargs=traj_info_kwargs,
-            wait_before_reset=True,
+            wait_before_reset=False,
             batch_spec=batch_spec,
             parallel=parallel,
         ) as (cages, batch_action, batch_env):
@@ -66,47 +63,31 @@ def build():
         obs_space, action_space = cages[0].spaces
 
         # instantiate model and agent
+        model = VisualCartPoleFfCategoricalPgModel(
+            obs_space=obs_space,
+            action_space=action_space,
+            channels=[16, 16, 32],
+            kernel_sizes=[8, 4, 4],
+            strides=[4, 2, 1],
+            paddings=[0, 1, 1],
+            use_maxpool=False,
+            hidden_sizes=[64],
+            nonlinearity=torch.nn.ReLU,
+            )
+        distribution = Categorical(dim=action_space.n)
         device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
-        ## cart
-        cart_model = CartPoleLstmCategoricalPgModel(
-            obs_space=obs_space,
-            action_space=action_space["cart"],
-            pre_lstm_hidden_sizes=32,
-            lstm_size=16,
-            post_lstm_hidden_sizes=32,
-            hidden_nonlinearity=torch.nn.Tanh,
-            )
-        cart_distribution = Categorical(dim=action_space["cart"].n)
-        cart_agent = CategoricalPgAgent(
-            model=cart_model, distribution=cart_distribution, observation_space=obs_space,
-            action_space=action_space["cart"], n_states=batch_spec.B, device=device,
-            recurrent=True)
-        cart_profile = AgentProfile(instance=cart_agent, action_key="cart")
 
-        ## camera
-        camera_model = CartPoleLstmCategoricalPgModel(
-            obs_space=obs_space,
-            action_space=action_space["camera"],
-            pre_lstm_hidden_sizes=32,
-            lstm_size=16,
-            post_lstm_hidden_sizes=32,
-            hidden_nonlinearity=torch.nn.Tanh,
-            )
-        camera_distribution = Categorical(dim=action_space["camera"].n)
-        camera_agent = CategoricalPgAgent(
-            model=camera_model, distribution=camera_distribution, observation_space=obs_space,
-            action_space=action_space["camera"], n_states=batch_spec.B, device=device,
-            recurrent=True)
-        camera_profile = AgentProfile(instance=camera_agent, action_key="camera")
-
-        agent = IndependentPgAgents([cart_profile, camera_profile])
+        # instantiate model and agent
+        agent = CategoricalPgAgent(
+            model=model, distribution=distribution, observation_space=obs_space,
+            action_space=action_space, n_states=batch_spec.B, device=device)
         agent = TorchHandler(agent=agent)
 
         # write dict into namedarraytuple and read it back out. this ensures the
         # example is in a standard format (i.e. namedarraytuple).
         batch_env.observation[0] = obs_space.sample()
         example_obs = batch_env.observation[0]
-
+        
         # get example output from agent
         _, agent_info = agent.step(example_obs)
 
@@ -115,17 +96,7 @@ def build():
         batch_agent = AgentSamples(batch_action, batch_agent_info)
         batch_buffer = Samples(batch_agent, batch_env)
 
-        # for recurrent problems, we need to save the initial state at the 
-        # beginning of the batch
-        batch_buffer = add_initial_rnn_state(batch_buffer, agent)
-
-        # for advantage estimation, we need to estimate the value of the last
-        # state in the batch
         batch_buffer = add_bootstrap_value(batch_buffer)
-        
-        # for recurrent problems, compute mask that zeroes out samples after
-        # environments are done before they can be reset
-        batch_buffer = add_valid(batch_buffer)
 
         # add several helpful transforms
         batch_transforms, step_transforms = [], []
@@ -152,7 +123,7 @@ def build():
             normalize=True,
         )
 
-        sampler = RecurrentSampler(
+        sampler = BasicSampler(
             batch_spec=batch_spec,
             envs=cages,
             agent=agent,
