@@ -15,8 +15,13 @@ class IndependentPgAgents(EnsembleAgent):
     def __init__(self, agent_profiles: Sequence[AgentProfile]):
         super().__init__(agent_profiles)
 
-        self.MultiValue = NamedArrayTupleClass(
-            "MultiValue",
+        self.MultiAction = NamedArrayTupleClass(
+            "MultiAction",
+            [profile.action_key for profile in self._agent_profiles]
+        )
+
+        self.MultiDistInfo = NamedArrayTupleClass(
+            "MultiDistInfo",
             [profile.action_key for profile in self._agent_profiles]
         )
 
@@ -35,18 +40,33 @@ class IndependentPgAgents(EnsembleAgent):
     @torch.no_grad()
     def step(self, observation: Buffer, *, env_indices: Union[int, slice] = ...,
              ) -> AgentStep:
-        subagent_steps = {}
+        actions, dist_infos, values, prev_actions = [], [], [], []
         for agent in self._agent_profiles:
             if agent.obs_key is not None:
                 subagent_observation = getattr(observation, agent.obs_key)
             else:
                 subagent_observation = observation
 
-            subagent_steps[agent.action_key] = agent.instance.step(
+            subagent_action, subagent_info = agent.instance.step(
                 subagent_observation, env_indices=env_indices)
+            subagent_distinfo, subagent_value, subagent_prev_action = (
+                subagent_info
+            )
 
-        return collate_buffers(subagent_steps.values(),
-                               subagent_steps.keys())
+            actions.append(subagent_action)
+            dist_infos.append(subagent_distinfo)
+            values.append(subagent_value)
+            prev_actions.append(subagent_prev_action)
+
+        action = self.MultiAction(*actions)
+        agent_info = AgentInfo(
+            dist_info = self.MultiDistInfo(*dist_infos),
+            # values must be array-like for subtraction of old_values from
+            # current values in algo
+            value = torch.stack(values, dim=-1),
+            prev_action = self.MultiAction(*prev_actions)
+        )
+        return AgentStep(action, agent_info)
 
     @torch.no_grad()
     def initial_rnn_state(self) -> Buffer:
@@ -71,12 +91,12 @@ class IndependentPgAgents(EnsembleAgent):
 
             values.append(agent.instance.value(subagent_observation))
 
-        return self.MultiValue(*values)
+        return torch.stack(values, dim=-1)
 
     def predict(self, observation: Buffer, agent_info: AgentInfo,
                 init_rnn_state: Optional[Buffer] = None,
                 ) -> AgentPrediction:
-        dist_infos = {}
+        dist_infos = []
         values = []
         for agent in self._agent_profiles:
             if agent.obs_key is not None:
@@ -90,11 +110,12 @@ class IndependentPgAgents(EnsembleAgent):
             subagent_dist_info, subagent_value = agent.instance(
                 subagent_observation, subagent_info, subagent_rnn_state)
 
-            dist_infos[agent.action_key] = subagent_dist_info
+            dist_infos.append(subagent_dist_info)
             values.append(subagent_value)
 
-        # dist_infos are NamedTuples, so they can be collated
-        dist_info = collate_buffers(dist_infos.values(), dist_infos.keys())
-        # values must be stacked so they can be multiplied by advantage
+        # dist_infos may have different dims, so cannot be stacked
+        dist_info = self.MultiDistInfo(*dist_infos)
+        # values must be array-like for subtraction of return_ from values
+        # in algo
         value = torch.stack(values, dim=-1)
         return AgentPrediction(dist_info, value)
