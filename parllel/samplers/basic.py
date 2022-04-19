@@ -99,7 +99,7 @@ class BasicSampler(Sampler):
             # if environment is done, reset agent
             # environment has already been reset inside cage
             if np.any(dones := done[t]):
-                self.agent.reset_one(dones)
+                self.agent.reset_one(np.asarray(dones))
         
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
