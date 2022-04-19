@@ -36,7 +36,6 @@ def build():
     env_kwargs = {
         "max_episode_steps": 1000,
         "headless": True,
-        # "reward_type": "sparse",
     }
     discount = 0.99
     TrajInfoClass = TrajInfo
@@ -47,7 +46,7 @@ def build():
     reward_min = -5.
     reward_max = 5.
     learning_rate = 0.001
-    n_steps = 100 * batch_spec.size
+    n_steps = 200 * batch_spec.size
 
 
     if render_during_training:
@@ -77,16 +76,16 @@ def build():
         model = AtariLstmPgModel(
             obs_space=obs_space,
             action_space=action_space,
-            channels=[16, 16, 32],
-            kernel_sizes=[8, 4, 4],
-            strides=[4, 2, 1],
-            paddings=[0, 1, 1],
+            channels=[32, 64, 128, 256],
+            kernel_sizes=[3, 3, 3, 3],
+            strides=[2, 2, 2, 2],
+            paddings=[0, 0, 0, 0],
             use_maxpool=False,
-            post_conv_hidden_sizes=64,
+            post_conv_hidden_sizes=1024,
             post_conv_output_size=None,
             post_conv_nonlinearity=torch.nn.ReLU,
-            lstm_size=16,
-            post_lstm_hidden_sizes=32,
+            lstm_size=512,
+            post_lstm_hidden_sizes=512,
             post_lstm_nonlinearity=torch.nn.ReLU,
         )
         distribution = Categorical(dim=action_space.n)
