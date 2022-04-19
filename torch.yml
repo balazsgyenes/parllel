@@ -7,11 +7,13 @@ dependencies:
 - pytorch
 - cudatoolkit=11.1
 - numpy
-- nptyping
+- nptyping=1.*  # TODO: remove
+- numba
 # - psutil
 # - opencv  # atari.
 - pip
 - pip:
-    - gym
-  # - atari-py
-  # - pyprind  # progbar.
+    - gym[classic_control]==0.21.*  # TODO: move to hera_gym
+    - opencv-python  # TODO: move to hera_gym
+    - tqdm
+    - pytest
