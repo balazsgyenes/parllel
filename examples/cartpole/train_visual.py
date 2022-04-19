@@ -8,9 +8,10 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
-    add_reward_clipping, add_reward_normalization, build_cages_and_env_buffers)
+    add_reward_clipping, add_reward_normalization, add_valid,
+    build_cages_and_env_buffers, add_initial_rnn_state)
 from parllel.runners.onpolicy import OnPolicyRunner
-from parllel.samplers.basic import BasicSampler
+from parllel.samplers import RecurrentSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions import Categorical
@@ -18,30 +19,40 @@ from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
-from build.visualcartpole import make_visualcartpole
-from build.visual_model import VisualCartPoleFfCategoricalPgModel
+from hera_gym.builds.visual_cartpole import build_visual_cartpole
+from models.atari_lstm_model import AtariLstmPgModel
 
 
 @contextmanager
 def build():
 
+    render_during_training = True
+
     batch_B = 16
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = False
-    EnvClass=make_visualcartpole
-    env_kwargs={
+    parallel = True
+    EnvClass = build_visual_cartpole
+    env_kwargs = {
         "max_episode_steps": 1000,
+        "headless": True,
+        # "reward_type": "sparse",
     }
-    TrajInfoClass = TrajInfo
-    traj_info_kwargs = {}
     discount = 0.99
+    TrajInfoClass = TrajInfo
+    traj_info_kwargs = {
+        "discount": discount,
+    }
     gae_lambda = 0.95
     reward_min = -5.
     reward_max = 5.
     learning_rate = 0.001
-    n_steps = 200 * batch_spec.size
+    n_steps = 100 * batch_spec.size
 
+
+    if render_during_training:
+        env_kwargs["headless"] = False
+        env_kwargs["subprocess"] = parallel
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -55,7 +66,7 @@ def build():
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
             traj_info_kwargs=traj_info_kwargs,
-            wait_before_reset=False,
+            wait_before_reset=True,
             batch_spec=batch_spec,
             parallel=parallel,
         ) as (cages, batch_action, batch_env):
@@ -63,7 +74,7 @@ def build():
         obs_space, action_space = cages[0].spaces
 
         # instantiate model and agent
-        model = VisualCartPoleFfCategoricalPgModel(
+        model = AtariLstmPgModel(
             obs_space=obs_space,
             action_space=action_space,
             channels=[16, 16, 32],
@@ -71,16 +82,21 @@ def build():
             strides=[4, 2, 1],
             paddings=[0, 1, 1],
             use_maxpool=False,
-            hidden_sizes=[64],
-            nonlinearity=torch.nn.ReLU,
-            )
+            post_conv_hidden_sizes=64,
+            post_conv_output_size=None,
+            post_conv_nonlinearity=torch.nn.ReLU,
+            lstm_size=16,
+            post_lstm_hidden_sizes=32,
+            post_lstm_nonlinearity=torch.nn.ReLU,
+        )
         distribution = Categorical(dim=action_space.n)
         device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
 
         # instantiate model and agent
         agent = CategoricalPgAgent(
             model=model, distribution=distribution, observation_space=obs_space,
-            action_space=action_space, n_states=batch_spec.B, device=device)
+            action_space=action_space, n_states=batch_spec.B, device=device,
+            recurrent=True)
         agent = TorchHandler(agent=agent)
 
         # write dict into namedarraytuple and read it back out. this ensures the
@@ -96,10 +112,20 @@ def build():
         batch_agent = AgentSamples(batch_action, batch_agent_info)
         batch_buffer = Samples(batch_agent, batch_env)
 
+        # for recurrent problems, we need to save the initial state at the 
+        # beginning of the batch
+        batch_buffer = add_initial_rnn_state(batch_buffer, agent)
+
+        # for advantage estimation, we need to estimate the value of the last
+        # state in the batch
         batch_buffer = add_bootstrap_value(batch_buffer)
+        
+        # for recurrent problems, compute mask that zeroes out samples after
+        # environments are done before they can be reset
+        batch_buffer = add_valid(batch_buffer)
 
         # add several helpful transforms
-        batch_transforms, step_transforms = [], []
+        batch_transforms = []
 
         batch_buffer, batch_transforms = add_reward_normalization(
             batch_buffer,
@@ -123,14 +149,13 @@ def build():
             normalize=True,
         )
 
-        sampler = BasicSampler(
+        sampler = RecurrentSampler(
             batch_spec=batch_spec,
             envs=cages,
             agent=agent,
             batch_buffer=batch_buffer,
             max_steps_decorrelate=50,
             get_bootstrap_value=True,
-            obs_transform=Compose(step_transforms),
             batch_transform=Compose(batch_transforms),
         )
 

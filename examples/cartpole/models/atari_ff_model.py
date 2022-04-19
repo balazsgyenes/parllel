@@ -11,18 +11,19 @@ from parllel.torch.models import Conv2dHeadModel
 from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 
 
-class VisualCartPoleFfCategoricalPgModel(nn.Module):
-    def __init__(self,
-                 obs_space: spaces.Box,
-                 action_space: spaces.Discrete,
-                 channels: List[int],
-                 kernel_sizes: List[int],
-                 strides: List[int],
-                 paddings: List[int],
-                 use_maxpool: bool,
-                 hidden_sizes: Union[int, List[int], None],
-                 nonlinearity: nn.Module,
-                 ) -> None:
+class AtariFfPgModel(nn.Module):
+    def __init__(
+            self,
+            obs_space: spaces.Box,
+            action_space: spaces.Discrete,
+            channels: List[int],
+            kernel_sizes: List[int],
+            strides: List[int],
+            paddings: List[int],
+            use_maxpool: bool,
+            hidden_sizes: Union[int, List[int], None],
+            nonlinearity: nn.Module,
+            ) -> None:
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
         assert obs_space.dtype == np.uint8

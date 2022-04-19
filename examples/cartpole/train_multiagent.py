@@ -21,8 +21,8 @@ from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
-from build.cameracartpole import make_cameracartpole
-from build.recurrent_model import CartPoleLstmCategoricalPgModel
+from hera_gym.builds.multi_agent_cartpole import build_multi_agent_cartpole
+from models.atari_lstm_model import AtariLstmPgModel
 
 
 @contextmanager
@@ -32,13 +32,16 @@ def build():
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
     parallel = False
-    EnvClass=make_cameracartpole
-    env_kwargs={
-        # "max_episode_steps": 1000,
+    EnvClass = build_multi_agent_cartpole
+    env_kwargs = {
+        "max_episode_steps": 1000,
+        "headless": True,
     }
-    TrajInfoClass = TrajInfo
-    traj_info_kwargs = {}
     discount = 0.99
+    TrajInfoClass = TrajInfo
+    traj_info_kwargs = {
+        "discount": discount,
+    }
     gae_lambda = 0.95
     reward_min = -5.
     reward_max = 5.
@@ -68,7 +71,7 @@ def build():
         # instantiate model and agent
         device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
         ## cart
-        cart_model = CartPoleLstmCategoricalPgModel(
+        cart_model = AtariLstmPgModel(
             obs_space=obs_space,
             action_space=action_space["cart"],
             pre_lstm_hidden_sizes=32,
@@ -84,7 +87,7 @@ def build():
         cart_profile = AgentProfile(instance=cart_agent, action_key="cart")
 
         ## camera
-        camera_model = CartPoleLstmCategoricalPgModel(
+        camera_model = AtariLstmPgModel(
             obs_space=obs_space,
             action_space=action_space["camera"],
             pre_lstm_hidden_sizes=32,

@@ -9,7 +9,7 @@ from parllel.torch.models import MlpModel
 from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 
 
-class CartPoleFfCategoricalPgModel(nn.Module):
+class CartPoleFfPgModel(nn.Module):
     def __init__(self,
                  obs_space: spaces.Box,
                  action_space: spaces.Discrete,

@@ -19,8 +19,8 @@ from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
-from build.cartpole import make_cartpole
-from build.model import CartPoleFfCategoricalPgModel
+from envs.cartpole import build_cartpole
+from models.model import CartPoleFfPgModel
 
 
 @contextmanager
@@ -30,18 +30,20 @@ def build():
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
     parallel = True
-    EnvClass=make_cartpole
-    env_kwargs={
+    EnvClass = build_cartpole
+    env_kwargs = {
         "max_episode_steps": 1000,
     }
-    TrajInfoClass = TrajInfo
-    traj_info_kwargs = {}
     discount = 0.99
+    TrajInfoClass = TrajInfo
+    traj_info_kwargs = {
+        "discount": discount,
+    }
     gae_lambda = 0.95
     reward_min = -5.
     reward_max = 5.
     learning_rate = 0.001
-    n_steps = 200 * batch_spec.size
+    n_steps = 50 * batch_spec.size
 
 
     if parallel:
@@ -64,7 +66,7 @@ def build():
         obs_space, action_space = cages[0].spaces
 
         # instantiate model and agent
-        model = CartPoleFfCategoricalPgModel(
+        model = CartPoleFfPgModel(
             obs_space=obs_space,
             action_space=action_space,
             hidden_sizes=[64, 64],

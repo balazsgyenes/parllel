@@ -11,7 +11,7 @@ from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
     add_obs_normalization, add_reward_clipping, add_reward_normalization,
     add_valid, build_cages_and_env_buffers, add_initial_rnn_state)
 from parllel.runners.onpolicy import OnPolicyRunner
-from parllel.samplers.recurrent import RecurrentSampler
+from parllel.samplers import RecurrentSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions import Categorical
@@ -19,30 +19,40 @@ from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
-from build.cartpole import make_cartpole
-from build.recurrent_model import CartPoleLstmCategoricalPgModel
+from envs.cartpole import build_cartpole
+from models.lstm_model import CartPoleLstmPgModel
+from hera_gym.wrappers import add_human_render_wrapper, add_subprocess_wrapper
 
 
 @contextmanager
 def build():
 
+    render_during_training = False
+
     batch_B = 16
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
     parallel = True
-    EnvClass=make_cartpole
-    env_kwargs={
+    EnvClass = build_cartpole
+    env_kwargs = {
         "max_episode_steps": 1000,
     }
-    TrajInfoClass = TrajInfo
-    traj_info_kwargs = {}
     discount = 0.99
+    TrajInfoClass = TrajInfo
+    traj_info_kwargs = {
+        "discount": discount,
+    }
     gae_lambda = 0.95
     reward_min = -5.
     reward_max = 5.
     learning_rate = 0.001
-    n_steps = 200 * batch_spec.size
+    n_steps = 100 * batch_spec.size
 
+
+    if render_during_training:
+        if parallel:
+            EnvClass = add_subprocess_wrapper(EnvClass)
+        EnvClass = add_human_render_wrapper(EnvClass)
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -64,7 +74,7 @@ def build():
         obs_space, action_space = cages[0].spaces
 
         # instantiate model and agent
-        model = CartPoleLstmCategoricalPgModel(
+        model = CartPoleLstmPgModel(
             obs_space=obs_space,
             action_space=action_space,
             pre_lstm_hidden_sizes=32,
