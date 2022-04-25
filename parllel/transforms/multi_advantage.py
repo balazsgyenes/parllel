@@ -53,7 +53,7 @@ class EstimateMultiAgentAdvantage(BatchTransform):
         env_samples: EnvSamples = batch_samples.env
         reward = env_samples.reward
         action = batch_samples.agent.action
-        value = batch_samples.agent.agent_info.value
+        value = np.asarray(batch_samples.agent.agent_info.value)
 
         if not isinstance(action, NamedTuple):
             raise TypeError("MultiAgent Advantage requires a dictionary action"
@@ -122,7 +122,7 @@ class EstimateMultiAgentAdvantage(BatchTransform):
 
         # if missing, add singleton trailing dimensions to arrays until they
         # all have the same dimensionality
-        advantage, reward, done, value = broadcast_left_to_right(
+        reward, value, done, bootstrap_value, advantage, return_ = broadcast_left_to_right(
             reward, value, done, bootstrap_value, advantage, return_
         )
         

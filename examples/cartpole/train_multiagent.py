@@ -7,9 +7,9 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
-from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
-    add_reward_clipping, add_reward_normalization, add_valid,
-    build_cages_and_env_buffers, add_initial_rnn_state)
+from parllel.patterns import (add_bootstrap_value, add_reward_clipping,
+    add_reward_normalization, add_valid, build_cages_and_env_buffers,
+    add_initial_rnn_state)
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers.recurrent import RecurrentSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
@@ -18,7 +18,7 @@ from parllel.torch.agents.independent import IndependentPgAgents
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
-from parllel.transforms import Compose
+from parllel.transforms import Compose, EstimateMultiAgentAdvantage
 from parllel.types import BatchSpec
 
 from hera_gym.builds.multi_agent_cartpole import build_multi_agent_cartpole
@@ -28,10 +28,12 @@ from models.atari_lstm_model import AtariLstmPgModel
 @contextmanager
 def build():
 
+    render_during_training = True
+
     batch_B = 16
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = False
+    parallel = True
     EnvClass = build_multi_agent_cartpole
     env_kwargs = {
         "max_episode_steps": 1000,
@@ -48,6 +50,10 @@ def build():
     learning_rate = 0.001
     n_steps = 200 * batch_spec.size
 
+
+    if render_during_training:
+        env_kwargs["headless"] = False
+        env_kwargs["subprocess"] = parallel
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -74,11 +80,18 @@ def build():
         cart_model = AtariLstmPgModel(
             obs_space=obs_space,
             action_space=action_space["cart"],
-            pre_lstm_hidden_sizes=32,
-            lstm_size=16,
-            post_lstm_hidden_sizes=32,
-            hidden_nonlinearity=torch.nn.Tanh,
-            )
+            channels=[32, 64, 128, 256],
+            kernel_sizes=[3, 3, 3, 3],
+            strides=[2, 2, 2, 2],
+            paddings=[0, 0, 0, 0],
+            use_maxpool=False,
+            post_conv_hidden_sizes=1024,
+            post_conv_output_size=None,
+            post_conv_nonlinearity=torch.nn.ReLU,
+            lstm_size=512,
+            post_lstm_hidden_sizes=512,
+            post_lstm_nonlinearity=torch.nn.ReLU,
+        )
         cart_distribution = Categorical(dim=action_space["cart"].n)
         cart_agent = CategoricalPgAgent(
             model=cart_model, distribution=cart_distribution, observation_space=obs_space,
@@ -90,19 +103,27 @@ def build():
         camera_model = AtariLstmPgModel(
             obs_space=obs_space,
             action_space=action_space["camera"],
-            pre_lstm_hidden_sizes=32,
-            lstm_size=16,
-            post_lstm_hidden_sizes=32,
-            hidden_nonlinearity=torch.nn.Tanh,
-            )
+            channels=[32, 64, 128, 256],
+            kernel_sizes=[3, 3, 3, 3],
+            strides=[2, 2, 2, 2],
+            paddings=[0, 0, 0, 0],
+            use_maxpool=False,
+            post_conv_hidden_sizes=1024,
+            post_conv_output_size=None,
+            post_conv_nonlinearity=torch.nn.ReLU,
+            lstm_size=512,
+            post_lstm_hidden_sizes=512,
+            post_lstm_nonlinearity=torch.nn.ReLU,
+        )
         camera_distribution = Categorical(dim=action_space["camera"].n)
         camera_agent = CategoricalPgAgent(
-            model=camera_model, distribution=camera_distribution, observation_space=obs_space,
-            action_space=action_space["camera"], n_states=batch_spec.B, device=device,
-            recurrent=True)
+            model=camera_model, distribution=camera_distribution,
+            observation_space=obs_space, action_space=action_space["camera"],
+            n_states=batch_spec.B, device=device, recurrent=True)
         camera_profile = AgentProfile(instance=camera_agent, action_key="camera")
 
-        agent = IndependentPgAgents([cart_profile, camera_profile])
+        agent = IndependentPgAgents([cart_profile, camera_profile],
+            observation_space=obs_space, action_space=action_space)
         agent = TorchHandler(agent=agent)
 
         # write dict into namedarraytuple and read it back out. this ensures the
@@ -131,7 +152,7 @@ def build():
         batch_buffer = add_valid(batch_buffer)
 
         # add several helpful transforms
-        batch_transforms, step_transforms = [], []
+        batch_transforms = []
 
         batch_buffer, batch_transforms = add_reward_normalization(
             batch_buffer,
@@ -147,13 +168,10 @@ def build():
         )
 
         # add advantage normalization, required for PPO
-        batch_buffer, batch_transforms = add_advantage_estimation(
-            batch_buffer,
-            batch_transforms,
-            discount=discount,
-            gae_lambda=gae_lambda,
-            normalize=True,
-        )
+        advantage_transform = EstimateMultiAgentAdvantage(discount=discount,
+            gae_lambda=gae_lambda)
+        batch_buffer = advantage_transform.dry_run(batch_buffer, ArrayCls)
+        batch_transforms.append(advantage_transform)
 
         sampler = RecurrentSampler(
             batch_spec=batch_spec,
@@ -162,7 +180,6 @@ def build():
             batch_buffer=batch_buffer,
             max_steps_decorrelate=50,
             get_bootstrap_value=True,
-            obs_transform=Compose(step_transforms),
             batch_transform=Compose(batch_transforms),
         )
 

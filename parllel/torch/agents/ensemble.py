@@ -21,8 +21,8 @@ class AgentProfile:
         action_key: the part of action for which this agent is responsible.
     """
     instance: TorchAgent
-    obs_key: Optional[str]
     action_key: str
+    obs_key: Optional[str] = None
 
 
 class EnsembleAgent(TorchAgent):

@@ -1,9 +1,9 @@
 from typing import Optional, Sequence, Union
 
+import gym
 import torch
 
-from parllel.buffers import Buffer, NamedArrayTupleClass
-from parllel.buffers.utils import collate_buffers
+from parllel.buffers import Buffer, NamedTupleClass
 from parllel.handlers.agent import AgentStep
 
 from .ensemble import EnsembleAgent, AgentProfile
@@ -12,15 +12,34 @@ from .pg import AgentInfo, AgentPrediction
 
 class IndependentPgAgents(EnsembleAgent):
 
-    def __init__(self, agent_profiles: Sequence[AgentProfile]):
-        super().__init__(agent_profiles)
+    def __init__(self, agent_profiles: Sequence[AgentProfile],
+            observation_space: gym.Space, action_space: gym.Space
+            ):
 
-        self.MultiAction = NamedArrayTupleClass(
+        # order agent profiles according to elements in action space
+        # this ensures that the elements of all NamedTuples are in the same
+        # order as defined in the environment's action space
+        agent_profiles_ordered = []
+        action_keys = [agent.action_key for agent in agent_profiles]
+        for key in action_space:
+            try:
+                i = action_keys.index(key)
+            except ValueError:
+                raise ValueError(f"No agent is responsible for action {key}")
+
+            agent_profiles_ordered.append(agent_profiles[i])
+
+        super().__init__(agent_profiles_ordered)
+        self._observation_space = observation_space
+        self._action_space = action_space
+
+        # actions must be in environment order, so use keys from action space
+        self.MultiAction = NamedTupleClass(
             "MultiAction",
             [profile.action_key for profile in self._agent_profiles]
         )
 
-        self.MultiDistInfo = NamedArrayTupleClass(
+        self.MultiDistInfo = NamedTupleClass(
             "MultiDistInfo",
             [profile.action_key for profile in self._agent_profiles]
         )
@@ -30,7 +49,7 @@ class IndependentPgAgents(EnsembleAgent):
             # Create namedarraytuple to contain rnn_state from each agent. We
             # might not be able to concatenate them if the agents have
             # different rnn sizes. Not all subagents are necessarily recurrent.
-            self.MultiRnnState = NamedArrayTupleClass(
+            self.MultiRnnState = NamedTupleClass(
                 "MultiRnnState",
                 [profile.action_key for profile in self._agent_profiles]
             )
@@ -98,16 +117,20 @@ class IndependentPgAgents(EnsembleAgent):
                 ) -> AgentPrediction:
         dist_infos = []
         values = []
-        for agent in self._agent_profiles:
+        for i, agent in enumerate(self._agent_profiles):
             if agent.obs_key is not None:
                 subagent_observation = getattr(observation, agent.obs_key)
             else:
                 subagent_observation = observation
             
-            subagent_info = getattr(agent_info, agent.action_key)
+            subagent_info = AgentInfo(
+                dist_info = getattr(agent_info.dist_info, agent.action_key),
+                value = agent_info.value[..., i],
+                prev_action = getattr(agent_info.prev_action, agent.action_key),
+            )
             subagent_rnn_state = getattr(init_rnn_state, agent.action_key)
 
-            subagent_dist_info, subagent_value = agent.instance(
+            subagent_dist_info, subagent_value = agent.instance.predict(
                 subagent_observation, subagent_info, subagent_rnn_state)
 
             dist_infos.append(subagent_dist_info)
