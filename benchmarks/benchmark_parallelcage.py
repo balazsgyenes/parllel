@@ -70,8 +70,8 @@ def build(config, parallel, profile_path):
     ]
 
     # get example output from env
-    example_env_output = cages[0].get_example_output()
-    obs, reward, done, info = example_env_output
+    cages[0].random_step_async()
+    action, obs, reward, done, info = cages[0].await_step()
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), RotatingArrayCls, name="obs", padding=1)
@@ -80,11 +80,8 @@ def build(config, parallel, profile_path):
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
     batch_env_samples = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
-    # get example action from env
-    example_action = cages[0].spaces.action.sample()
-
     # allocate batch buffer based on examples
-    batch_action = buffer_from_example(example_action, tuple(batch_spec), ArrayCls)
+    batch_action = buffer_from_example(action, tuple(batch_spec), ArrayCls)
     batch_agent_samples = AgentSamples(batch_action, None)
 
     batch_samples = Samples(batch_agent_samples, batch_env_samples)

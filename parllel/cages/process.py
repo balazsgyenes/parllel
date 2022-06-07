@@ -16,7 +16,6 @@ from .traj_info import TrajInfo
 
 class Command(enum.Enum):
     """Commands for communicating with the subprocess"""
-    get_example_output = 0
     register_sample_buffer = 1
     step = 2
     collect_completed_trajs = 4
@@ -59,11 +58,6 @@ class ProcessCage(Cage, mp.Process):
     def _create_env(self, ) -> None:
         # don't create the env yet, we'll do it in the child process
         pass
-
-    def get_example_output(self) -> EnvStep:
-        assert self._last_command is None
-        self._parent_pipe.send(Message(Command.get_example_output))
-        return self._parent_pipe.recv()
 
     def set_samples_buffer(self, action: Buffer, obs: Buffer, reward: Buffer,
                            done: Array, info: Buffer) -> None:
@@ -175,12 +169,7 @@ class ProcessCage(Cage, mp.Process):
             command: Command = message.command
             data: Any = message.data
 
-            if command == Command.get_example_output:
-                # data must be None
-                env_step: EnvStep = super().get_example_output()
-                self._child_pipe.send(env_step)
-
-            elif command == Command.register_sample_buffer:
+            if command == Command.register_sample_buffer:
                 samples_buffer = data
                 for buf in samples_buffer:
                     self.buffer_registry.register_buffer(buf)

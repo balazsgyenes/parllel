@@ -55,7 +55,7 @@ class DummyEnv(gym.Env):
         # if just getting example or decorrelating, keep overwriting "reset"
         # observation
         names = [frame.name for frame in traceback.extract_stack()]
-        if "random_step_async" in names or "get_example_output" in names:
+        if "random_step_async" in names:
             self._samples.observation[0] = obs
         else:
             self._samples.observation[self._step_ctr + 1] = obs
