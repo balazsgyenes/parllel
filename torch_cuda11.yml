@@ -1,0 +1,6 @@
+name: parllel
+channels:
+- pytorch
+dependencies:
+- pytorch
+- cudatoolkit=11.3

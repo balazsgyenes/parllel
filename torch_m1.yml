@@ -1,0 +1,5 @@
+name: parllel
+dependencies:
+- pip
+- pip:
+  - torch
