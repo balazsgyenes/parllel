@@ -6,7 +6,7 @@ import numpy as np
 
 from parllel.buffers import Index, Indices
 
-from .array import Array, compute_current_indices
+from .array import Array, compute_indices
 
 
 class RotatingArray(Array):
@@ -85,7 +85,7 @@ class RotatingArray(Array):
         # if index history has only 1 element, this has no effect
         self._current_array = reduce(getitem, index_history, self._base_array)
         self._apparent_shape = self._current_array.shape
-        self._current_indices = compute_current_indices(
+        self._current_indices = compute_indices(
             self._base_array, self._current_array)
 
     def __setitem__(self, location: Indices, value: Any) -> None:

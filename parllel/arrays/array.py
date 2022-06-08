@@ -54,7 +54,7 @@ class Array(Buffer):
         self._current_array = reduce(
             getitem, self._index_history, self._base_array)
         self._apparent_shape = self._current_array.shape
-        self._current_indices = compute_current_indices(
+        self._current_indices = compute_indices(
             self._base_array, self._current_array)
 
     @property
@@ -126,7 +126,7 @@ class Array(Buffer):
         pass
 
 
-def compute_current_indices(base_array: NDArray, current_array: NDArray):
+def compute_indices(base_array: NDArray, current_array: NDArray):
     current_pointer = current_array.__array_interface__["data"][0]
     base_pointer = base_array.__array_interface__["data"][0]
     offset = current_pointer - base_pointer
@@ -174,5 +174,66 @@ def compute_current_indices(base_array: NDArray, current_array: NDArray):
             current_indices[dim] = dim_offsets[dim]
     
     current_indices.reverse()
+
+    return current_indices
+
+
+def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index], location: Indices):
+
+    if isinstance(location, tuple):
+        location = list(location)
+    else:
+        location = [location]
+
+    # check if Ellipsis occurs in location
+    i = next((index for index, elem in enumerate(location) if elem is Ellipsis), None)
+    if i is not None:
+        # pad location with slice(None) elements until length equals ndim
+        # assume Ellipsis only occurs once, since the location is well-formed
+        location[i:i+1] = [slice(None)] * (len(current_indices) - len(location) + 1)
+
+    i = 0
+    for dim, curr_index in enumerate(current_indices):
+        if isinstance(curr_index, int):
+            # this dimension has already been indexed with an integer, so it is
+            # ignored
+            continue
+
+        new_index = location[i]
+        size = base_shape[dim]
+
+        if curr_index == slice(None):
+            # this dimension has not yet been indexed at all
+            # new index must be cleaned, and then overwrites curr_index
+            if new_index == slice(None):
+                # don't need to clean this
+                pass
+            elif isinstance(new_index, int):
+                # make negative indices positive
+                new_index %= size
+            else:  # new_index: slice
+                # make start/stop positive integers and step non-zero integer
+                new_index = slice(*new_index.indices(size))
+            current_indices[dim] = new_index
+        else:
+            # this dimension has been indexed with a non-trivial slice
+            # add new_index to existing slice
+            if isinstance(new_index, int):
+                new_index = curr_index.start + new_index * curr_index.step
+
+                current_indices[dim] = new_index
+            else:  # new_index: slice
+
+                start, stop, step = new_index.indices(size)
+                current_indices[dim] = slice(
+                    curr_index.start + start * curr_index.step,  # start
+                    curr_index.start + stop * curr_index.step,   # stop
+                    curr_index.step * step,                      # step
+                )
+
+        i += 1  # consider next new_index on next loop iteration
+        if i == len(location):
+            # new_indices exhausted
+            break
 
     return current_indices

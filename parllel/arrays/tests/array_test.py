@@ -4,7 +4,7 @@ from operator import getitem
 import pytest
 import numpy as np
 
-from parllel.arrays.array import Array
+from parllel.arrays.array import Array, add_indices, compute_indices
 from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.arrays.rotating import RotatingArray
 from parllel.arrays.sharedmemory import RotatingSharedMemoryArray, SharedMemoryArray
@@ -224,28 +224,55 @@ class TestArray:
         assert all(el1 == el2 for el1, el2
             in zip(subarray1.index_history, subarray2.index_history))
 
-
-class TestArrayIndices:
-    def test_indices(self, array, np_array):
-        np_subarray = np_array[::2, 2, :1]
-        subarray = array[::2, 2, :1]
-        indices = subarray.current_indices
-
+class TestComputeIndices:
+    @pytest.mark.parametrize("indices", [
+        pytest.param(
+            (slice(None, None, 2), 2, slice(1)),
+            id="slices"
+        ),
+        pytest.param(
+            (slice(2, None, -1), slice(2), slice(2, None)),
+            id="negative step"
+        ),
+        pytest.param(
+            (slice(2, None, -1), slice(2), slice(2, None)),
+            id="element",
+            marks=pytest.mark.xfail(reason="Indexing a scalar results in a copy")
+        ),
+    ])
+    def test_single_index_op(self, np_array, indices):
+        np_subarray = np_array[indices]
+        indices = compute_indices(np_array, np_subarray)
         assert np.array_equal(np_subarray, np_array[indices])
-        assert np.array_equal(subarray, array[indices])
 
-    def test_indices_negative_step(self, array, np_array):
-        np_subarray = np_array[2::-1, :2, 2:]
-        subarray = array[2::-1, :2, 2:]
-        indices = subarray.current_indices
+class TestAddIndices:
+    @pytest.mark.parametrize("index_history", [
+        pytest.param([
+            (slice(1,5)),
+            (2, slice(None, 3)),
+            (slice(1, 2)),
+            ], id="slices"
+        ),
+        pytest.param([
+            (Ellipsis, 2),
+            (slice(None, 7), slice(1, -1)),
+            (3, slice(1, -1)),
+            ], id="Ellipsis"
+        ),
+        pytest.param([
+            (2, slice(1, -1)),
+            (slice(None), 3),
+            (0,)
+            ], id="element"
+        ),
+    ])
+    def test_index_history(self, np_array, index_history):
+        base_shape = np_array.shape
+        subarray = np_array
+        curr_indices = [slice(None) for _ in base_shape]
 
-        assert np.array_equal(np_subarray, np_array[indices])
-        assert np.array_equal(subarray, array[indices])
+        for indices in index_history:
+            subarray = subarray[indices]
+            curr_indices = add_indices(base_shape, curr_indices, indices)
 
-    def test_indices_element(self, array, np_array):
-        np_subarray = np_array[0, 1, 2]
-        subarray = array[0, 1, 2]
-        indices = subarray.current_indices
-
-        assert np.array_equal(np_subarray, np_array[indices])
-        assert np.array_equal(subarray, array[indices])
+        np.array_equal(subarray, np_array[curr_indices])
