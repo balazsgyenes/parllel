@@ -4,7 +4,8 @@ from operator import getitem
 import pytest
 import numpy as np
 
-from parllel.arrays.array import Array, add_indices, compute_indices, shape_from_indices
+from parllel.arrays.array import Array
+from parllel.arrays.indices import add_indices, compute_indices, shape_from_indices
 from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.arrays.rotating import RotatingArray
 from parllel.arrays.sharedmemory import RotatingSharedMemoryArray, SharedMemoryArray
