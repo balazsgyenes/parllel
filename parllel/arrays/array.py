@@ -175,7 +175,7 @@ def compute_indices(base_array: NDArray, current_array: NDArray):
     
     current_indices.reverse()
 
-    return current_indices
+    return tuple(current_indices)
 
 
 def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index], location: Indices):
