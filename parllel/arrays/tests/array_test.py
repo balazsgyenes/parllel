@@ -5,7 +5,7 @@ import pytest
 import numpy as np
 
 from parllel.arrays.array import Array
-from parllel.arrays.indices import add_indices, compute_indices, shape_from_indices
+from parllel.arrays.indices import add_indices, compute_indices, predict_copy_on_index, shape_from_indices
 from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.arrays.rotating import RotatingArray
 from parllel.arrays.sharedmemory import RotatingSharedMemoryArray, SharedMemoryArray
@@ -249,6 +249,12 @@ class TestComputeIndices:
         np_subarray = np_array[indices]
         indices = compute_indices(np_array, np_subarray)
         assert np.array_equal(np_subarray, np_array[indices])
+
+class TestPredictCopyOnIndex:
+    def test_predict_copy_on_index(self):
+        assert predict_copy_on_index((2,3,4),(0,0,0))
+        assert not predict_copy_on_index((2,3,4), (0,1))
+        assert not predict_copy_on_index((9,3,2), (slice(4,5),0,0))
 
 class TestAddIndices:
     @pytest.mark.parametrize("index_history", [
