@@ -22,11 +22,10 @@ def compute_indices(base_array: NDArray, current_array: NDArray):
         offset %= base_stride
     assert offset == 0
 
-    base_shape = tuple(reversed(base_array.shape))
-    base_strides = tuple(reversed(base_array.strides))
-    curr_shape = tuple(reversed(current_array.shape))
-    curr_strides = tuple(reversed(current_array.strides))
-    dim_offsets.reverse()
+    base_shape = base_array.shape
+    base_strides = base_array.strides
+    curr_shape = current_array.shape
+    curr_strides = current_array.strides
     current_indices = [None for _ in base_shape]
 
     for (curr_size, curr_stride) in zip(curr_shape, curr_strides):
@@ -52,8 +51,6 @@ def compute_indices(base_array: NDArray, current_array: NDArray):
         if current_indices[dim] is None:
             current_indices[dim] = dim_offsets[dim]
     
-    current_indices.reverse()
-
     return tuple(current_indices)
 
 
