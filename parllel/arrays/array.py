@@ -1,7 +1,7 @@
 from __future__ import annotations
 from functools import reduce
 from operator import getitem
-from typing import Any, List, Tuple
+from typing import Any, List, Sequence, Tuple
 
 import numpy as np
 from nptyping import NDArray
@@ -179,7 +179,28 @@ def compute_indices(base_array: NDArray, current_array: NDArray):
 
 
 def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index], location: Indices):
+    """Takes an indexing location, the current indices of the subarray relative
+    to the base array, and the base array's shape, and returns the next indices
+    of the subarray relative to the base array after indexing.
 
+    Issues:
+    - no checks to make sure that index is valid (e.g. bounds checking), so the
+        indexing has to be done on the ndarray as well.
+    - this functions converts slice `s` to standard form (start/stop positive
+        integers and step non-zero integer) using `slice(*s.indices(size))`.
+        However, does not return a slice in standard form for stop=None and
+        step < 0, where the new stop is negative. This results in a "standard"
+        slice that gives a different result than the original.
+        e.g. slice(5, None, -1) -> slice(5, -1, -1), which is a 0-length slice
+
+    Possible optimizations:
+    - move to for loop over location zipped with current_indices with ints
+        filtered out
+    - it may be possible to jit this function if slices are replaced by tuples
+        of 3 integers
+    - it may be faster to create a jitclass for Index which represents either
+        int, slice, or Ellipsis, and can then be passed to jitted functions
+    """
     if isinstance(location, tuple):
         location = list(location)
     else:
@@ -200,7 +221,7 @@ def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index], locat
             continue
 
         new_index = location[i]
-        size = base_shape[dim]
+        base_size = base_shape[dim]
 
         if curr_index == slice(None):
             # this dimension has not yet been indexed at all
@@ -210,20 +231,24 @@ def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index], locat
                 pass
             elif isinstance(new_index, int):
                 # make negative indices positive
-                new_index %= size
+                new_index %= base_size
             else:  # new_index: slice
                 # make start/stop positive integers and step non-zero integer
-                new_index = slice(*new_index.indices(size))
+                new_index = slice(*new_index.indices(base_size))
             current_indices[dim] = new_index
         else:
             # this dimension has been indexed with a non-trivial slice
             # add new_index to existing slice
             if isinstance(new_index, int):
+                # no need to check bounds on this, we assume the index is
+                # correct
                 new_index = curr_index.start + new_index * curr_index.step
 
                 current_indices[dim] = new_index
             else:  # new_index: slice
-
+                # get current size of this dimension
+                size = shape_from_indices((base_size,), (curr_index,))[0]
+                # use the current size to resolve the slice
                 start, stop, step = new_index.indices(size)
                 current_indices[dim] = slice(
                     curr_index.start + start * curr_index.step,  # start
@@ -237,3 +262,27 @@ def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index], locat
             break
 
     return current_indices
+
+
+def shape_from_indices(base_shape: Tuple[int, ...], indices: Sequence[Index]):
+    """Calculates the expected shape of a numpy array of `base_shape` when
+    indexed with `indices`. Assumes that all indices are in standard form, i.e.
+    for slices, start/stop are positive integers and step is non-zero integer,
+    and that base_shape and indices are the same length.
+    """
+    return tuple(
+        (
+            size # dimension unindexed, base size unchanged
+            if index == slice(None)
+            # otherwise calculate size of slice
+            else max(
+                # (stop - start) // step, but also account for the fact that
+                # stop is not included in slice. increment depending on whether
+                # step is negative or positive
+                (index.stop - np.sign(index.step) - index.start) // index.step + 1,
+                0) # in case stop is before start, clamp size to at least 0
+        )
+        for size, index
+        in zip(base_shape, indices)
+        if not isinstance(index, int)  # dimension is invisible if indexed with int
+    )

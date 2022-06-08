@@ -4,7 +4,7 @@ from operator import getitem
 import pytest
 import numpy as np
 
-from parllel.arrays.array import Array, add_indices, compute_indices
+from parllel.arrays.array import Array, add_indices, compute_indices, shape_from_indices
 from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.arrays.rotating import RotatingArray
 from parllel.arrays.sharedmemory import RotatingSharedMemoryArray, SharedMemoryArray
@@ -235,7 +235,11 @@ class TestComputeIndices:
             id="negative step"
         ),
         pytest.param(
-            (slice(2, None, -1), slice(2), slice(2, None)),
+            (slice(3), slice(None, None, 2), slice(2, None)),
+            id="step > 1"
+        ),
+        pytest.param(
+            (0, 1, 2),
             id="element",
             marks=pytest.mark.xfail(reason="Indexing a scalar results in a copy")
         ),
@@ -248,9 +252,9 @@ class TestComputeIndices:
 class TestAddIndices:
     @pytest.mark.parametrize("index_history", [
         pytest.param([
-            (slice(1,5)),
+            slice(1, 5),
             (2, slice(None, 3)),
-            (slice(1, 2)),
+            slice(1, 2),
             ], id="slices"
         ),
         pytest.param([
@@ -262,8 +266,18 @@ class TestAddIndices:
         pytest.param([
             (2, slice(1, -1)),
             (slice(None), 3),
-            (0,)
+            1,
             ], id="element"
+        ),
+        pytest.param([
+            slice(None, 1, -1),
+            1,
+            (slice(None, 2), 3),
+            ], id="negative step"
+        ),
+        pytest.param([
+            slice(2, None, -1),
+            ], id="negative step ending at None"
         ),
     ])
     def test_index_history(self, np_array, index_history):
@@ -275,4 +289,35 @@ class TestAddIndices:
             subarray = subarray[indices]
             curr_indices = add_indices(base_shape, curr_indices, indices)
 
-        np.array_equal(subarray, np_array[curr_indices])
+        assert np.array_equal(subarray, np_array[tuple(curr_indices)])
+
+class TestShapeFromIndices:
+    @pytest.mark.parametrize("indices", [
+        pytest.param(
+            (slice(None, None, 2), 2, slice(1)),
+            id="slices"
+        ),
+        pytest.param(
+            (slice(2, None, -1), slice(2), slice(2, None)),
+            id="negative step ending at None"
+        ),
+        pytest.param(
+            (slice(3), slice(None, None, 2), slice(2, None)),
+            id="step > 1"
+        ),
+        pytest.param(
+            (0, 1, 2),
+            id="element"
+        ),
+    ])
+    def test_shape(self, np_array, indices):
+        base_shape = np_array.shape
+        cleaned_indices = tuple(
+            slice(*index.indices(size)) if isinstance(index, slice) else index
+            for index, size in zip(indices, base_shape)
+        )
+        shape = shape_from_indices(np_array.shape, cleaned_indices)
+        # IMPORTANT: np_array must be indexed with original indices and not the
+        # cleaned indices, because these give different results for
+        # slice(2, None, -1) -> slice(2, -1, -1)
+        assert shape == np_array[indices].shape
