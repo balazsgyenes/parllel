@@ -55,6 +55,8 @@ def compute_indices(base_array: NDArray, current_array: NDArray):
 
 
 def predict_copy_on_index(apparent_shape: Tuple[int, ...], location: Indices):
+    if not isinstance(location, tuple):
+        location = (location,)
     return (len(location) == len(apparent_shape) and 
         all(isinstance(index, int) for index in location))
 

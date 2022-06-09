@@ -7,7 +7,7 @@ import numpy as np
 from nptyping import NDArray
 
 from parllel.buffers.buffer import Buffer, Indices
-from .indices import compute_indices
+from .indices import compute_indices, predict_copy_on_index
 
 
 class Array(Buffer):
@@ -40,6 +40,7 @@ class Array(Buffer):
 
         self._buffer_id: int = id(self)
         self._index_history: List[Indices] = []
+        self._unresolved_indices: List[Indices] = []
 
         self._allocate()
 
@@ -52,17 +53,39 @@ class Array(Buffer):
         self._base_array: NDArray = np.zeros(shape=self._base_shape, dtype=self.dtype)
 
     def _resolve_indexing_history(self) -> None:
-        self._current_array = reduce(
-            getitem, self._index_history, self._base_array)
-        self._apparent_shape = self._current_array.shape
-        self._current_indices = compute_indices(
-            self._base_array, self._current_array)
+        for location in self._unresolved_indices:
+            if predict_copy_on_index(self._apparent_shape, location):
+                if isinstance(location, tuple):
+                    location = location[:-1] + (slice(location[-1], location[-1] + 1),)
+                else:
+                    location = slice(location, location + 1)
+                
+                self._current_array = self._current_array[location]
+                self._apparent_shape = ()
+
+            elif self._apparent_shape == ():
+                raise IndexError("invalid index to scalar variable.")
+
+            self._current_array = self._current_array[location]
+            self._apparent_shape = self._current_array.shape
+
+        self._unresolved_indices = []
 
     @property
     def shape(self):
-        if self._apparent_shape is None:
-            self._resolve_indexing_history()
+        self._resolve_indexing_history()
         return self._apparent_shape
+
+    @property
+    def current_indices(self):
+        if self._current_indices is None:
+
+            self._resolve_indexing_history()
+
+            self._current_indices = compute_indices(
+                self._base_array, self._current_array)
+
+        return self._current_indices
 
     def __getitem__(self, location: Indices) -> Array:
         # new Array object initialized through a (shallow) copy. Attributes
@@ -71,45 +94,29 @@ class Array(Buffer):
         # need to be modified.
         result: Array = self.__new__(type(self))
         result.__dict__.update(self.__dict__)
-        # assign *copy* of _index_history with additional element for this
+        # assign *copy* of _unresolved_indices with additional element for this
         # indexing operation
-        result._index_history = result._index_history + [location]
+        result._unresolved_indices = result._unresolved_indices + [location]
         # current array and shape are not computed until needed
-        result._current_array = None
-        result._apparent_shape = None
         result._current_indices = None
         return result
 
     def __setitem__(self, location: Indices, value: Any) -> None:
-        if self._current_array is None:
-            self._resolve_indexing_history()
+        self._resolve_indexing_history()
 
-        if self._apparent_shape == ():
-            # Need to avoid item assignment on a scalar (0-D) array, so we assign
-            # into base array using the current indices
-            if not (location == slice(None) or location == ...):
-                raise IndexError("Cannot take slice of 0-D array.")
-            location = self.current_indices
-            destination = self._base_array
-        else:
-            destination = self._current_array
-
-        destination[location] = value
+        self._current_array[location] = value
 
     def __array__(self, dtype=None) -> NDArray:
-        if self._current_array is None:
-            self._resolve_indexing_history()
-        
+        self._resolve_indexing_history()
+
         array = np.asarray(self._current_array)  # promote scalars to 0d arrays
+        
+        if self._apparent_shape == ():
+            array = array[0]
+
         if dtype is not None:
             array = array.astype(dtype, copy=False)
         return array
-
-    @property
-    def current_indices(self):
-        if self._current_indices is None:
-            self._resolve_indexing_history()
-        return tuple(self._current_indices)
 
     def __repr__(self) -> str:
         return repr(self.__array__())
