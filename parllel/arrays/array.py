@@ -6,7 +6,7 @@ import numpy as np
 from nptyping import NDArray
 
 from parllel.buffers.buffer import Buffer, Indices
-from .indices import compute_indices, predict_copy_on_index
+from .indices import compute_indices, slicify_final_index, does_index_scalar
 
 
 class Array(Buffer):
@@ -16,11 +16,7 @@ class Array(Buffer):
 
     Example:
         >>> array = Array(shape=(4, 4, 4), dtype=np.float32)
-        >>> array.initialize()
         >>> array[:, slice(1, 3), 2] = 5.
-
-    TODO:
-        - enforce dtype to be an actual np.dtype
     """
 
     def __init__(self,
@@ -53,16 +49,14 @@ class Array(Buffer):
 
     def _resolve_indexing_history(self) -> None:
         for location in self._unresolved_indices:
-            if predict_copy_on_index(self._apparent_shape, location):
-                if isinstance(location, tuple):
-                    location = location[:-1] + (slice(location[-1], location[-1] + 1),)
-                else:
-                    location = slice(location, location + 1)
-                
+            if does_index_scalar(self._apparent_shape, location):
+                # sneakily turn final index into a slice so that indexing a
+                # scalar (which results in a copy) is avoided
+                location = slicify_final_index(location)                
                 self._current_array = self._current_array[location]
                 self._apparent_shape = ()
 
-            elif self._apparent_shape == ():
+            elif not self._apparent_shape and not location == ...:
                 raise IndexError("invalid index to scalar variable.")
 
             else:
@@ -111,9 +105,8 @@ class Array(Buffer):
     def __setitem__(self, location: Indices, value: Any) -> None:
         self._resolve_indexing_history()
 
-        if self._apparent_shape == () and not (
-            location == slice(None) or location == ...):
-            raise IndexError("Cannot take slice of 0-D array.")
+        if not self._apparent_shape and not location == ...:
+            raise IndexError("invalid index to scalar variable.")
 
         self._current_array[location] = value
 

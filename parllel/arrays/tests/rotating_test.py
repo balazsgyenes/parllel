@@ -4,8 +4,9 @@ import pytest
 import numpy as np
 
 from parllel.arrays.managedmemory import RotatingManagedMemoryArray
-from parllel.arrays.rotating import RotatingArray, shift_index
+from parllel.arrays.rotating import RotatingArray
 from parllel.arrays.sharedmemory import RotatingSharedMemoryArray
+from parllel.arrays.indices import shift_index
 
 
 @pytest.fixture(params=[

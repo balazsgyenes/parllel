@@ -46,8 +46,12 @@ class ManagedMemoryArray(Array):
         self._raw_array = shared_memory.SharedMemory(name=name)
         # restore _base_array array
         self._wrap_raw_array()
-        # other arrays will be resolved when required
-        self._current_array = None
+        # current array is not equal to base array for RotatingArray, but this
+        # is fixed once indices are resolved
+        self._current_array = self._base_array
+        # force entire index history to be re-resolved
+        self._unresolved_indices = self._index_history + self._unresolved_indices
+        self._index_history = []
 
     def close(self):
         # close must be called by each instance (i.e. each process) on cleanup

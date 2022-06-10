@@ -6,7 +6,47 @@ from nptyping import NDArray
 from parllel.buffers.buffer import Index, Indices
 
 
+def shift_indices(indices: Indices, shift: int) -> Tuple[Index, ...]:
+    if not isinstance(indices, tuple):
+        indices = (indices,)
+    return shift_index(indices[0], shift) + indices[1:]
+
+
+def shift_index(index: Index, shift: int) -> Tuple[Index, ...]:
+    """Shifts an array index up by an integer value.
+    """
+    if isinstance(index, int):
+        if index < -shift:
+            raise IndexError(f"Not enough padding ({shift}) to accomodate "
+                             f"index ({index})")
+        return (index + shift,)
+    if isinstance(index, slice):
+        # in case the step is negative, we need to reverse/adjust the limits
+        # limits must be incremented because the upper limit of the slice is
+        # not in the slice
+        # [:] = slice(None, None, None) -> slice(shift, -shift, None)
+        # [::-1] = slice(None, None, -1) -> slice(-shift-1, shift-1, -1)
+        # [:3:-1] = slice(None, 3, -1) -> slice(-shift-1, 3+shift, -1)
+        lower_limit = -(shift+1) if index.step is not None and index.step < 0 else shift
+        upper_limit = shift-1 if index.step is not None and index.step < 0 else -shift
+        return (slice(
+            index.start + shift if index.start is not None else lower_limit,
+            index.stop + shift if index.stop is not None else upper_limit,
+            index.step,
+        ),)
+    if index is Ellipsis:
+        # add another Ellipsis, to index any remaining dimensions that an
+        # Ellipsis would have indexed (possible no extra dimensions remain)
+        return (slice(shift, -shift), Ellipsis)
+    raise ValueError(index)
+
+
 def compute_indices(base_array: NDArray, current_array: NDArray):
+    """Computes the indices required to index `current_array` from
+    `base_array`. For this to work, `current_array` must truly be a subarray of
+    `base_array`. Note that indexing a single element of a numpy array results
+    in a copy, which is then no longer a subarray of the base array.
+    """
     current_pointer = current_array.__array_interface__["data"][0]
     base_pointer = base_array.__array_interface__["data"][0]
     offset = current_pointer - base_pointer
@@ -54,11 +94,25 @@ def compute_indices(base_array: NDArray, current_array: NDArray):
     return tuple(current_indices)
 
 
-def predict_copy_on_index(apparent_shape: Tuple[int, ...], location: Indices):
+def does_index_scalar(apparent_shape: Tuple[int, ...], location: Indices):
+    """Returns true if an indexing operation at `location` on an array with
+    shape `apparent_shape` will index a single element (a scalar), which
+    results in a copy for numpy arrays.
+    """
     if not isinstance(location, tuple):
         location = (location,)
     return (len(location) == len(apparent_shape) and 
         all(isinstance(index, int) for index in location))
+
+
+def slicify_final_index(location: Indices):
+    """Takes a location which will index a scalar and converts the final index
+    into a slice such that an array of shape (1,) is indexed instead. This
+    implies that `location` is either an int or a tuple of ints.
+    """
+    if isinstance(location, tuple):
+        return location[:-1] + (slice(location[-1], location[-1] + 1),)
+    return slice(location, location + 1)
 
 
 def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index],
