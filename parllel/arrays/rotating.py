@@ -81,7 +81,6 @@ class RotatingArray(Array):
             self._current_indices = compute_indices(
                 self._base_array, self._current_array)
 
-            # TODO: test this negative shift
             self._current_indices = shift_indices(self._current_indices, -self._padding)
 
         return self._current_indices

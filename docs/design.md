@@ -78,6 +78,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
         - `LazyFramesArray`, which only saves the most recent frame in a LazyFrames object, and recreates the frame stack in its `__array__` method
         - `Array` already abstracts indexing items of arrays, where for numpy arrays this results in a copy. Add support for indexing Array with an array or list of integers without copying (this also results in a copy when used on numpy arrays)
         - Array equality check verifies that buffer ids and (internal) current_indices are the same (because indices in standard form should be equivalent). This allows the `SynchronizedProcessCage` to check whether the expected array slice was passed.
+    - Use finalize in the weakref module to ensure that shared memory array types are cleanup up properly
 - Buffers
     - **!!** In `buffer_from_[dict_]example`, remove support for creating from `Array` example. Move features for cleaning up example and forcing 32 bit types into `buffer_from_example`. Instead, add `array_like` and `rotating_array_like` for explicitly creating an Array object of the desired memory type.
     - `buffer_get_attr` and `buffer_set_attr`

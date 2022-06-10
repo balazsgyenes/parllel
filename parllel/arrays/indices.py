@@ -46,6 +46,8 @@ def compute_indices(base_array: NDArray, current_array: NDArray):
     `base_array`. For this to work, `current_array` must truly be a subarray of
     `base_array`. Note that indexing a single element of a numpy array results
     in a copy, which is then no longer a subarray of the base array.
+
+    TODO: increase performance by jit compiling with numba
     """
     current_pointer = current_array.__array_interface__["data"][0]
     base_pointer = base_array.__array_interface__["data"][0]
@@ -99,6 +101,8 @@ def does_index_scalar(apparent_shape: Tuple[int, ...], location: Indices):
     shape `apparent_shape` will index a single element (a scalar), which
     results in a copy for numpy arrays.
     """
+    # TODO: checking for tuple occurs in this function and also in slicify
+    # final index. refactor
     if not isinstance(location, tuple):
         location = (location,)
     return (len(location) == len(apparent_shape) and 
@@ -131,6 +135,9 @@ def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index],
         step < 0, where the new stop is negative. This results in a "standard"
         slice that gives a different result than the original.
         e.g. slice(5, None, -1) -> slice(5, -1, -1), which is a 0-length slice
+
+    Benefits:
+    - appears to be faster than `compute_indices` (see benchmarks)
 
     Possible optimizations:
     - move to for loop over location zipped with current_indices with ints
@@ -227,7 +234,13 @@ def shape_from_indices(base_shape: Tuple[int, ...], indices: Sequence[Index]):
     )
 
 
-def random_location(rng, shape, max_dims_removed = np.inf):
+def random_location(rng, shape, max_dims_removed = np.inf) -> Tuple[Index, ...]:
+    """Returns a random location for indexing an array of shape `shape`. It is
+    guaranteed that at most `max_dims_removed` of the indices will be integers,
+    if provided.
+
+    TODO: build this method into tests and benchmarks
+    """
     
     prob_slice = 0.6
 

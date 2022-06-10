@@ -6,7 +6,7 @@ import numpy as np
 from nptyping import NDArray
 
 from parllel.buffers.buffer import Buffer, Indices
-from .indices import compute_indices, slicify_final_index, does_index_scalar
+from .indices import compute_indices, shift_index, slicify_final_index, does_index_scalar
 
 
 class Array(Buffer):
@@ -73,10 +73,14 @@ class Array(Buffer):
 
     @property
     def index_history(self) -> Tuple[Indices, ...]:
+        # TODO: just return the current_indices with any required offset
+        # this allows efficient reconstruction in a single step
         return tuple(chain(self._index_history, self._unresolved_indices))
 
     @property
     def current_indices(self):
+        # TODO: maybe this should not be a public property, so that it does not
+        # need to be offset for rotating arrays
         if self._current_indices is None:
 
             self._resolve_indexing_history()
@@ -85,6 +89,30 @@ class Array(Buffer):
                 self._base_array, self._current_array)
 
         return self._current_indices
+
+    @property
+    def previous(self):
+        leading_index = self.current_indices[0]
+        if leading_index == slice(None):
+            raise ValueError("Cannot return previous array before time "
+                "dimension has been indexed.")
+        
+        leading_index = shift_index(leading_index, -1)
+        indices = (leading_index,) + tuple(self.current_indices[1:])
+        # TODO: this is wrong for RotatingArray
+        return self._base_array[indices]
+
+    @property
+    def next(self):
+        leading_index = self.current_indices[0]
+        if leading_index == slice(None):
+            raise ValueError("Cannot return next array before time "
+                "dimension has been indexed.")
+        
+        leading_index = shift_index(leading_index, 1)
+        indices = (leading_index,) + tuple(self.current_indices[1:])
+        # TODO: this is wrong for RotatingArray
+        return self._base_array[indices]
 
     def __getitem__(self, location: Indices) -> Array:
         # new Array object initialized through a (shallow) copy. Attributes
