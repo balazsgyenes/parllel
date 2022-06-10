@@ -225,3 +225,51 @@ def shape_from_indices(base_shape: Tuple[int, ...], indices: Sequence[Index]):
         in zip(base_shape, indices)
         if not isinstance(index, int)  # dimension is invisible if indexed with int
     )
+
+
+def random_location(rng, shape, max_dims_removed = np.inf):
+    
+    prob_slice = 0.6
+
+    n_dims = len(shape)
+    n_location = rng.integers(1, n_dims + 1) # number of dimensions indexed
+    n_dims_removed = 0 # number of dimensions indexed with an integer
+    location = []
+
+    for dim in range(n_location):
+        size = shape[dim]
+
+        if rng.random() < prob_slice or n_dims_removed >= max_dims_removed:
+            # create a slice
+            start = rng.integers(0, size)
+            stop = rng.integers(start + 1, size, endpoint = True)
+            step = rng.integers(1, int(max(2, (start - stop - 1) / 2)))
+            if rng.random() > 0.5:
+                start -= size
+            if rng.random() > 0.5 and stop != size:
+                stop -= size
+            if rng.random() > 0.5:
+                step *= -1
+                start, stop = stop, start
+
+            location.append(slice(start, stop, step))
+            
+        else:
+            # create an integer index
+            n_dims_removed += 1
+
+            index = rng.integers(0, size)
+
+            location.append(index)
+            
+    return tuple(location)
+
+
+if __name__ == "__main__":
+
+    rng = np.random.default_rng(42)
+    array = np.zeros((10, 9, 8))
+
+    for _ in range(10):
+        location = random_location(rng, array.shape)
+        print(f"{location} -> {array[location].shape}")
