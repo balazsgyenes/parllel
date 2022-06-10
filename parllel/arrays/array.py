@@ -1,6 +1,5 @@
 from __future__ import annotations
-from functools import reduce
-from operator import getitem
+from itertools import chain
 from typing import Any, List, Tuple
 
 import numpy as np
@@ -66,15 +65,21 @@ class Array(Buffer):
             elif self._apparent_shape == ():
                 raise IndexError("invalid index to scalar variable.")
 
-            self._current_array = self._current_array[location]
-            self._apparent_shape = self._current_array.shape
+            else:
+                self._current_array = self._current_array[location]
+                self._apparent_shape = self._current_array.shape
 
+        self._index_history += self._unresolved_indices
         self._unresolved_indices = []
 
     @property
     def shape(self):
         self._resolve_indexing_history()
         return self._apparent_shape
+
+    @property
+    def index_history(self) -> Tuple[Indices, ...]:
+        return tuple(chain(self._index_history, self._unresolved_indices))
 
     @property
     def current_indices(self):
@@ -94,6 +99,8 @@ class Array(Buffer):
         # need to be modified.
         result: Array = self.__new__(type(self))
         result.__dict__.update(self.__dict__)
+        # assign *copy* of index_history
+        result._index_history = result._index_history.copy()
         # assign *copy* of _unresolved_indices with additional element for this
         # indexing operation
         result._unresolved_indices = result._unresolved_indices + [location]
@@ -104,16 +111,24 @@ class Array(Buffer):
     def __setitem__(self, location: Indices, value: Any) -> None:
         self._resolve_indexing_history()
 
+        if self._apparent_shape == () and not (
+            location == slice(None) or location == ...):
+            raise IndexError("Cannot take slice of 0-D array.")
+
         self._current_array[location] = value
 
     def __array__(self, dtype=None) -> NDArray:
         self._resolve_indexing_history()
 
-        array = np.asarray(self._current_array)  # promote scalars to 0d arrays
-        
+        array = self._current_array
+
         if self._apparent_shape == ():
+            # compensate for final index replaced with slice
             array = array[0]
 
+        # this function must return an array, so promote scalars to 0d arrays
+        array = np.asarray(array)
+        
         if dtype is not None:
             array = array.astype(dtype, copy=False)
         return array
