@@ -181,6 +181,12 @@ class TestIndexShifting:
         assert shift_index(-1, 2) == (1,)
         assert shift_index(-2, 2) == (0,)
 
+    def test_negative_shift(self):
+        assert shift_index(4, -2) == (2,)
+        assert shift_index(6, -1) == (5,)
+        assert shift_index(slice(3, 8, 2), -2) == (slice(1, 6, 2),)
+        assert shift_index(slice(4, 1, -1), -1) == (slice(3, 0, -1),)
+    
     def test_shift_index_too_negative(self):
         with pytest.raises(IndexError):
             _ = shift_index(-2, 1)
@@ -193,7 +199,7 @@ class TestIndexShifting:
         assert shift_index(slice(2, None, 2), 2) == (slice(4, -2, 2),)
 
     def test_shift_reversed_slice(self):
-        assert shift_index(slice(1, 4, -1), 2) == (slice(3, 6, -1),)
+        assert shift_index(slice(4, 1, -1), 2) == (slice(6, 3, -1),)
         assert shift_index(slice(None, None, -1), 1) == (slice(-2, 0, -1),)
         assert shift_index(slice(None, None, -1), 2) == (slice(-3, 1, -1),)
         assert shift_index(slice(None, 3, -1), 1) == (slice(-2, 4, -1),)

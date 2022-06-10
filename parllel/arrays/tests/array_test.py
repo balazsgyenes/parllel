@@ -224,6 +224,26 @@ class TestArray:
         assert all(el1 == el2 for el1, el2
             in zip(subarray1.index_history, subarray2.index_history))
 
+    def test_current_indices(self, array, np_array):
+        subarray = array
+        assert np.array_equal(subarray, np_array[subarray.current_indices])
+
+        subarray = subarray[:]
+        assert np.array_equal(subarray, np_array[subarray.current_indices])
+
+        subarray = subarray[3]
+        assert np.array_equal(subarray, np_array[subarray.current_indices])
+
+        subarray = subarray[:]
+        assert np.array_equal(subarray, np_array[subarray.current_indices])
+
+        subarray = subarray[0:2]
+        assert np.array_equal(subarray, np_array[subarray.current_indices])
+
+        subarray = subarray[:, -2:]
+        assert np.array_equal(subarray, np_array[subarray.current_indices])
+
+
 class TestComputeIndices:
     @pytest.mark.parametrize("indices", [
         pytest.param(
