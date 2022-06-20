@@ -7,7 +7,7 @@ An RL accelerator framework with reusable types for taking an existing RL traini
 Create a new conda environment for this project and activate it.
 
 ```
-conda create -n parllel
+conda create -n parllel python=3.9
 conda activate parllel
 ```
 
@@ -33,8 +33,8 @@ pip install -e .
 
 To run the examples, you must also install the development requirements.
 
-If installing `hera-gym` in development mode, do this now, before installing the development requirements. By default, a fresh copy is installed.
-
 ```
 pip install -r requirements_dev.txt
 ```
+
+If you already had `hera-gym` installed in development mode, you will now need to reinstall it, as it has been replaced by a fresh copy of hera_gym from gitlab.
