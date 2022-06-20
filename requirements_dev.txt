@@ -1,0 +1,2 @@
+git+ssh://git@gitlab.ipr.kit.edu/sofa-ri/hera-gym.git
+pytest
