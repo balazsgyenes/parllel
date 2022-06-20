@@ -1,0 +1,6 @@
+name: parllel
+dependencies:
+- pip
+- pip:
+  - python=3.9
+  - torch
