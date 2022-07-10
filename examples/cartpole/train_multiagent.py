@@ -187,7 +187,7 @@ def build():
         )
 
         optimizer = torch.optim.Adam(
-            agent.parameters(),
+            agent.model.parameters(),
             lr=learning_rate,
         )
         

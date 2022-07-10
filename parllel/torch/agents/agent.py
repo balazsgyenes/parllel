@@ -73,9 +73,6 @@ class TorchAgent(Agent):
 
         return previous_action
 
-    def parameters(self) -> Iterable[torch.Tensor]:
-        return self.model.parameters()
-
     def train_mode(self, elapsed_steps: int) -> None:
         """Go into training mode (e.g. see PyTorch's ``Module.train()``)."""
         self.model.train()

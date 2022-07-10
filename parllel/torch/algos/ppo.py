@@ -128,7 +128,7 @@ class PPO:
                     *loss_inputs[T_idxs, B_idxs], minibatch_rnn_state)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
-                    self.agent.parameters(), self.clip_grad_norm)
+                    self.agent.model.parameters(), self.clip_grad_norm)
                 self.optimizer.step()
         
         if self.lr_scheduler is not None:
