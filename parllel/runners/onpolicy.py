@@ -10,6 +10,7 @@ try:
 except ImportError:
     has_summary_writer = False
 
+from parllel.algorithm import Algorithm
 from parllel.handlers.agent import Agent
 from parllel.samplers.sampler import Sampler
 from parllel.types import BatchSpec
@@ -19,7 +20,7 @@ class OnPolicyRunner:
     def __init__(self,
             sampler: Sampler,
             agent: Agent,
-            algorithm,
+            algorithm: Algorithm,
             n_steps: int,
             batch_spec: BatchSpec,
             log_interval_steps: int,

@@ -2,6 +2,7 @@ import torch
 import torch.optim
 import numpy as np
 
+from parllel.algorithm import Algorithm
 from parllel.buffers import NamedArrayTupleClass
 from parllel.buffers import Samples
 from parllel.torch.agents.agent import TorchAgent
@@ -18,7 +19,7 @@ LossInputs = NamedArrayTupleClass("LossInputs",
     ["agent_inputs", "action", "return_", "advantage", "valid", "old_dist_info", "old_values"])
 
 
-class PPO:
+class PPO(Algorithm):
     """
     Proximal Policy Optimization algorithm.  Trains the agent by taking
     multiple epochs of gradient steps on minibatches of the training data at
