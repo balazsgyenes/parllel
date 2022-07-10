@@ -28,31 +28,24 @@ class Gaussian(Distribution):
             self,
             dim,
             std=None,
-            clip=None,
             noise_clip=None,
             min_std=None,
             max_std=None,
-            squash=None,  # None or > 0
             ):
         """Saves input arguments."""
         self._dim = dim
         self.set_std(std)
-        self.clip = clip
         self.noise_clip = noise_clip
         self.min_std = min_std
         self.max_std = max_std
         self.min_log_std = np.log(min_std) if min_std is not None else None
         self.max_log_std = np.log(max_std) if max_std is not None else None
-        self.squash = squash
-        assert (clip is None or squash is None), "Choose one."
 
     @property
     def dim(self):
         return self._dim
 
     def kl(self, old_dist_info, new_dist_info):
-        if self.squash is not None:
-            raise NotImplementedError
         old_mean = old_dist_info.mean
         new_mean = new_dist_info.mean
         # Formula: {[(m1 - m2)^2 + (s1^2 - s2^2)] / (2*s2^2)} + ln(s1/s2)
@@ -76,11 +69,8 @@ class Gaussian(Distribution):
         return torch.sum(vals, dim=-1)
 
     def entropy(self, dist_info):
-        """Uses ``self.std`` unless that is None, then will get log_std from dist_info.  Not
-        implemented for squashing.
+        """Uses ``self.std`` unless that is None, then will get log_std from dist_info.
         """
-        if self.squash is not None:
-            raise NotImplementedError
         if self.std is None:
             log_std = dist_info.log_std
             if self.min_log_std is not None or self.max_log_std is not None:
@@ -96,8 +86,6 @@ class Gaussian(Distribution):
     def log_likelihood(self, x, /, dist_info):
         """
         Uses ``self.std`` unless that is None, then uses log_std from dist_info.
-        When squashing: instead of numerically risky arctanh, assume param
-        'x' is pre-squash action, see ``sample_loglikelihood()`` below.
         """
         mean = dist_info.mean
         if self.std is None:
@@ -108,39 +96,15 @@ class Gaussian(Distribution):
             std = torch.exp(log_std)
         else:
             std, log_std = self.std, torch.log(self.std)
-        # When squashing: instead of numerically risky arctanh, assume param
-        # 'x' is pre-squash action, see sample_loglikelihood() below.
-        # if self.squash is not None:
-        #     x = torch.atanh(x / self.squash)  # No torch implementation.
         z = (x - mean) / (std + EPS)
-        logli = -(torch.sum(log_std + 0.5 * z ** 2, dim=-1) +
-            0.5 * self.dim * np.log(2 * np.pi))
-        if self.squash is not None:
-            logli -= torch.sum(
-                torch.log(self.squash * (1 - torch.tanh(x) ** 2) + EPS),
-                dim=-1)
+        logli = -(torch.sum(log_std + 0.5 * z ** 2, dim=-1) + 0.5 * self.dim * np.log(2 * np.pi))
         return logli
 
     def likelihood_ratio(self, x, /, old_dist_info, new_dist_info):
+        # TODO: this is stupid. fix it
         logli_old = self.log_likelihood(x, old_dist_info)
         logli_new = self.log_likelihood(x, new_dist_info)
         return torch.exp(logli_new - logli_old)
-
-    def sample_loglikelihood(self, dist_info):
-        """
-        Special method for use with SAC algorithm, which returns a new sampled 
-        action and its log-likelihood for training use.  Temporarily turns OFF
-        squashing, so that log_likelihood can be computed on non-squashed sample,
-        and then restores squashing and applies it to the sample before output.
-        """
-        squash = self.squash
-        self.squash = None  # Temporarily turn OFF, raw sample into log_likelihood.
-        sample = self.sample(dist_info)
-        self.squash = squash  # Turn it back ON, squash correction in log_likelihood.
-        logli = self.log_likelihood(sample, dist_info)
-        if squash is not None:
-            sample = squash * torch.tanh(sample)
-        return sample, logli
 
     def sample(self, dist_info):
         """
@@ -169,22 +133,7 @@ class Gaussian(Distribution):
         # Other way to do reparameterization trick:
         # dist = torch.distributions.Normal(mean, std)
         # sample = dist.rsample()
-        if self.clip is not None:
-            sample = torch.clamp(sample, -self.clip, self.clip)
-        elif self.squash is not None:
-            sample = self.squash * torch.tanh(sample)
         return sample
-
-    def set_clip(self, clip):
-        """Input value or ``None`` to turn OFF."""
-        self.clip = clip  # Can be None.
-        assert self.clip is None or self.squash is None
-
-    def set_squash(self, squash):
-        """Input multiplicative factor for ``squash * tanh(sample)`` (usually
-        will be 1), or ``None`` to turn OFF."""
-        self.squash = squash  # Can be None.
-        assert self.clip is None or self.squash is None
 
     def set_noise_clip(self, noise_clip):
         """Input value or ``None`` to turn OFF."""
