@@ -1,5 +1,12 @@
 import numpy as np
 import torch
+from parllel.algorithm import Algorithm
+
+from parllel.buffers import Samples
+from parllel.replays.replay import ReplayBuffer
+from parllel.torch.agents.sac_agent import SacAgent
+from parllel.types.batch_spec import BatchSpec
+from parllel.torch.utils import buffer_to_device, valid_mean
 
 # from rlpyt.utils.quick_args import save__init__args
 # from rlpyt.utils.logging import logger
@@ -25,25 +32,25 @@ import torch
 #     SamplesToBuffer._fields + ("timeout",))
 
 
-class SAC:
+class SAC(Algorithm):
     """Soft actor critic algorithm, training from a replay buffer."""
 
     opt_info_fields = tuple(f for f in OptInfo._fields)  # copy
 
     def __init__(
             self,
-            discount=0.99,
-            batch_size=256,
-            min_steps_learn=int(1e4),
-            replay_size=int(1e6),
+            batch_spec: BatchSpec,
+            agent: SacAgent,
+            replay_buffer: ReplayBuffer,
+            optimizer: torch.optim.Optimizer,
+            batch_size: int = 256,
+            discount: float = 0.99,
+            learning_starts: int = 1e4,
             replay_ratio=256,  # data_consumption / data_generation
             target_update_tau=0.005,  # tau=1 for hard update.
             target_update_interval=1,  # 1000 for hard update, 1 for soft.
-            learning_rate=3e-4,
+            learning_rate: float = 3e-4,
             fixed_alpha=None, # None for adaptive alpha, float for any fixed value
-            OptimCls=torch.optim.Adam,
-            optim_kwargs=None,
-            initial_optim_state_dict=None,  # for all of them.
             action_prior="uniform",  # or "gaussian"
             reward_scale=1,
             target_entropy="auto",  # "auto", float, or None
@@ -53,13 +60,16 @@ class SAC:
             n_step_return=1,
             updates_per_sync=1,  # For async mode only.
             bootstrap_timelimit=True,
-            ReplayBufferCls=None,  # Leave None to select by above options.
             ):
         """Save input arguments."""
-        if optim_kwargs is None:
-            optim_kwargs = dict()
+        self.batch_spec = batch_spec
+        self.agent = agent
+        self.replay_buffer = replay_buffer
+        self.optimizer = optimizer
+        self.batch_size = batch_size
+        # self.discount = discount
+        self.learning_starts = learning_starts
         assert action_prior in ["uniform", "gaussian"]
-        self._batch_size = batch_size
 
     def initialize(self, agent, n_itr, batch_spec, mid_batch_reset, examples,
             world_size=1, rank=0):
@@ -96,31 +106,31 @@ class SAC:
     #     agent.give_min_itr_learn(self.min_itr_learn)
     #     return self.replay_buffer
 
-    def optim_initialize(self, rank=0):
-        """Called in initilize or by async runner after forking sampler."""
-        self.rank = rank
-        self.pi_optimizer = self.OptimCls(self.agent.pi_parameters(),
-            lr=self.learning_rate, **self.optim_kwargs)
-        self.q1_optimizer = self.OptimCls(self.agent.q1_parameters(),
-            lr=self.learning_rate, **self.optim_kwargs)
-        self.q2_optimizer = self.OptimCls(self.agent.q2_parameters(),
-            lr=self.learning_rate, **self.optim_kwargs)
-        if self.fixed_alpha is None:
-            self._log_alpha = torch.zeros(1, requires_grad=True)
-            self._alpha = torch.exp(self._log_alpha.detach())
-            self.alpha_optimizer = self.OptimCls((self._log_alpha,),
-                lr=self.learning_rate, **self.optim_kwargs)
-        else:
-            self._log_alpha = torch.tensor([np.log(self.fixed_alpha)])
-            self._alpha = torch.tensor([self.fixed_alpha])
-            self.alpha_optimizer = None
-        if self.target_entropy == "auto":
-            self.target_entropy = -np.prod(self.agent.env_spaces.action.shape)
-        if self.initial_optim_state_dict is not None:
-            self.load_optim_state_dict(self.initial_optim_state_dict)
-        if self.action_prior == "gaussian":
-            self.action_prior_distribution = Gaussian(
-                dim=np.prod(self.agent.env_spaces.action.shape), std=1.)
+    # def optim_initialize(self, rank=0):
+    #     """Called in initilize or by async runner after forking sampler."""
+    #     self.rank = rank
+    #     self.pi_optimizer = self.OptimCls(self.agent.pi_parameters(),
+    #         lr=self.learning_rate, **self.optim_kwargs)
+    #     self.q1_optimizer = self.OptimCls(self.agent.q1_parameters(),
+    #         lr=self.learning_rate, **self.optim_kwargs)
+    #     self.q2_optimizer = self.OptimCls(self.agent.q2_parameters(),
+    #         lr=self.learning_rate, **self.optim_kwargs)
+    #     if self.fixed_alpha is None:
+    #         self._log_alpha = torch.zeros(1, requires_grad=True)
+    #         self._alpha = torch.exp(self._log_alpha.detach())
+    #         self.alpha_optimizer = self.OptimCls((self._log_alpha,),
+    #             lr=self.learning_rate, **self.optim_kwargs)
+    #     else:
+    #         self._log_alpha = torch.tensor([np.log(self.fixed_alpha)])
+    #         self._alpha = torch.tensor([self.fixed_alpha])
+    #         self.alpha_optimizer = None
+    #     if self.target_entropy == "auto":
+    #         self.target_entropy = -np.prod(self.agent.env_spaces.action.shape)
+    #     if self.initial_optim_state_dict is not None:
+    #         self.load_optim_state_dict(self.initial_optim_state_dict)
+    #     if self.action_prior == "gaussian":
+    #         self.action_prior_distribution = Gaussian(
+    #             dim=np.prod(self.agent.env_spaces.action.shape), std=1.)
 
     # def initialize_replay_buffer(self, examples, batch_spec, async_=False):
     #     """
@@ -204,19 +214,19 @@ class SAC:
 
         return opt_info
 
-    def samples_to_buffer(self, samples):
-        """Defines how to add data from sampler into the replay buffer. Called
-        in optimize_agent() if samples are provided to that method."""
-        samples_to_buffer = SamplesToBuffer(
-            observation=samples.env.observation,
-            action=samples.agent.action,
-            reward=samples.env.reward,
-            done=samples.env.done,
-        )
-        if self.bootstrap_timelimit:
-            samples_to_buffer = SamplesToBufferTl(*samples_to_buffer,
-                timeout=samples.env.env_info.timeout)
-        return samples_to_buffer
+    # def samples_to_buffer(self, samples):
+    #     """Defines how to add data from sampler into the replay buffer. Called
+    #     in optimize_agent() if samples are provided to that method."""
+    #     samples_to_buffer = SamplesToBuffer(
+    #         observation=samples.env.observation,
+    #         action=samples.agent.action,
+    #         reward=samples.env.reward,
+    #         done=samples.env.done,
+    #     )
+    #     if self.bootstrap_timelimit:
+    #         samples_to_buffer = SamplesToBufferTl(*samples_to_buffer,
+    #             timeout=samples.env.env_info.timeout)
+    #     return samples_to_buffer
 
     def loss(self, samples):
         """
@@ -229,14 +239,23 @@ class SAC:
         agent_inputs, target_inputs, action = buffer_to(
             (samples.agent_inputs, samples.target_inputs, samples.action))
 
-        if self.mid_batch_reset and not self.agent.recurrent:
-            valid = torch.ones_like(samples.done, dtype=torch.float)  # or None
+        recurrent = self.agent.recurrent
+
+        if recurrent:
+            valid = samples.env.valid
+            init_rnn_state = samples.agent.initial_rnn_state
         else:
-            valid = valid_from_done(samples.done)
-        if self.bootstrap_timelimit:
-            # To avoid non-use of bootstrap when environment is 'done' due to
-            # time-limit, turn off training on these samples.
-            valid *= (1 - samples.timeout_n.float())
+            valid = None
+            init_rnn_state = None
+
+        # if self.mid_batch_reset and not self.agent.recurrent:
+        #     valid = torch.ones_like(samples.done, dtype=torch.float)  # or None
+        # else:
+        #     valid = valid_from_done(samples.done)
+        # if self.bootstrap_timelimit:
+        #     # To avoid non-use of bootstrap when environment is 'done' due to
+        #     # time-limit, turn off training on these samples.
+        #     valid *= (1 - samples.timeout_n.float())
 
         q1, q2 = self.agent.q(*agent_inputs, action)
         with torch.no_grad():
@@ -252,16 +271,16 @@ class SAC:
         q2_loss = 0.5 * valid_mean((y - q2) ** 2, valid)
 
         new_action, log_pi, (pi_mean, pi_log_std) = self.agent.pi(*agent_inputs)
-        if not self.reparameterize:
-            new_action = new_action.detach()  # No grad.
+        # if not self.reparameterize:
+        #     new_action = new_action.detach()  # No grad.
         log_target1, log_target2 = self.agent.q(*agent_inputs, new_action)
         min_log_target = torch.min(log_target1, log_target2)
-        prior_log_pi = self.get_action_prior(new_action.cpu())
+        # prior_log_pi = self.get_action_prior(new_action.cpu())
 
-        if self.reparameterize:
-            pi_losses = self._alpha * log_pi - min_log_target - prior_log_pi
-        else:
-            raise NotImplementedError
+        # if self.reparameterize:
+        pi_losses = self._alpha * log_pi - min_log_target
+        # else:
+        #     raise NotImplementedError
 
         # if self.policy_output_regularization > 0:
         #     pi_losses += self.policy_output_regularization * torch.mean(

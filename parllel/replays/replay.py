@@ -1,17 +1,25 @@
+import math
 from typing import Any, Optional
 
 import numpy as np
 from numpy import random
 
-from parllel.buffers import Buffer, Indices
+from parllel.buffers import Buffer, Indices, Samples
 from parllel.types import BatchSpec
 
 class ReplayBuffer(Buffer):
-    def __init__(self, buffer: Buffer, batch_spec: BatchSpec) -> None:
+    def __init__(self, buffer: Buffer, batch_spec: BatchSpec, size: int) -> None:
+        """Stores more than a batch's worth of samples in a circular buffer for
+        off-policy algorithms to sample from.
+
+        TODO:
+        - rlpyt does not use two cursors, just a single one
+        - ensure that size is correctly set
+        """
         self._buffer = buffer
         self._batch_spec = batch_spec
         
-        self._size = #TODO
+        self._size = size # in T dimension only
 
         # only samples between _begin:_end are valid
         self._begin: int = 0
@@ -31,17 +39,45 @@ class ReplayBuffer(Buffer):
 
     def __setitem__(self, location: Indices, value: Any):
         # TODO: is this needed?
-        pass
+        raise NotImplementedError
 
-    def sample_batch(self):
-        pass
+    def sample_batch(self, n_samples):
+        self._begin
+        self._end
 
-    def rotate(self):
+        if self._begin > self._end:
+            # valid region of buffer wraps around
+            # sample integers from 0 to L, and then offset them while wrapping around
+            L = self._size + self._end - self._begin
+            T_idxs = self._rng.integers(0, L, size=(n_samples,))
+            T_idxs = (T_idxs + self._begin) % self._size
+        else:
+            T_idxs = self._rng.integers(self._begin, self._end, size=(n_samples,))
+
+        B_idxs = self._rng.integers(0, self._batch_spec.B, size=(n_samples,))
+
+        samples = self._buffer[T_idxs, B_idxs]
+
+        return samples
+
+    def append_samples(self, samples: Samples):
+
+        if self._end + self._batch_spec.T > self._size:  # Wrap.
+            idxs = np.arange(self._end, self._end + self._batch_spec.T) % self._size
+        else:
+            idxs = slice(self._end, self._end + self._batch_spec.T)
+        self._buffer[idxs] = samples
+
+        # move cursor forward
         self._end = (self._end + self._batch_spec.T) % self._size
         
+        if self._end == 0:
+            # samples at beginning are now being overwritten, not valid anymore
+            # from now on, begin needs to be incremented too
+            self._full = True
+
         if self._full:
             self._begin = (self._begin + self._batch_spec.T) % self._size
 
-        if self._end == 0:
-            # on next rotate, begin needs to be incremented too
-            self._full = True
+
+
