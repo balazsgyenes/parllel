@@ -4,8 +4,13 @@ from typing import Any, Optional
 import numpy as np
 from numpy import random
 
-from parllel.buffers import Buffer, Indices, Samples
+from parllel.buffers import Buffer, Indices, Samples, NamedArrayTupleClass, buffer_asarray
 from parllel.types import BatchSpec
+
+
+SarsSamples = NamedArrayTupleClass("SarsSample",
+    ["observation", "action", "reward", "done", "next_observation"])
+
 
 class ReplayBuffer(Buffer):
     def __init__(self, buffer: Buffer, batch_spec: BatchSpec, size: int) -> None:
@@ -56,7 +61,19 @@ class ReplayBuffer(Buffer):
 
         B_idxs = self._rng.integers(0, self._batch_spec.B, size=(n_samples,))
 
-        samples = self._buffer[T_idxs, B_idxs]
+        observation = self._buffer.env.observation
+
+        samples = SarsSamples(
+            observation=observation,
+            action=self._buffer.agent.action,
+            reward=self._buffer.env.reward,
+            done=self._buffer.env.done,
+            # TODO: replace with observation.next
+            next_observation=observation[1 : observation.last + 2],
+        )
+
+        samples = buffer_asarray(samples)
+        samples = samples[T_idxs, B_idxs]
 
         return samples
 
