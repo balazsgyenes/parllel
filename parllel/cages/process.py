@@ -77,10 +77,10 @@ class ProcessCage(Cage, mp.Process):
 
     def step_async(self,
         action: Buffer, *,
-        out_obs: Buffer = None,
-        out_reward: Buffer = None,
-        out_done: Buffer = None,
-        out_info: Buffer = None
+        out_obs: Buffer,
+        out_reward: Buffer,
+        out_done: Buffer,
+        out_info: Buffer
     ) -> None:
         assert self._last_command is None
         args = (action, out_obs, out_reward, out_done, out_info)
@@ -123,11 +123,11 @@ class ProcessCage(Cage, mp.Process):
         return trajs
     
     def random_step_async(self, *,
-        out_action: Buffer = None,
-        out_obs: Buffer = None,
-        out_reward: Buffer = None,
-        out_done: Buffer = None,
-        out_info: Buffer = None
+        out_action: Buffer,
+        out_obs: Buffer,
+        out_reward: Buffer,
+        out_done: Buffer,
+        out_info: Buffer
     ) -> None:
         """Take a step with a random action from the env's action space.
         """

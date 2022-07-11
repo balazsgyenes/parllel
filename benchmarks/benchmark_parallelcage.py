@@ -9,7 +9,7 @@ from gym import spaces
 from gym.wrappers import TimeLimit
 
 from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
-    RotatingManagedMemoryArray, buffer_from_example, buffer_from_dict_example)
+    RotatingManagedMemoryArray, buffer_from_dict_example)
 from parllel.buffers import AgentSamples, buffer_method, EnvSamples, Samples
 from parllel.cages import Cage, ProcessCage, TrajInfo
 from parllel.cages.tests.dummy import DummyEnv
@@ -55,33 +55,36 @@ def build(config, parallel, profile_path):
         ArrayCls = Array
         RotatingArrayCls = RotatingArray
 
-    batch_spec = config["sampler"]["batch_spec"]
+    batch_spec: BatchSpec = config["sampler"]["batch_spec"]
+
+    cage_kwargs = dict(
+        EnvClass = config["env"]["EnvClass"],
+        env_kwargs = config["env"]["env_kwargs"],
+        TrajInfoClass = config["env"]["TrajInfoClass"],
+        traj_info_kwargs = config["env"]["traj_info_kwargs"],
+        wait_before_reset = False, # reset immediately for speed test
+    )
 
     # create cages to manage environments
-    cages = [
-        CageCls(
-            EnvClass = config["env"]["EnvClass"],
-            env_kwargs = config["env"]["env_kwargs"],
-            TrajInfoClass = config["env"]["TrajInfoClass"],
-            traj_info_kwargs = config["env"]["traj_info_kwargs"],
-            wait_before_reset = False, # reset immediately for speed test
-        )
-        for _ in range(batch_spec.B)
-    ]
+    cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
+
+    # create_example env
+    example_cage = Cage(**cage_kwargs)
 
     # get example output from env
-    cages[0].random_step_async()
-    action, obs, reward, done, info = cages[0].await_step()
+    example_cage.random_step_async()
+    action, obs, reward, done, info = example_cage.await_step()
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), RotatingArrayCls, name="obs", padding=1)
     batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward", force_32bit=True)
-    batch_done = buffer_from_dict_example(done, tuple(batch_spec), ArrayCls, name="done")
+    batch_done = buffer_from_dict_example(done, tuple(batch_spec), RotatingArrayCls, name="done")
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
     batch_env_samples = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
     # allocate batch buffer based on examples
-    batch_action = buffer_from_example(action, tuple(batch_spec), ArrayCls)
+    batch_action = buffer_from_dict_example(action, tuple(batch_spec), ArrayCls,
+        name="action", force_32bit=False)
     batch_agent_samples = AgentSamples(batch_action, None)
 
     batch_samples = Samples(batch_agent_samples, batch_env_samples)
