@@ -40,17 +40,17 @@ class CategoricalPgAgent(TorchAgent):
                  ) -> None:
         super().__init__(model, distribution, device)
 
-        self._observation_space = observation_space
-        self._action_space = action_space
+        self.observation_space = observation_space
+        self.action_space = action_space
         self.recurrent = recurrent
 
-        example_obs = self._observation_space.sample()
+        example_obs = self.observation_space.sample()
         example_obs = dict_to_namedtuple(example_obs, "observation")
         example_obs = torchify_buffer(buffer_asarray(example_obs))
         example_inputs = (example_obs,)
         
         if self.recurrent:
-            example_action = self._action_space.sample()
+            example_action = self.action_space.sample()
             example_action = dict_to_namedtuple(example_action, "action")
             example_action = torchify_buffer(buffer_asarray(example_action))
             example_act_onehot = self.distribution.to_onehot(example_action)
@@ -66,7 +66,7 @@ class CategoricalPgAgent(TorchAgent):
             # Extend an rnn_state to allocate a slot for each env.
             # repeat in batch dimension (shape should be [N,B,H])
             rnn_state = model_outputs.next_rnn_state
-            self._rnn_states = buffer_map(
+            self.rnn_states = buffer_map(
                 lambda t: torch.cat((t,) * n_states, dim=1),
                 rnn_state,
             )
@@ -77,7 +77,7 @@ class CategoricalPgAgent(TorchAgent):
                 lambda t: torch.stack((t,) * n_states, dim=0),
                 example_action,
             )
-            self._previous_action = buffer_to_device(previous_action,
+            self.previous_action = buffer_to_device(previous_action,
                 device=self.device)
 
     @torch.no_grad()
@@ -124,7 +124,7 @@ class CategoricalPgAgent(TorchAgent):
         if self.recurrent:
             # already on device
             rnn_states, previous_action = self._get_states(...)          
-            previous_action = self.distribution.to_onehot(self._previous_action)
+            previous_action = self.distribution.to_onehot(self.previous_action)
             model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         value = model_outputs.value

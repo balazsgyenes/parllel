@@ -56,7 +56,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - DDPG
     - Jax PPO :)
 - Agents/Distributions
-    - Remove `dry_run`. Instead, pass action and obs spaces on init and allocate there. Obs (and in recurrent case also action) space is sampled, converted to namedarraytuple, torchified, and passed to model. Example return types can be retrieved using `step` and `init_rnn_state`.
     - Ensemble agent
     - Ensemble distribution
 - Arrays
