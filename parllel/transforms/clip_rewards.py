@@ -22,17 +22,14 @@ class ClipRewards(BatchTransform):
         :param reward_min: after normalization, clips rewards from below
         :param reward_max: after normalization, clips rewards from above
         """
-        self._reward_min = reward_min
-        self._reward_max = reward_max
+        self.reward_min = reward_min
+        self.reward_max = reward_max
         if not (reward_min is not None or reward_max is not None):
             raise ValueError("Must provide either reward_min or reward_max")
     
-    def dry_run(self, batch_samples: Samples) -> Samples:
-        return batch_samples
-
     def __call__(self, batch_samples: Samples) -> Samples:
         reward = np.asarray(batch_samples.env.reward)
 
-        reward[:] = np.clip(reward, self._reward_min, self._reward_max)
+        reward[:] = np.clip(reward, self.reward_min, self.reward_max)
         
         return batch_samples

@@ -18,9 +18,8 @@ class NormalizeAdvantage(BatchTransform):
     Requires fields:
         - .env.advantage
     """
-    def dry_run(self, batch_samples: Samples) -> Samples:
-        self.only_valid = True if hasattr(batch_samples.env, "valid") else False
-        return batch_samples
+    def __init__(self, only_valid: bool) -> None:
+        self.only_valid = only_valid
 
     def __call__(self, batch_samples: Samples) -> Samples:
         advantage = np.asarray(batch_samples.env.advantage)

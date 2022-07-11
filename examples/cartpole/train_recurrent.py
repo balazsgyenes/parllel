@@ -7,16 +7,16 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
-from parllel.patterns import (add_bootstrap_value, add_valid, 
-    build_cages_and_env_buffers, add_initial_rnn_state)
+from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
+    add_obs_normalization, add_reward_clipping, add_reward_normalization,
+    add_valid, build_cages_and_env_buffers, add_initial_rnn_state)
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers.recurrent import RecurrentSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions.categorical import Categorical
 from parllel.torch.handler import TorchHandler
-from parllel.transforms import (ClipRewards, Compose, EstimateAdvantage,
-    NormalizeAdvantage, NormalizeObservations, NormalizeRewards)
+from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
 from build.make_env import make_env
@@ -74,6 +74,7 @@ def build():
             )
         distribution = Categorical(dim=action_space.n)
         device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
+        device = torch.device("cpu")
 
         # instantiate model and agent
         agent = CategoricalPgAgent(
@@ -98,32 +99,39 @@ def build():
         rnn_state = agent.initial_rnn_state()
         batch_rnn_state = buffer_from_example(rnn_state, (), ArrayCls)
         batch_buffer = add_initial_rnn_state(batch_buffer, batch_rnn_state)
+
         batch_buffer = add_bootstrap_value(batch_buffer)
+        
         batch_buffer = add_valid(batch_buffer)
 
-        obs_transform = NormalizeObservations(initial_count=10000)
-        batch_buffer = obs_transform.dry_run(batch_buffer)
+        batch_transforms, step_transforms = [], []
 
-        reward_norm_transform = NormalizeRewards(discount=discount)
-        batch_buffer = reward_norm_transform.dry_run(batch_buffer, RotatingArrayCls)
+        batch_buffer, step_transforms = add_obs_normalization(
+            batch_buffer,
+            step_transforms,
+            initial_count=10000
+        )
 
-        reward_clip_transform = ClipRewards(reward_min=reward_min,
-            reward_max=reward_max)
-        batch_buffer = reward_clip_transform.dry_run(batch_buffer)
+        batch_buffer, batch_transforms = add_reward_normalization(
+            batch_buffer,
+            batch_transforms,
+            discount=discount,
+        )
 
-        advantage_transform = EstimateAdvantage(discount=discount,
-            gae_lambda=gae_lambda)
-        batch_buffer = advantage_transform.dry_run(batch_buffer, ArrayCls)
+        batch_buffer, batch_transforms = add_reward_clipping(
+            batch_buffer,
+            batch_transforms,
+            reward_min=reward_min,
+            reward_max=reward_max,
+        )
 
-        advantage_norm_transform = NormalizeAdvantage()
-        batch_buffer = advantage_norm_transform.dry_run(batch_buffer)
-
-        batch_transform = Compose([
-            reward_norm_transform,
-            reward_clip_transform,
-            advantage_transform,
-            advantage_norm_transform,
-        ])
+        batch_buffer, batch_transforms = add_advantage_estimation(
+            batch_buffer,
+            batch_transforms,
+            discount=discount,
+            gae_lambda=gae_lambda,
+            normalize=True,
+        )
 
         sampler = RecurrentSampler(
             batch_spec=batch_spec,
@@ -132,8 +140,8 @@ def build():
             batch_buffer=batch_buffer,
             max_steps_decorrelate=50,
             get_bootstrap_value=True,
-            obs_transform=obs_transform,
-            batch_transform=batch_transform,
+            obs_transform=Compose(step_transforms),
+            batch_transform=Compose(batch_transforms),
         )
 
         optimizer = torch.optim.Adam(

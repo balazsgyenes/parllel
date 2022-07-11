@@ -2,8 +2,7 @@ from numba import njit
 import numpy as np
 from nptyping import NDArray
 
-from parllel.arrays import Array
-from parllel.buffers import EnvSamples, NamedArrayTupleClass, Samples
+from parllel.buffers import Samples
 
 from .transform import BatchTransform
 
@@ -80,36 +79,13 @@ class EstimateAdvantage(BatchTransform):
         :param discount: discount (gamma) for discounting rewards over time
         :param gae_lambda: lambda parameter for GAE algorithm
         """
-        self._discount = discount
-        self._lambda = gae_lambda
+        self.discount = discount
+        self.gae_lambda = gae_lambda
         if gae_lambda == 1.0:
             # GAE reduces to empirical discounted return
             self.estimator = compute_discount_return
         else:
             self.estimator = compute_gae_advantage
-
-    def dry_run(self, batch_samples: Samples, ArrayCls: Array) -> Samples:
-        # get convenient local references
-        env_samples: EnvSamples = batch_samples.env
-        reward = env_samples.reward
-
-        # create new NamedArrayTuple for env samples with additional fields
-        EnvSamplesClass = NamedArrayTupleClass(
-            typename = env_samples._typename,
-            fields = env_samples._fields + ("advantage", "return_")
-        )
-
-        # allocate new Array objects for advantage and return_
-        advantage = ArrayCls(shape=reward.shape, dtype=reward.dtype)
-        return_ = ArrayCls(shape=reward.shape, dtype=reward.dtype)
-
-        # package everything back into batch_samples
-        env_samples = EnvSamplesClass(
-            **env_samples._asdict(), advantage=advantage, return_=return_,
-        )
-        batch_samples = batch_samples._replace(env = env_samples)
-
-        return batch_samples
 
     def __call__(self, batch_samples: Samples) -> Samples:
         self.estimator(
@@ -117,8 +93,8 @@ class EstimateAdvantage(BatchTransform):
             np.asarray(batch_samples.agent.agent_info.value),
             np.asarray(batch_samples.env.done),
             np.asarray(batch_samples.agent.bootstrap_value),
-            self._discount,
-            self._lambda,
+            self.discount,
+            self.gae_lambda,
             np.asarray(batch_samples.env.advantage),
             np.asarray(batch_samples.env.return_),
         )
