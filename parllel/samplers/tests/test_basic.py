@@ -120,7 +120,7 @@ def batch_buffer(action_space, observation_space, batch_spec, envs, agent, get_b
     # get example output from env
     envs[0].random_step_async()
     action, obs, reward, done, info = envs[0].await_step()
-    agent_info = agent.dry_run()
+    agent_info = agent.get_agent_info()
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec),
