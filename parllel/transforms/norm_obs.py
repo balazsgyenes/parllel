@@ -12,19 +12,27 @@ EPSILON = 1e-6
 
 
 class NormalizeObservations(StepTransform):
+    """Normalizes the observation by subtracting the mean and dividing by the
+    standard deviation.
+
+    Requires fields:
+        - .env.observation
+        - [.env.valid]
+
+    :param obs_shape: shape of a single observation
+    :param only_valid: when calculating statistics, only use data points where
+        `batch_samples.env.valid` is True. Other data points are ignored. This
+        should be True if mid-batch resets are turned off.
+    :param initial_count: seed the running mean and standard deviation model
+        with `initial_count` instances of x~N(0,1). Increase this to improve
+        stability, to prevent the mean and standard deviation from changing too
+        quickly during early training.
+    """
     def __init__(self,
             obs_shape: Tuple[int, ...],
             only_valid: bool,
             initial_count: Optional[float] = None,
         ) -> None:
-        """Normalizes the observation by subtracting the mean and dividing by
-        the standard deviation.
-
-        :param initial_count: seed the running mean and standard deviation
-            model with `initial_count` instances of x~N(0,1). Increase this to
-            improve stability, to prevent the mean and standard deviation from
-            changing too quickly during early training
-        """
         self.only_valid = only_valid
 
         if initial_count is not None and initial_count < 1.:

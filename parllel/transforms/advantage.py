@@ -57,28 +57,27 @@ def compute_gae_advantage(
 
 
 class EstimateAdvantage(BatchTransform):
-    def __init__(self, discount: float, gae_lambda: float) -> None:
-        """Adds a field to samples buffer under `env.advantage` for the
-        advantage: roughly, the return left to go compared to the state value
-        predicted by the agent. The agent's bootstrap value accounts for
-        rewards that are expected to be gained after the end of the current
-        batch. If `lambda==1.0`, advantage is estimated as discounted return
-        minus the value, otherwise Generalized Advantage Estimation (GAE) is\
-        used.
-        
-        Requires fields:
-            - .env.reward
-            - .env.done
-            - .agent.agent_info.value
-            - .agent.bootstrap_value
-        
-        Adds fields:
-            - .env.advantage
-            - .env.return_
+    """Adds an estimate of the advantage function for each sample under
+    `env.advantage`. Advantage is estimated either using the empirical
+    discounted return minus the agent's value estimate (if `gae_lambda==1.0`)
+    or using Generalized Advantage Estimation (if `gae_lambda<1.0`). The
+    agent's value estimate at the end of a batch accounts for returns left to
+    go in the trajectory (called a bootstrap value).
+    
+    Requires fields:
+        - .env.reward
+        - .env.done
+        - .agent.agent_info.value
+        - .agent.bootstrap_value
+    
+    Adds fields:
+        - .env.advantage
+        - .env.return_
 
-        :param discount: discount (gamma) for discounting rewards over time
-        :param gae_lambda: lambda parameter for GAE algorithm
-        """
+    :param discount: discount (gamma) for discounting rewards over time
+    :param gae_lambda: lambda parameter for GAE algorithm
+    """
+    def __init__(self, discount: float, gae_lambda: float) -> None:
         self.discount = discount
         self.gae_lambda = gae_lambda
         if gae_lambda == 1.0:

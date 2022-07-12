@@ -35,29 +35,33 @@ def compute_past_discount_return(
 
 
 class NormalizeRewards(BatchTransform):
+    """Normalizes rewards by dividing by the standard deviation of past
+    discounted returns. As a side-effect, adds past_return to the samples
+    buffer for the discounted returns gained by the agent up to the current
+    time.
+
+    Requires fields:
+        - .env.reward
+        - .env.done
+        - [.env.valid]
+
+    Adds fields:
+        - .env.past_return
+
+    :param discount: discount (gamma) for discounting rewards over time
+    :param only_valid: when calculating statistics, only use data points where
+        `batch_samples.env.valid` is True. Other data points are ignored. This
+        should be True if mid-batch resets are turned off.
+    :param initial_count: seed the running mean and standard deviation model
+        with `initial_count` instances of x~N(0,1). Increase this to improve
+        stability, to prevent the mean and standard deviation from changing too
+        quickly during early training.
+    """
     def __init__(self,
         discount: float,
         only_valid: bool,
         initial_count: Optional[float] = None
     ) -> None:
-        """Normalizes rewards by dividing by the standard deviation of past
-        discounted returns. As a side-effect, adds past_return to the samples
-        buffer for the discounted returns gained by the agent up to the current
-        time.
-
-        Requires fields:
-            - .env.reward
-            - .env.done
-
-        Adds fields:
-            - .env.past_return
-
-        :param discount: discount (gamma) for discounting rewards over time
-        :param initial_count: seed the running mean and standard deviation
-            model with `initial_count` instances of x~N(0,1). Increase this to
-            improve stability, to prevent the mean and standard deviation from
-            changing too quickly during early training
-        """
         self.discount = discount
         self.only_valid = only_valid
 
