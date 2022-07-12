@@ -17,8 +17,6 @@ from parllel.cages.profiling import ProfilingProcessCage
 from parllel.samplers.profiling import ProfilingSampler
 from parllel.types import BatchSpec
 
-from examples.cartpole.build.cameracartpole import make_cameracartpole
-
 
 def make_dummy_env(step_duration: float) -> gym.Env:
     observation_space = spaces.Box(0, 255, shape=[3, 192, 192], dtype=np.uint8)

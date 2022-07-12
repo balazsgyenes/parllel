@@ -12,9 +12,11 @@ from .pg import AgentInfo, AgentPrediction
 
 class IndependentPgAgents(EnsembleAgent):
 
-    def __init__(self, agent_profiles: Sequence[AgentProfile],
-            observation_space: gym.Space, action_space: gym.Space
-            ):
+    def __init__(self,
+        agent_profiles: Sequence[AgentProfile],
+        observation_space: gym.Space,
+        action_space: gym.Space,
+    ) -> None:
 
         # order agent profiles according to elements in action space
         # this ensures that the elements of all NamedTuples are in the same
@@ -57,8 +59,11 @@ class IndependentPgAgents(EnsembleAgent):
             self.recurrent = False
 
     @torch.no_grad()
-    def step(self, observation: Buffer, *, env_indices: Union[int, slice] = ...,
-             ) -> AgentStep:
+    def step(self,
+        observation: Buffer,
+        *,
+        env_indices: Union[int, slice] = ...,
+    ) -> AgentStep:
         actions, dist_infos, values, prev_actions = [], [], [], []
         for agent in self._agent_profiles:
             if agent.obs_key is not None:
@@ -112,9 +117,11 @@ class IndependentPgAgents(EnsembleAgent):
 
         return torch.stack(values, dim=-1)
 
-    def predict(self, observation: Buffer, agent_info: AgentInfo,
-                init_rnn_state: Optional[Buffer] = None,
-                ) -> AgentPrediction:
+    def predict(self,
+        observation: Buffer,
+        agent_info: AgentInfo,
+        init_rnn_state: Optional[Buffer] = None,
+    ) -> AgentPrediction:
         dist_infos = []
         values = []
         for i, agent in enumerate(self._agent_profiles):
