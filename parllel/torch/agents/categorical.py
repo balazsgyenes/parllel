@@ -33,11 +33,15 @@ class CategoricalPgAgent(TorchAgent):
             and may include rnn_states as an optional argument (in this order)
         - return type is the ModelOutputs dataclass defined in this module
     """
-    def __init__(self, model: torch.nn.Module, distribution: Categorical,
-                 observation_space: gym.Space, action_space: gym.Space,
-                 n_states: int, device: torch.device = None,
-                 recurrent: bool = False,
-                 ) -> None:
+    def __init__(self,
+            model: torch.nn.Module,
+            distribution: Categorical,
+            observation_space: gym.Space,
+            action_space: gym.Space,
+            n_states: int,
+            device: torch.device = None,
+            recurrent: bool = False,
+        ) -> None:
         super().__init__(model, distribution, device)
 
         self.observation_space = observation_space
@@ -81,8 +85,11 @@ class CategoricalPgAgent(TorchAgent):
                 device=self.device)
 
     @torch.no_grad()
-    def step(self, observation: Buffer, *, env_indices: Union[int, slice] = ...,
-             ) -> AgentStep:
+    def step(self,
+            observation: Buffer,
+            *,
+            env_indices: Union[int, slice] = ...,
+        ) -> AgentStep:
         model_inputs = (observation,)
         model_inputs = buffer_to_device(model_inputs, device=self.device)
         if self.recurrent:
@@ -130,9 +137,11 @@ class CategoricalPgAgent(TorchAgent):
         value = model_outputs.value
         return buffer_to_device(value, device="cpu")
 
-    def predict(self, observation: Buffer, agent_info: AgentInfo,
-                init_rnn_state: Optional[Buffer] = None,
-                ) -> AgentPrediction:
+    def predict(self,
+            observation: Buffer,
+            agent_info: AgentInfo,
+            init_rnn_state: Optional[Buffer] = None,
+        ) -> AgentPrediction:
         """Performs forward pass on training data, for algorithm."""
         model_inputs = (observation,)
         if self.recurrent:

@@ -12,8 +12,11 @@ class TorchAgent(Agent):
     instance. Outputs from the model are converted into actions during
     sampling, usually with the help of a distribution.
     """
-    def __init__(self, model: torch.nn.Module, distribution: Distribution,
-            device: torch.device = None):
+    def __init__(self,
+            model: torch.nn.Module,
+            distribution: Distribution,
+            device: torch.device = None
+        ) -> None:
         self.model = model
         self.distribution = distribution
 
@@ -48,8 +51,11 @@ class TorchAgent(Agent):
         previous_action = self.previous_action[env_indices]
         return rnn_state, previous_action
 
-    def _advance_states(self, next_rnn_states: Buffer, action: Buffer,
-            env_indices: Union[int, slice]) -> Buffer[torch.Tensor]:
+    def _advance_states(self,
+            next_rnn_states: Buffer,
+            action: Buffer,
+            env_indices: Union[int, slice]
+        ) -> Buffer[torch.Tensor]:
         # rnn_states has shape [N,B,H]
         self.rnn_states[:, env_indices] = next_rnn_states
         
