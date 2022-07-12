@@ -28,20 +28,39 @@ from models.atari_lstm_model import AtariLstmPgModel
 @contextmanager
 def build():
 
-    render_during_training = True
+    # # works, roughly 1300 fps
+    # parallel = False
+    # env_kwargs = {
+    #     "max_episode_steps": 250,
+    #     "reward_type": "sparse",
+    #     "headless": True,
+    #     "subprocess": False,
+    # }
 
-    # batch_B = 16
-    batch_B = 8
-    # batch_T = 128
-    batch_T = 64
-    batch_spec = BatchSpec(batch_T, batch_B)
+    # # works, roughly 1500 fps
+    # parallel = True
+    # env_kwargs = {
+    #     "max_episode_steps": 250,
+    #     "reward_type": "sparse",
+    #     "headless": False,
+    #     "subprocess": True,
+    # }
+
+    # what I want
     parallel = True
-    EnvClass = build_visual_cartpole
     env_kwargs = {
         "max_episode_steps": 250,
         "reward_type": "sparse",
         "headless": True,
+        "subprocess": False,
     }
+
+    # batch_B = 16
+    batch_B = 4
+    # batch_T = 128
+    batch_T = 64
+    batch_spec = BatchSpec(batch_T, batch_B)
+    EnvClass = build_visual_cartpole
     discount = 0.99
     TrajInfoClass = TrajInfo
     traj_info_kwargs = {
@@ -56,12 +75,8 @@ def build():
     # n_steps = 200 * batch_spec.size
     n_steps = 1e6
     log_interval_steps = 1e4
-    log_dir = Path(f'log_data/cartpole/visual_ppo/{datetime.now().strftime("%Y-%m-%d_%H-%M")}')
+    log_dir = None
 
-
-    if render_during_training:
-        env_kwargs["headless"] = False
-        env_kwargs["subprocess"] = parallel
 
     if parallel:
         ArrayCls = SharedMemoryArray
