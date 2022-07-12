@@ -32,13 +32,16 @@ def build():
 
     render_during_training = True
 
-    batch_B = 16
-    batch_T = 128
+    # batch_B = 32
+    batch_B = 8
+    # batch_T = 128
+    batch_T = 64
     batch_spec = BatchSpec(batch_T, batch_B)
     parallel = True
     EnvClass = build_multi_agent_cartpole
     env_kwargs = {
-        "max_episode_steps": 1000,
+        "max_episode_steps": 250,
+        "reward_type": "sparse",
         "headless": True,
     }
     discount = 0.99
@@ -46,11 +49,14 @@ def build():
     traj_info_kwargs = {
         "discount": discount,
     }
-    gae_lambda = 0.95
+    # gae_lambda = 0.95
+    gae_lambda = 0.8
     reward_min = -5.
     reward_max = 5.
-    learning_rate = 0.001
-    n_steps = 200 * batch_spec.size
+    # learning_rate = 0.001
+    learning_rate = 3e-4
+    # n_steps = 200 * batch_spec.size
+    n_steps = 1e6
     log_interval_steps = 1e4
     log_dir = Path(f'log_data/cartpole/multiagent_independentppo/{datetime.now().strftime("%Y-%m-%d_%H-%M")}')
 
@@ -83,16 +89,22 @@ def build():
         cart_model = AtariLstmPgModel(
             obs_space=obs_space,
             action_space=action_space["cart"],
-            channels=[32, 64, 128, 256],
-            kernel_sizes=[3, 3, 3, 3],
-            strides=[2, 2, 2, 2],
-            paddings=[0, 0, 0, 0],
+            # channels=[32, 64, 128, 256],
+            channels=[16, 32],
+            # kernel_sizes=[3, 3, 3, 3],
+            kernel_sizes=[8, 4],
+            # strides=[2, 2, 2, 2],
+            strides=[4, 2],
+            # paddings=[0, 0, 0, 0],
+            paddings=[0, 1],
             use_maxpool=False,
-            post_conv_hidden_sizes=1024,
+            # post_conv_hidden_sizes=1024,
+            post_conv_hidden_sizes=512,
             post_conv_output_size=None,
             post_conv_nonlinearity=torch.nn.ReLU,
             lstm_size=512,
-            post_lstm_hidden_sizes=512,
+            # post_lstm_hidden_sizes=512,
+            post_lstm_hidden_sizes=None,
             post_lstm_nonlinearity=torch.nn.ReLU,
         )
         cart_distribution = Categorical(dim=action_space["cart"].n)
@@ -157,18 +169,18 @@ def build():
         # add several helpful transforms
         batch_transforms = []
 
-        batch_buffer, batch_transforms = add_reward_normalization(
-            batch_buffer,
-            batch_transforms,
-            discount=discount,
-        )
+        # batch_buffer, batch_transforms = add_reward_normalization(
+        #     batch_buffer,
+        #     batch_transforms,
+        #     discount=discount,
+        # )
 
-        batch_buffer, batch_transforms = add_reward_clipping(
-            batch_buffer,
-            batch_transforms,
-            reward_min=reward_min,
-            reward_max=reward_max,
-        )
+        # batch_buffer, batch_transforms = add_reward_clipping(
+        #     batch_buffer,
+        #     batch_transforms,
+        #     reward_min=reward_min,
+        #     reward_max=reward_max,
+        # )
 
         # add advantage normalization, required for PPO
         advantage_transform = EstimateMultiAgentAdvantage(discount=discount,
