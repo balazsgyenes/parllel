@@ -1,5 +1,7 @@
 from contextlib import contextmanager
+from datetime import datetime
 import multiprocessing as mp
+from pathlib import Path
 
 import torch
 
@@ -49,7 +51,8 @@ def build():
     reward_max = 5.
     learning_rate = 0.001
     n_steps = 200 * batch_spec.size
-
+    log_interval_steps = 1e4
+    log_dir = Path(f'log_data/cartpole/multiagent_independentppo/{datetime.now().strftime("%Y-%m-%d_%H-%M")}')
 
     if render_during_training:
         env_kwargs["headless"] = False
@@ -196,8 +199,15 @@ def build():
         )
 
         # create runner
-        runner = OnPolicyRunner(sampler=sampler, agent=agent, algorithm=algorithm,
-                                n_steps = n_steps, batch_spec=batch_spec)
+        runner = OnPolicyRunner(
+            sampler=sampler,
+            agent=agent,
+            algorithm=algorithm,
+            n_steps=n_steps,
+            batch_spec=batch_spec,
+            log_interval_steps=log_interval_steps,
+            log_dir=log_dir,
+        )
 
         try:
             yield runner

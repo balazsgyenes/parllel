@@ -47,7 +47,7 @@ def build():
     reward_max = 5.
     learning_rate = 0.001
     n_steps = 100 * batch_spec.size
-
+    log_interval_steps = 10 * batch_spec.size
 
     if render_during_training:
         if parallel:
@@ -172,8 +172,14 @@ def build():
         )
 
         # create runner
-        runner = OnPolicyRunner(sampler=sampler, agent=agent, algorithm=algorithm,
-                                n_steps = n_steps, batch_spec=batch_spec)
+        runner = OnPolicyRunner(
+            sampler=sampler,
+            agent=agent,
+            algorithm=algorithm,
+            n_steps=n_steps,
+            batch_spec=batch_spec,
+            log_interval_steps=log_interval_steps,
+        )
 
         try:
             yield runner
