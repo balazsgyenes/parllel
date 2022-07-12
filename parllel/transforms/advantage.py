@@ -2,8 +2,7 @@ from numba import njit
 import numpy as np
 from nptyping import NDArray
 
-from parllel.arrays import Array
-from parllel.buffers import EnvSamples, NamedArrayTupleClass, Samples
+from parllel.buffers import Samples
 
 from .transform import BatchTransform
 
@@ -58,58 +57,34 @@ def compute_gae_advantage(
 
 
 class EstimateAdvantage(BatchTransform):
-    def __init__(self, discount: float, gae_lambda: float) -> None:
-        """Adds a field to samples buffer under `env.advantage` for the
-        advantage: roughly, the return left to go compared to the state value
-        predicted by the agent. The agent's bootstrap value accounts for
-        rewards that are expected to be gained after the end of the current
-        batch. If `lambda==1.0`, advantage is estimated as discounted return
-        minus the value, otherwise Generalized Advantage Estimation (GAE) is\
-        used.
-        
-        Requires fields:
-            - .env.reward
-            - .env.done
-            - .agent.agent_info.value
-            - .agent.bootstrap_value
-        
-        Adds fields:
-            - .env.advantage
-            - .env.return_
+    """Adds an estimate of the advantage function for each sample under
+    `env.advantage`. Advantage is estimated either using the empirical
+    discounted return minus the agent's value estimate (if `gae_lambda==1.0`)
+    or using Generalized Advantage Estimation (if `gae_lambda<1.0`). The
+    agent's value estimate at the end of a batch accounts for returns left to
+    go in the trajectory (called a bootstrap value).
+    
+    Requires fields:
+        - .env.reward
+        - .env.done
+        - .agent.agent_info.value
+        - .agent.bootstrap_value
+    
+    Adds fields:
+        - .env.advantage
+        - .env.return_
 
-        :param discount: discount (gamma) for discounting rewards over time
-        :param gae_lambda: lambda parameter for GAE algorithm
-        """
-        self._discount = discount
-        self._lambda = gae_lambda
+    :param discount: discount (gamma) for discounting rewards over time
+    :param gae_lambda: lambda parameter for GAE algorithm
+    """
+    def __init__(self, discount: float, gae_lambda: float) -> None:
+        self.discount = discount
+        self.gae_lambda = gae_lambda
         if gae_lambda == 1.0:
             # GAE reduces to empirical discounted return
             self.estimator = compute_discount_return
         else:
             self.estimator = compute_gae_advantage
-
-    def dry_run(self, batch_samples: Samples, ArrayCls: Array) -> Samples:
-        # get convenient local references
-        env_samples: EnvSamples = batch_samples.env
-        reward = env_samples.reward
-
-        # create new NamedArrayTuple for env samples with additional fields
-        EnvSamplesClass = NamedArrayTupleClass(
-            typename = env_samples._typename,
-            fields = env_samples._fields + ("advantage", "return_")
-        )
-
-        # allocate new Array objects for advantage and return_
-        advantage = ArrayCls(shape=reward.shape, dtype=reward.dtype)
-        return_ = ArrayCls(shape=reward.shape, dtype=reward.dtype)
-
-        # package everything back into batch_samples
-        env_samples = EnvSamplesClass(
-            **env_samples._asdict(), advantage=advantage, return_=return_,
-        )
-        batch_samples = batch_samples._replace(env = env_samples)
-
-        return batch_samples
 
     def __call__(self, batch_samples: Samples) -> Samples:
         self.estimator(
@@ -117,8 +92,8 @@ class EstimateAdvantage(BatchTransform):
             np.asarray(batch_samples.agent.agent_info.value),
             np.asarray(batch_samples.env.done),
             np.asarray(batch_samples.agent.bootstrap_value),
-            self._discount,
-            self._lambda,
+            self.discount,
+            self.gae_lambda,
             np.asarray(batch_samples.env.advantage),
             np.asarray(batch_samples.env.return_),
         )

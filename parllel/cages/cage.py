@@ -61,19 +61,6 @@ class Cage:
             action=self._env.action_space,
         )
 
-    def get_example_output(self) -> EnvStep:
-        # get example of env step output
-        self._env.reset()
-        sample_action = self._env.action_space.sample()
-        obs, reward, done, info = self._env.step(sample_action)
-
-        if self._time_limit:
-            # we will be using this example to allocate a buffer, so all fields
-            # that could be present need to be present
-            info["timeout"] = info.pop("TimeLimit.truncated", False)
-
-        return EnvStep(obs, reward, done, info)
-
     @property
     def spaces(self) -> EnvSpaces:
         return self._spaces

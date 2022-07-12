@@ -56,7 +56,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - DDPG
     - Jax PPO :)
 - Agents/Distributions
-    - Remove `dry_run`. Instead, pass action and obs spaces on init and allocate there. Obs (and in recurrent case also action) space is sampled, converted to namedarraytuple, torchified, and passed to model. Example return types can be retrieved using `step` and `init_rnn_state`.
     - Ensemble agent
     - Ensemble distribution
 - Arrays
@@ -75,7 +74,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
 - Cages:
     - In `ProcessCage`, cleanup the data that gets sent through the pipe, ensuring `already_done` is always correct.
-    - Remove `get_example_outputs`. This function can be replaced by random_step_async.
     - Add `__getattr__`, `__setattr__`, and `env_method` methods to Cage, allowing direct access to env.
     - If `set_samples_buffer` is called on a SharedMemoryArray, it verifies that the buffers are registered before sending the reduced buffer across the pipe. This allows for consistent use in all cases, and supports configurations like a replay buffer in shared memory with ProcessCage.
     - `SynchronizedProcessCage`, where a single Event object is shared among multiple Cages, such that all begin stepping as soon as one of them is called to step. Based on how Events are shared, this supports alternating sampling too.
