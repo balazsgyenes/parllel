@@ -35,70 +35,45 @@ def compute_past_discount_return(
 
 
 class NormalizeRewards(BatchTransform):
+    """Normalizes rewards by dividing by the standard deviation of past
+    discounted returns. As a side-effect, adds past_return to the samples
+    buffer for the discounted returns gained by the agent up to the current
+    time.
+
+    Requires fields:
+        - .env.reward
+        - .env.done
+        - [.env.valid]
+
+    Adds fields:
+        - .env.past_return
+
+    :param discount: discount (gamma) for discounting rewards over time
+    :param only_valid: when calculating statistics, only use data points where
+        `batch_samples.env.valid` is True. Other data points are ignored. This
+        should be True if mid-batch resets are turned off.
+    :param initial_count: seed the running mean and standard deviation model
+        with `initial_count` instances of x~N(0,1). Increase this to improve
+        stability, to prevent the mean and standard deviation from changing too
+        quickly during early training.
+    """
     def __init__(self,
         discount: float,
+        only_valid: bool,
         initial_count: Optional[float] = None
     ) -> None:
-        """Normalizes rewards by dividing by the standard deviation of past
-        discounted returns. As a side-effect, adds past_return to the samples
-        buffer for the discounted returns gained by the agent up to the current
-        time.
+        self.discount = discount
+        self.only_valid = only_valid
 
-        Requires fields:
-            - .env.reward
-            - .env.done
-
-        Adds fields:
-            - .env.past_return
-
-        :param discount: discount (gamma) for discounting rewards over time
-        :param initial_count: seed the running mean and standard deviation
-            model with `initial_count` instances of x~N(0,1). Increase this to
-            improve stability, to prevent the mean and standard deviation from
-            changing too quickly during early training
-        """
-        self._discount = discount
         if initial_count is not None and initial_count < 1.:
             raise ValueError("Initial count must be at least 1")
-        self._initial_count = initial_count
-    
-    def dry_run(self, batch_samples: Samples, RotatingArrayCls: Array) -> Samples:
-        # get convenient local references
-        env_samples: EnvSamples = batch_samples.env
-        reward = env_samples.reward
-
-        if not isinstance(env_samples.done, RotatingArray):
-            raise TypeError("batch_samples.env.done must be a RotatingArray "
-                            "when using NormalizeRewards")
-
-        # create new NamedArrayTuple for env samples with additional field
-        EnvSamplesClass = NamedArrayTupleClass(
-            typename = env_samples._typename,
-            fields = env_samples._fields + ("past_return",)
-        )
-        # get contents of old env samples as a dictionary
-        env_samples_dict = env_samples._asdict()
-
-        # allocate new Array for past discounted returns
-        past_return = RotatingArrayCls(shape=reward.shape,
-            dtype=reward.dtype, padding=1)
-
-        # package everything back into batch_samples
-        env_samples = EnvSamplesClass(
-            **env_samples_dict, past_return=past_return,
-        )
-        batch_samples = batch_samples._replace(env=env_samples)
-
-        self.only_valid = True if hasattr(batch_samples.env, "valid") else False
 
         # create model to track running mean and std_dev of samples
-        if self._initial_count is not None:
-            self._return_statistics = RunningMeanStd(shape=(),
-                initial_count=self._initial_count)
+        if initial_count is not None:
+            self.return_statistics = RunningMeanStd(shape=(),
+                initial_count=initial_count)
         else:
-            self._return_statistics = RunningMeanStd(shape=())
-
-        return batch_samples
+            self.return_statistics = RunningMeanStd(shape=())
 
     def __call__(self, batch_samples: Samples) -> Samples:
         reward = np.asarray(batch_samples.env.reward)
@@ -114,17 +89,17 @@ class NormalizeRewards(BatchTransform):
             done,
             previous_past_return,
             previous_done,
-            self._discount,
+            self.discount,
             past_return,
         )
 
         # update statistics of discounted return
         if self.only_valid:
             valid = batch_samples.env.valid
-            self._return_statistics.update(past_return[valid])
+            self.return_statistics.update(past_return[valid])
         else:
-            self._return_statistics.update(past_return)
+            self.return_statistics.update(past_return)
 
-        reward[:] = reward / (np.sqrt(self._return_statistics.var + EPSILON))
+        reward[:] = reward / (np.sqrt(self.return_statistics.var + EPSILON))
 
         return batch_samples

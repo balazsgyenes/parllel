@@ -21,7 +21,7 @@ class DummyAgent(Agent):
         self.batch_spec = batch_spec
         self.recurrent = recurrent
 
-        self._states = buffer_from_example(np.array(0, dtype=np.float32),
+        self.states = buffer_from_example(np.array(0, dtype=np.float32),
             (n_batches * batch_spec.T, batch_spec.B), RotatingArray)
 
         self._step_ctr = 0
@@ -33,25 +33,25 @@ class DummyAgent(Agent):
                 "previous_state": np.array(0, dtype=np.float32),
             },
             (n_batches * batch_spec.T, batch_spec.B), Array, name="agentinfo")
-        self._samples = AgentSamples(batch_action, batch_info)
-        self._values = buffer_from_example(np.array(0, dtype=np.float32),
+        self.samples = AgentSamples(batch_action, batch_info)
+        self.values = buffer_from_example(np.array(0, dtype=np.float32),
             (n_batches, batch_spec.B), Array)
-        self._batch_resets = buffer_from_example(True,
+        self.resets = buffer_from_example(True,
             (n_batches * batch_spec.T, batch_spec.B), RotatingArray, padding=1)
 
         if self.recurrent:
-            self._init_rnn_states = buffer_from_example(np.array(0, dtype=np.float32),
+            self.init_rnn_states = buffer_from_example(np.array(0, dtype=np.float32),
             (n_batches, batch_spec.B), Array)
 
         self.rng = random.default_rng()
 
-    def dry_run(self) -> DummyInfo:
-        agent_info = buffer_asarray(self._samples.agent_info[0, 0])
+    def get_agent_info(self) -> DummyInfo:
+        agent_info = buffer_asarray(self.samples.agent_info[0, 0])
         return buffer_method(agent_info, "copy")
 
     def reset(self) -> None:
-        self._batch_resets[self._step_ctr - 1] = True
-        self._states[self._step_ctr] = 0
+        self.resets[self._step_ctr - 1] = True
+        self.states[self._step_ctr] = 0
     
     def reset_one(self, env_index: int) -> None:
         if self.recurrent:
@@ -59,8 +59,8 @@ class DummyAgent(Agent):
             batch_ctr = (self._step_ctr - 1) // self.batch_spec.T + 1
             # advance counter to the next batch
             self._step_ctr = batch_ctr * self.batch_spec.T
-        self._batch_resets[self._step_ctr - 1, env_index] = True
-        self._states[self._step_ctr, env_index] = 0
+        self.resets[self._step_ctr - 1, env_index] = True
+        self.states[self._step_ctr, env_index] = 0
 
     def initial_rnn_state(self) -> Buffer:
         # sampling batch may have stopped early
@@ -69,7 +69,7 @@ class DummyAgent(Agent):
         self._step_ctr = batch_ctr * self.batch_spec.T
         
         init_rnn_state = self.rng.random(self.batch_spec.B)
-        self._init_rnn_states[batch_ctr] = init_rnn_state
+        self.init_rnn_states[batch_ctr] = init_rnn_state
         return init_rnn_state
 
     def step(self, observation: Buffer, *, env_indices: Union[int, slice] = ...,
@@ -77,12 +77,12 @@ class DummyAgent(Agent):
         action = self.action_space.sample()
         agent_info = DummyInfo(
             buffer_method(observation, "copy"),
-            buffer_method(buffer_asarray(self._states[self._step_ctr]), "copy"),
+            buffer_method(buffer_asarray(self.states[self._step_ctr]), "copy"),
         )
-        self._samples.action[self._step_ctr] = action
-        self._samples.agent_info[self._step_ctr] = agent_info
+        self.samples.action[self._step_ctr] = action
+        self.samples.agent_info[self._step_ctr] = agent_info
         next_state = self.rng.random(self.batch_spec.B)
-        self._states[self._step_ctr + 1] = next_state
+        self.states[self._step_ctr + 1] = next_state
         self._step_ctr += 1
 
         return AgentStep(action, agent_info)
@@ -90,25 +90,5 @@ class DummyAgent(Agent):
     def value(self, observation: Buffer) -> Buffer:
         batch_ctr = (self._step_ctr - 1) // self.batch_spec.T
         value = self.rng.random(self.batch_spec.B)
-        self._values[batch_ctr] = value
+        self.values[batch_ctr] = value
         return value
-
-    @property
-    def samples(self):
-        return self._samples
-
-    @property
-    def values(self):
-        return self._values
-
-    @property
-    def resets(self):
-        return self._batch_resets
-
-    @property
-    def init_rnn_states(self):
-        return self._init_rnn_states
-
-    @property
-    def states(self):
-        return self._states

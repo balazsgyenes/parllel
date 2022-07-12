@@ -34,13 +34,13 @@ def update_from_moments(
 
 
 class RunningMeanStd:
-    def __init__(self, shape: Tuple[int, ...], initial_count: float = 1e-4):
-        """
-        Calculates the running mean and std of a data stream
+    """
+    Calculates the running mean and std of a data stream
 
-        :param shape: the shape of the data stream's output
-        :param initial_count: helps with arithmetic issues and stability
-        """
+    :param shape: the shape of the data stream's output
+    :param initial_count: helps with arithmetic issues and stability
+    """
+    def __init__(self, shape: Tuple[int, ...], initial_count: float = 1e-4):
         self.mean = np.zeros(shape, np.float64)
         self.var = np.ones(shape, np.float64)
         self.count = np.array(initial_count, np.float64)

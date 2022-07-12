@@ -118,8 +118,9 @@ def agent(action_space, observation_space, batch_spec):
 @pytest.fixture
 def batch_buffer(action_space, observation_space, batch_spec, envs, agent, get_bootstrap):
     # get example output from env
-    obs, reward, done, info = envs[0].get_example_output()
-    agent_info = agent.dry_run()
+    envs[0].random_step_async()
+    action, obs, reward, done, info = envs[0].await_step()
+    agent_info = agent.get_agent_info()
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec),
@@ -132,7 +133,7 @@ def batch_buffer(action_space, observation_space, batch_spec, envs, agent, get_b
         Array, name="envinfo")
     batch_env = EnvSamples(batch_observation, batch_reward,
         batch_done, batch_info)
-    batch_action = buffer_from_dict_example(action_space.sample(),
+    batch_action = buffer_from_dict_example(action,
         tuple(batch_spec), Array, name="action")
     batch_agent_info = buffer_from_example(agent_info,
         tuple(batch_spec), Array, name="agentinfo")
