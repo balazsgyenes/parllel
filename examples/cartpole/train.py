@@ -72,7 +72,6 @@ def build():
             )
         distribution = Categorical(dim=action_space.n)
         device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
-        device = torch.device("cpu")
 
         # instantiate model and agent
         agent = CategoricalPgAgent(
@@ -93,8 +92,11 @@ def build():
         batch_agent = AgentSamples(batch_action, batch_agent_info)
         batch_buffer = Samples(batch_agent, batch_env)
 
+        # for advantage estimation, we need to estimate the value of the last
+        # state in the batch
         batch_buffer = add_bootstrap_value(batch_buffer)
 
+        # add several helpful transforms
         batch_transforms, step_transforms = [], []
 
         batch_buffer, step_transforms = add_obs_normalization(
@@ -116,6 +118,7 @@ def build():
             reward_max=reward_max,
         )
 
+        # add advantage normalization, required for PPO
         batch_buffer, batch_transforms = add_advantage_estimation(
             batch_buffer,
             batch_transforms,

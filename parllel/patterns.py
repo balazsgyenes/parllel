@@ -3,8 +3,10 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
-from parllel.buffers import Buffer, AgentSamples, EnvSamples, NamedArrayTupleClass, Samples
+from parllel.buffers import (AgentSamples, EnvSamples, NamedArrayTupleClass,
+    Samples, buffer_map)
 from parllel.cages import Cage, ProcessCage
+from parllel.handlers import Agent
 from parllel.transforms import (Transform, ClipRewards, EstimateAdvantage,
     NormalizeAdvantage, NormalizeObservations, NormalizeRewards)
 from parllel.types import BatchSpec
@@ -72,7 +74,19 @@ def build_cages_and_env_buffers(
             cage.close()
 
 
-def add_initial_rnn_state(batch_buffer: Samples, batch_init_rnn: Buffer):
+def add_initial_rnn_state(batch_buffer: Samples, agent: Agent):
+
+    # get the Array type used for the rewards. reward might be a named tuple,
+    # but the underlying array should be non-rotating
+    # TODO: replace with some sane allocation rules
+    types = buffer_map(type, batch_buffer.env.reward)
+    while isinstance(types, tuple):
+        types = types[0]
+    ArrayCls = types
+
+    rnn_state = agent.initial_rnn_state()
+    batch_init_rnn = buffer_from_example(rnn_state, (), ArrayCls)
+    
     batch_agent: AgentSamples = batch_buffer.agent    
 
     AgentSamplesClass = NamedArrayTupleClass(

@@ -74,7 +74,6 @@ def build():
             )
         distribution = Categorical(dim=action_space.n)
         device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
-        device = torch.device("cpu")
 
         # instantiate model and agent
         agent = CategoricalPgAgent(
@@ -96,14 +95,19 @@ def build():
         batch_agent = AgentSamples(batch_action, batch_agent_info)
         batch_buffer = Samples(batch_agent, batch_env)
 
-        rnn_state = agent.initial_rnn_state()
-        batch_rnn_state = buffer_from_example(rnn_state, (), ArrayCls)
-        batch_buffer = add_initial_rnn_state(batch_buffer, batch_rnn_state)
+        # for recurrent problems, we need to save the initial state at the 
+        # beginning of the batch
+        batch_buffer = add_initial_rnn_state(batch_buffer, agent)
 
+        # for advantage estimation, we need to estimate the value of the last
+        # state in the batch
         batch_buffer = add_bootstrap_value(batch_buffer)
         
+        # for recurrent problems, compute mask that zeroes out samples after
+        # environments are done before they can be reset
         batch_buffer = add_valid(batch_buffer)
 
+        # add several helpful transforms
         batch_transforms, step_transforms = [], []
 
         batch_buffer, step_transforms = add_obs_normalization(
@@ -125,6 +129,7 @@ def build():
             reward_max=reward_max,
         )
 
+        # add advantage normalization, required for PPO
         batch_buffer, batch_transforms = add_advantage_estimation(
             batch_buffer,
             batch_transforms,
