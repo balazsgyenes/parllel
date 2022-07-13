@@ -38,7 +38,8 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Seeding
         - Add seeding module that maintains a SeedSequence and spawns a new seed sequence each time an entity requests a new seed. Seeds are saved by name so they can be reloaded. Seeds are logged to a json file.
         - If a seed is requested twice for the same name, an error is thrown
-    - Config handling. User passes a giant dictionary of config parameters to a build method
+    - Config handling. User passes a giant dictionary of config parameters to a build method.
+        - To deal with parameters reused by multiple entities (e.g. discount, batch spec), implement search method to avoid having to define a "canonical" position for these parameters (e.g. discount belongs in the algorithm parameters).
     - Logging of start state (e.g. config, seeds, allocators, etc.) to compare runs after the fact and allow for repeating runs
     - Logging of diagnostic data (e.g. rewards, traj length, etc.) during training to analyze results
         - Data is saved to tensorboard, csv file, and log file
@@ -55,9 +56,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Any many more methods that subclasses could overwrite (e.g. `construct_agent_inputs` in PPO)
     - DDPG
     - Jax PPO :)
-- Agents/Distributions
-    - Ensemble agent
-    - Ensemble distribution
 - Arrays
     - **!!** Rename attributes `first` to `begin` and `last` to `end`. Remove the `-1` offset in `end` index, such that normal index `-1` corresponds to `end - 1`.
     - SwitchingArray wraps two arrays and switches between them on `rotate`. This is useful for asynchronous sampling, where different parts of the array are simultaneously written to by the sampler and read from by the algorithm.
@@ -73,7 +71,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - `buffer_get_attr` and `buffer_set_attr`
     - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
 - Cages:
-    - In `ProcessCage`, cleanup the data that gets sent through the pipe, ensuring `already_done` is always correct.
     - Add `__getattr__`, `__setattr__`, and `env_method` methods to Cage, allowing direct access to env.
     - If `set_samples_buffer` is called on a SharedMemoryArray, it verifies that the buffers are registered before sending the reduced buffer across the pipe. This allows for consistent use in all cases, and supports configurations like a replay buffer in shared memory with ProcessCage.
     - `SynchronizedProcessCage`, where a single Event object is shared among multiple Cages, such that all begin stepping as soon as one of them is called to step. Based on how Events are shared, this supports alternating sampling too.
@@ -101,8 +98,8 @@ rlpyt is a great piece of software, but there are several pain points when it co
         - Calls `set_samples_buffer` on cages before each batch, so that they write to the correct buffer
     - FullEpisodeSampler, which returns only completed trajectories every iteration. This is essentially a configuration of the RecurrentSampler (cages wait to reset, sampler stops if all envs done, samples buffer allocated with T equal to maximum episode length). Depending on wait-reset semantics, it might not make sense to have a separate class for this.
 - Transforms
+    - **!!** Instead of passing parameters like `valid_only`, pass `batch_buffer` so that the Transform can compute the value itself. Then remove `dry_run` from `EstimateMultiAgentAdvantage` and create a pattern for adding it.
     - Add `stats` attribute to normalizing transforms (and anything else in the transform that is stateful and could be logged)
-    - Multiagent versions of transforms (e.g. advantage estimation)
     - Add test for `NormalizeObservation` transformation, which verifies that environments that are already done are not factored into running statistics.
 - Misc
     - Add simple interface to Stable Baselines in the form of a gym wrapper that looks like the parallel vector wrapper but preallocates memory.
@@ -110,8 +107,8 @@ rlpyt is a great piece of software, but there are several pain points when it co
 
 ## Bugs
 
+- BUG: CartPole with pixel observations hangs when using headless rendering in parallel environments without the SubprocessWrapper.
 - BUG: fix memory leak when using `fork` start method and ManagedMemoryArrays ( https://bugs.python.org/issue38119 )
-- BUG: pip [automatic package discovery](https://setuptools.pypa.io/en/latest/userguide/package_discovery.html#automatic-discovery) no longer works, so setup.py needs to be fixed
 - BUG: debugging in VS Code in parallel mode fails because NamedTuple has no `__getstate__` method.
 
 ## To benchmark

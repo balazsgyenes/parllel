@@ -4,11 +4,11 @@ import torch
 
 from parllel.buffers import Buffer
 from parllel.handlers import Agent
-from parllel.torch.distributions.base import Distribution
+from parllel.torch.distributions import Distribution
 
 
 class TorchAgent(Agent):
-    """The agent manages as a model and a sampling state for each environment
+    """The agent manages a model and a sampling state for each environment
     instance. Outputs from the model are converted into actions during
     sampling, usually with the help of a distribution.
     """
@@ -46,8 +46,12 @@ class TorchAgent(Agent):
             self.previous_action[env_index] = 0
 
     def _get_states(self, env_indices: Union[int, slice]):
-        # rnn_states has shape [N,B,H]
-        rnn_state = self.rnn_states[:, env_indices]
+        try:
+            # rnn_states has shape [N,B,H]
+            rnn_state = self.rnn_states[:, env_indices]
+        except TypeError as e:
+            raise ValueError("Could not index into recurrent state. Make sure "
+                "this agent is recurrent.") from e
         previous_action = self.previous_action[env_indices]
         return rnn_state, previous_action
 
@@ -56,8 +60,12 @@ class TorchAgent(Agent):
             action: Buffer,
             env_indices: Union[int, slice]
         ) -> Buffer[torch.Tensor]:
-        # rnn_states has shape [N,B,H]
-        self.rnn_states[:, env_indices] = next_rnn_states
+        try:
+            # rnn_states has shape [N,B,H]
+            self.rnn_states[:, env_indices] = next_rnn_states
+        except TypeError as e:
+            raise ValueError("Could not index into recurrent state. Make sure "
+                "this agent is recurrent.") from e
         
         # copy previous state before advancing, so that it it not overwritten
         previous_action = self.previous_action[env_indices].clone().detach()

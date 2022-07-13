@@ -49,8 +49,8 @@ class ProfilingSampler(Sampler):
 
         for _ in range(self.n_iterations):
             for t in range(batch_T):
-                # all environments receive the same actions
-                action[t] = [self.action_space.sample()] * batch_B
+                for b in range(batch_B):
+                    action[t, b] = self.action_space.sample()
 
                 # don't include action space sampling in benchmark
                 start = time.perf_counter()

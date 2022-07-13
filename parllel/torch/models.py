@@ -149,7 +149,7 @@ class Conv2dHeadModel(torch.nn.Module):
         conv_out_size = self.conv.conv_out_size(h, w)
         if hidden_sizes or output_size:
             self.head = MlpModel(conv_out_size, hidden_sizes,
-                output_size=output_size, nonlinearity=nonlinearity)
+                output_size=output_size, hidden_nonlinearity=nonlinearity)
             if output_size is not None:
                 self._output_size = output_size
             else:

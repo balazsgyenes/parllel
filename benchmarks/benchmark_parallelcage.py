@@ -8,8 +8,8 @@ from gym.envs.classic_control import CartPoleEnv
 from gym import spaces
 from gym.wrappers import TimeLimit
 
-from parllel.arrays import (Array, RotatingArray, ManagedMemoryArray,
-    RotatingManagedMemoryArray, buffer_from_dict_example)
+from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
+    RotatingSharedMemoryArray, buffer_from_dict_example)
 from parllel.buffers import AgentSamples, buffer_method, EnvSamples, Samples
 from parllel.cages import Cage, ProcessCage, TrajInfo
 from parllel.cages.tests.dummy import DummyEnv
@@ -48,8 +48,8 @@ def build(config, parallel, profile_path):
             CageCls = ProfilingProcessCage
         else:
             CageCls = ProcessCage
-        ArrayCls = ManagedMemoryArray
-        RotatingArrayCls = RotatingManagedMemoryArray
+        ArrayCls = SharedMemoryArray
+        RotatingArrayCls = RotatingSharedMemoryArray
     else:
         CageCls = Cage
         ArrayCls = Array
@@ -65,32 +65,35 @@ def build(config, parallel, profile_path):
         wait_before_reset = False, # reset immediately for speed test
     )
 
-    # create cages to manage environments
-    cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
-
     # create_example env
     example_cage = Cage(**cage_kwargs)
 
     # get example output from env
     example_cage.random_step_async()
     action, obs, reward, done, info = example_cage.await_step()
+    
+    example_cage.close()
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), RotatingArrayCls, name="obs", padding=1)
     batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward", force_32bit=True)
     batch_done = buffer_from_dict_example(done, tuple(batch_spec), RotatingArrayCls, name="done")
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
-    batch_env_samples = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
+    batch_buffer_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
-    # allocate batch buffer based on examples
     batch_action = buffer_from_dict_example(action, tuple(batch_spec), ArrayCls,
         name="action", force_32bit=False)
+
+    # pass batch buffers to Cage on creation
+    if CageCls is ProcessCage:
+        cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
+    
+    # create cages to manage environments
+    cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
+
     batch_agent_samples = AgentSamples(batch_action, None)
 
-    batch_samples = Samples(batch_agent_samples, batch_env_samples)
-
-    for cage in cages:
-        cage.set_samples_buffer(batch_action, *batch_env_samples)
+    batch_samples = Samples(batch_agent_samples, batch_buffer_env)
 
     sampler = ProfilingSampler(
         batch_spec = config["sampler"]["batch_spec"],
@@ -111,7 +114,9 @@ def build(config, parallel, profile_path):
     
 
 if __name__ == "__main__":
-    mp.set_start_method("spawn")
+    import platform
+    if platform.system() == "Darwin":
+        mp.set_start_method("spawn")
 
     parallel = True
     profile_path = None

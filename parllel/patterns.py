@@ -47,6 +47,8 @@ def build_cages_and_env_buffers(
     example_cage.random_step_async()
     action, obs, reward, done, info = example_cage.await_step()
 
+    example_cage.close()
+
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), RotatingArrayCls, name="obs", padding=1)
     batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward")

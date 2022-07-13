@@ -14,7 +14,7 @@ from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 RnnState = NamedArrayTupleClass("RnnState", ["h", "c"])
 
 
-class CartPoleLstmCategoricalPgModel(nn.Module):
+class CartPoleLstmPgModel(nn.Module):
     def __init__(self,
                  obs_space: spaces.Box,
                  action_space: spaces.Discrete,
