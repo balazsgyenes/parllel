@@ -64,7 +64,11 @@ class CategoricalPgAgent(TorchAgent):
         example_inputs = buffer_to_device(example_inputs, device=self.device)
 
         with torch.no_grad():
-            model_outputs: ModelOutputs = self.model(*example_inputs)
+            try:
+                model_outputs: ModelOutputs = self.model(*example_inputs)
+            except TypeError as e:
+                raise TypeError("You may have forgotten to pass recurrent=True"
+                    " when creating this agent.") from e
 
         if self.recurrent:
             # Extend an rnn_state to allocate a slot for each env.
