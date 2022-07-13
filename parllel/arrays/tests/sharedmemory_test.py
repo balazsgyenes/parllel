@@ -46,6 +46,7 @@ def array(blank_array, np_array):
 
 def get_array_shape(pipe, array):
     pipe.send(array.shape)
+    array.close()
 
 
 class TestSharedMemoryArray:
