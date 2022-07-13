@@ -52,6 +52,13 @@ class ManagedMemoryArray(Array):
         self._current_array = None
 
     def close(self):
+        # delete these arrays that contain references to the shared memory
+        if hasattr(self, "_base_array"):
+            del self._base_array
+        if hasattr(self, "_current_array"):
+            del self._current_array
+        if hasattr(self, "_previous_array"):
+            del self._previous_array
         # close must be called by each instance (i.e. each process) on cleanup
         self._raw_array.close()
 
