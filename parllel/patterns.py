@@ -41,7 +41,7 @@ def build_cages_and_env_buffers(
     )
 
     # create example env
-    example_cage = Cage(**cage_kwargs)
+    example_cage = CageCls(**cage_kwargs)
 
     # get example output from env
     example_cage.random_step_async()

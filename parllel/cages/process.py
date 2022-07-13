@@ -80,7 +80,7 @@ class ProcessCage(Cage, mp.Process):
         out_obs: Buffer,
         out_reward: Buffer,
         out_done: Buffer,
-        out_info: Buffer
+        out_info: Buffer,
     ) -> None:
         assert self._last_command is None
         args = (action, out_obs, out_reward, out_done, out_info)
@@ -123,17 +123,20 @@ class ProcessCage(Cage, mp.Process):
         return trajs
     
     def random_step_async(self, *,
-        out_action: Buffer,
-        out_obs: Buffer,
-        out_reward: Buffer,
-        out_done: Buffer,
-        out_info: Buffer
+        out_action: Buffer = None,
+        out_obs: Buffer = None,
+        out_reward: Buffer = None,
+        out_done: Buffer = None,
+        out_info: Buffer = None,
     ) -> None:
         """Take a step with a random action from the env's action space.
         """
         assert self._last_command is None
         args = (out_action, out_obs, out_reward, out_done, out_info)
-        args = (self.buffer_registry.reduce_buffer(buf) for buf in args)
+        args = (
+            self.buffer_registry.reduce_buffer(buf) if buf is not None else None
+            for buf in args
+        )
         self._parent_pipe.send(Message(Command.random_step, tuple(args)))
         self._last_command = Command.random_step
     
@@ -189,7 +192,10 @@ class ProcessCage(Cage, mp.Process):
                 self._child_pipe.send(trajs)
 
             elif command == Command.random_step:
-                data = (self.buffer_registry.rebuild_buffer(buf) for buf in data)
+                data = (
+                    self.buffer_registry.rebuild_buffer(buf) if buf is not None else buf
+                    for buf in data
+                )
                 out_action, out_obs, out_reward, out_done, out_info = data
                 super().random_step_async(out_action=out_action, out_obs=out_obs,
                     out_reward=out_reward, out_done=out_done, out_info=out_info)
