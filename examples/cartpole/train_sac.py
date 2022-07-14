@@ -7,7 +7,9 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
-from parllel.patterns import add_bootstrap_value, build_cages_and_env_buffers
+from parllel.patterns import (add_obs_normalization, add_reward_clipping,
+    add_reward_normalization, build_cages_and_env_buffers)
+from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
 from parllel.samplers.basic import BasicSampler
 from parllel.torch.agents.sac_agent import SacAgent
@@ -15,8 +17,7 @@ from parllel.torch.algos.sac import SAC
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.torch.handler import TorchHandler
 from parllel.torch.utils import numpify_buffer, torchify_buffer
-from parllel.transforms import (ClipRewards, Compose,
-    NormalizeObservations, NormalizeRewards)
+from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
 from envs.continuous_cartpole import build_cartpole
@@ -41,7 +42,7 @@ def build():
     reward_max = 5.
     learning_rate = 0.001
     n_steps = 200 * batch_spec.size
-
+    replay_size = 100 * batch_spec.size
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -81,13 +82,17 @@ def build():
             hidden_sizes=[64, 64],
             hidden_nonlinearity=torch.nn.Tanh,
         )
-        model = torch.ModuleDict{
+        model = torch.ModuleDict({
             "pi": pi_model,
             "q1": q1_model,
             "q2": q2_model,
-        }
+        })
         distribution = SquashedGaussian(dim=action_space.shape[0], scale=action_space.high[0])
-        device = torch.device("cpu")
+        device = (
+            torch.device("cuda", index=0)
+            if torch.cuda.is_available()
+            else torch.device("cpu")
+        )
 
         # instantiate model and agent
         agent = SacAgent(model=model, distribution=distribution, device=device,
@@ -110,22 +115,27 @@ def build():
         batch_agent = AgentSamples(batch_action, batch_agent_info)
         batch_buffer = Samples(batch_agent, batch_env)
 
-        batch_buffer = add_bootstrap_value(batch_buffer)
+        # add several helpful transforms
+        batch_transforms, step_transforms = [], []
 
-        obs_transform = NormalizeObservations(initial_count=10000)
-        batch_buffer = obs_transform.dry_run(batch_buffer)
+        batch_buffer, step_transforms = add_obs_normalization(
+            batch_buffer,
+            step_transforms,
+            initial_count=10000,
+        )
 
-        reward_norm_transform = NormalizeRewards(discount=discount)
-        batch_buffer = reward_norm_transform.dry_run(batch_buffer, RotatingArrayCls)
+        batch_buffer, batch_transforms = add_reward_normalization(
+            batch_buffer,
+            batch_transforms,
+            discount=discount,
+        )
 
-        reward_clip_transform = ClipRewards(reward_min=reward_min,
-            reward_max=reward_max)
-        batch_buffer = reward_clip_transform.dry_run(batch_buffer)
-
-        batch_transform = Compose([
-            reward_norm_transform,
-            reward_clip_transform,
-        ])
+        batch_buffer, batch_transforms = add_reward_clipping(
+            batch_buffer,
+            batch_transforms,
+            reward_min=reward_min,
+            reward_max=reward_max,
+        )
 
         sampler = BasicSampler(
             batch_spec=batch_spec,
@@ -134,8 +144,16 @@ def build():
             batch_buffer=batch_buffer,
             max_steps_decorrelate=50,
             get_bootstrap_value=True,
-            obs_transform=obs_transform,
-            batch_transform=batch_transform,
+            obs_transform=Compose(step_transforms),
+            batch_transform=Compose(batch_transforms),
+        )
+
+        # create the replay buffer as a longer version of the batch buffer
+        replay_buffer = buffer_from_example(batch_buffer[0], (replay_size,))
+        replay_buffer = ReplayBuffer(
+            buffer=replay_buffer,
+            batch_spec=batch_spec,
+            size=replay_size,
         )
 
         optimizer = torch.optim.Adam(
@@ -147,7 +165,9 @@ def build():
         algorithm = SAC(
             batch_spec=batch_spec,
             agent=handler,
+            replay_buffer=replay_buffer,
             optimizer=optimizer,
+            discount=discount,
         )
 
         # create runner

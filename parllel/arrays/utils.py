@@ -20,6 +20,8 @@ def buffer_from_example(example: Buffer, leading_dims: Tuple[int, ...] = (),
     if isinstance(example, Array):
         shape = leading_dims + example.shape
         dtype = example.dtype
+        # TODO: just passing **kwargs here will not be enough, if e.g. padding is not 0
+        # need to extract properties from example and overwrite with kwargs if given
         return type(example)(shape=shape, dtype=dtype, **kwargs)
     else:  # assume np.ndarray
         np_example = np.asarray(example)  # promote scalars to 0d arrays
