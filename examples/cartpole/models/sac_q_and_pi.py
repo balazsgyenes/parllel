@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from torch import nn
 
+from parllel.torch.agents.sac_agent import PiModelOutputs, QModelOutputs
 from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 from parllel.torch.models import MlpModel
 
@@ -40,7 +41,7 @@ class PiMlpModel(nn.Module):
         output = self.mlp(observation.view(T * B, -1))
         mu, log_std = output[:, :self._action_size], output[:, self._action_size:]
         mu, log_std = restore_leading_dims((mu, log_std), lead_dim, T, B)
-        return mu, log_std
+        return PiModelOutputs(mu, log_std)
 
 
 class QMlpModel(nn.Module):
@@ -76,4 +77,4 @@ class QMlpModel(nn.Module):
             [observation.view(T * B, -1), action.view(T * B, -1)], dim=1)
         q = self.mlp(q_input).squeeze(-1)
         q = restore_leading_dims(q, lead_dim, T, B)
-        return q
+        return QModelOutputs(q)

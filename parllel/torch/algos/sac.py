@@ -51,8 +51,8 @@ class SAC(Algorithm):
             f"updates per iteration.")
         self.update_counter = 0
 
-        self._log_alpha = torch.log([ent_coeff])
         self._alpha = torch.tensor([ent_coeff])
+        self._log_alpha = torch.log(self._alpha)
 
     def optimize_agent(self, elapsed_steps: int, samples: Samples):
         """

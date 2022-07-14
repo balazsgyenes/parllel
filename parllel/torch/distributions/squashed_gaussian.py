@@ -2,7 +2,8 @@ from typing import Union
 
 import torch
 
-from parllel.torch.distributions.gaussian import Gaussian
+from parllel.torch.distributions.gaussian import (Gaussian, DistInfo,
+    DistInfoStd)
 
 
 EPS = 1e-8

@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from itertools import chain
 import multiprocessing as mp
 
 import torch
@@ -30,7 +31,7 @@ def build():
     batch_B = 16
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = True
+    parallel = False
     EnvClass=build_cartpole
     env_kwargs={
         "max_episode_steps": 1000,
@@ -43,6 +44,7 @@ def build():
     learning_rate = 0.001
     n_steps = 200 * batch_spec.size
     replay_size = 100 * batch_spec.size
+    log_interval_steps = 5 * batch_spec.size
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -82,7 +84,7 @@ def build():
             hidden_sizes=[64, 64],
             hidden_nonlinearity=torch.nn.Tanh,
         )
-        model = torch.ModuleDict({
+        model = torch.nn.ModuleDict({
             "pi": pi_model,
             "q1": q1_model,
             "q2": q2_model,
@@ -97,7 +99,7 @@ def build():
         # instantiate model and agent
         agent = SacAgent(model=model, distribution=distribution, device=device,
             obs_space=obs_space, action_space=action_space)
-        handler = TorchHandler(agent=agent)
+        agent = TorchHandler(agent=agent)
 
         # write dict into namedarraytuple and read it back out. this ensures the
         # example is in a standard format (i.e. namedarraytuple).
@@ -105,10 +107,7 @@ def build():
         example_obs = batch_env.observation[0, 0]
 
         # get example output from agent
-        example_obs = torchify_buffer(example_obs)
-        example_agent_step = agent.dry_run(n_states=batch_spec.B,
-            observation=example_obs)
-        agent_info, rnn_state = numpify_buffer(example_agent_step)
+        _, agent_info = agent.step(example_obs)
 
         # allocate batch buffer based on examples
         batch_agent_info = buffer_from_example(agent_info, tuple(batch_spec), ArrayCls)
@@ -140,10 +139,10 @@ def build():
         sampler = BasicSampler(
             batch_spec=batch_spec,
             envs=cages,
-            agent=handler,
+            agent=agent,
             batch_buffer=batch_buffer,
             max_steps_decorrelate=50,
-            get_bootstrap_value=True,
+            get_bootstrap_value=False,
             obs_transform=Compose(step_transforms),
             batch_transform=Compose(batch_transforms),
         )
@@ -156,30 +155,45 @@ def build():
             size=replay_size,
         )
 
-        optimizer = torch.optim.Adam(
-            agent.model.parameters(),
-            lr=learning_rate,
-        )
+        optimizers = {
+            "pi": torch.optim.Adam(
+                agent.model["pi"].parameters(),
+                lr=learning_rate,
+            ),
+            "q": torch.optim.Adam(
+                chain(
+                    agent.model["q1"].parameters(),
+                    agent.model["q2"].parameters(),
+                ),
+                lr=learning_rate,
+            ),
+        }
         
         # create algorithm
         algorithm = SAC(
             batch_spec=batch_spec,
-            agent=handler,
+            agent=agent,
             replay_buffer=replay_buffer,
-            optimizer=optimizer,
+            optimizers=optimizers,
             discount=discount,
         )
 
         # create runner
-        runner = OffPolicyRunner(sampler=sampler, agent=handler, algorithm=algorithm,
-                                n_steps = n_steps, batch_spec=batch_spec)
+        runner = OffPolicyRunner(
+            sampler=sampler,
+            agent=agent,
+            algorithm=algorithm,
+            n_steps=n_steps,
+            batch_spec=batch_spec,
+            log_interval_steps=log_interval_steps,
+        )
 
         try:
             yield runner
         
         finally:
             sampler.close()
-            handler.close()
+            agent.close()
             buffer_method(batch_buffer, "close")
             buffer_method(batch_buffer, "destroy")
     

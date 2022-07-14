@@ -12,7 +12,8 @@ SarsSamples = NamedArrayTupleClass("SarsSample",
     ["observation", "action", "reward", "done", "next_observation"])
 
 
-class ReplayBuffer(Buffer):
+class ReplayBuffer:
+    # TODO: should this inherit from Buffer?
     def __init__(self, buffer: Buffer, batch_spec: BatchSpec, size: int) -> None:
         """Stores more than a batch's worth of samples in a circular buffer for
         off-policy algorithms to sample from.

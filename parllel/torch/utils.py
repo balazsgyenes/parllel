@@ -153,3 +153,16 @@ def buffer_to_device(buffer, device=None):
         return buffer.to(device)
     except AttributeError as e:
         raise TypeError(f"Cannot move {type(buffer)} object to device.") from e
+
+
+def update_state_dict(model, state_dict, tau=1):
+    """Update the state dict of ``model`` using the input ``state_dict``, which
+    must match format.  ``tau==1`` applies hard update, copying the values, ``0<tau<1``
+    applies soft update: ``tau * new + (1 - tau) * old``.
+    """
+    if tau == 1:
+        model.load_state_dict(state_dict)
+    elif tau > 0:
+        update_sd = {k: tau * state_dict[k] + (1 - tau) * v
+            for k, v in model.state_dict().items()}
+        model.load_state_dict(update_sd)
