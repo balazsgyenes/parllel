@@ -17,7 +17,6 @@ from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.algos.sac import SAC
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.torch.handler import TorchHandler
-from parllel.torch.utils import numpify_buffer, torchify_buffer
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
@@ -35,10 +34,12 @@ def build():
     EnvClass=build_cartpole
     env_kwargs={
         "max_episode_steps": 1000,
+        "reward_type": "dense",
     }
     TrajInfoClass = TrajInfo
     traj_info_kwargs = {}
     discount = 0.99
+    replay_ratio = 32
     reward_min = -5.
     reward_max = 5.
     learning_rate = 0.001
@@ -70,19 +71,19 @@ def build():
             obs_space=obs_space,
             action_space=action_space,
             hidden_sizes=[64, 64],
-            hidden_nonlinearity=torch.nn.Tanh,
+            hidden_nonlinearity=torch.nn.ReLU,
         )
         q1_model = QMlpModel(
             obs_space=obs_space,
             action_space=action_space,
             hidden_sizes=[64, 64],
-            hidden_nonlinearity=torch.nn.Tanh,
+            hidden_nonlinearity=torch.nn.ReLU,
         )
         q2_model = QMlpModel(
             obs_space=obs_space,
             action_space=action_space,
             hidden_sizes=[64, 64],
-            hidden_nonlinearity=torch.nn.Tanh,
+            hidden_nonlinearity=torch.nn.ReLU,
         )
         model = torch.nn.ModuleDict({
             "pi": pi_model,
@@ -176,6 +177,7 @@ def build():
             replay_buffer=replay_buffer,
             optimizers=optimizers,
             discount=discount,
+            replay_ratio=replay_ratio,
         )
 
         # create runner

@@ -7,7 +7,7 @@ from parllel.buffers import Samples
 from parllel.replays.replay import ReplayBuffer
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.types.batch_spec import BatchSpec
-from parllel.torch.utils import buffer_to_device, valid_mean
+from parllel.torch.utils import buffer_to_device, torchify_buffer, valid_mean
 
 
 class SAC(Algorithm):
@@ -51,8 +51,8 @@ class SAC(Algorithm):
             f"updates per iteration.")
         self.update_counter = 0
 
-        self._alpha = torch.tensor([ent_coeff])
-        self._log_alpha = torch.log(self._alpha)
+        self._alpha = torch.tensor([ent_coeff]).to(agent.device)
+        self._log_alpha = torch.log(self._alpha).to(agent.device)
 
     def optimize_agent(self, elapsed_steps: int, samples: Samples):
         """
@@ -68,6 +68,9 @@ class SAC(Algorithm):
             return
         for _ in range(self.updates_per_optimize):
             samples_from_replay = self.replay_buffer.sample_batch(self.batch_size)
+            samples_from_replay = torchify_buffer(samples_from_replay)
+            samples_from_replay = buffer_to_device(samples_from_replay, self.agent.device)
+
             losses, values = self.loss(samples_from_replay)
             q_loss, pi_loss, alpha_loss = losses
 
@@ -79,15 +82,15 @@ class SAC(Algorithm):
 
             self.pi_optimizer.zero_grad()
             pi_loss.backward()
-            pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.agent.pi_parameters(),
+            pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.agent.model["pi"].parameters(),
                 self.clip_grad_norm)
             self.pi_optimizer.step()
 
             self.q_optimizer.zero_grad()
             q_loss.backward()
-            q1_grad_norm = torch.nn.utils.clip_grad_norm_(self.agent.q1_parameters(),
+            q1_grad_norm = torch.nn.utils.clip_grad_norm_(self.agent.model["q1"].parameters(),
                 self.clip_grad_norm)
-            q2_grad_norm = torch.nn.utils.clip_grad_norm_(self.agent.q2_parameters(),
+            q2_grad_norm = torch.nn.utils.clip_grad_norm_(self.agent.model["q2"].parameters(),
                 self.clip_grad_norm)
             self.q_optimizer.step()
 
@@ -106,8 +109,6 @@ class SAC(Algorithm):
         
         Input samples have leading batch dimension [B,..] (but not time).
         """
-        samples = buffer_to_device(samples, self.agent.device)
-
         q1, q2 = self.agent.q(samples.observation, samples.action)
         with torch.no_grad():
             target_action, target_log_pi, _ = self.agent.pi(samples.next_observation)

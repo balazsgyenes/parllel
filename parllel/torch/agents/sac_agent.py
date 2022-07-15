@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass
 from typing import Tuple, Union
 
@@ -59,8 +60,10 @@ class SacAgent(TorchAgent):
             pretrain_std: float = 0.75,  # With squash 0.75 is near uniform.
             ):
         """Saves input arguments; network defaults stored within."""
+        model["target_q1"] = copy.deepcopy(model["q1"])
+        model["target_q2"] = copy.deepcopy(model["q2"])
+
         super().__init__(model, distribution, device)
-        # self.min_itr_learn = 0  # Get from algo.
 
         self.obs_space = obs_space
         self.action_space = action_space
@@ -107,17 +110,17 @@ class SacAgent(TorchAgent):
         sample new action (with grad).  Uses special ``sample_loglikelihood()``
         method of Gaussian distriution, which handles action squashing
         through this process."""
-        model_inputs = observation
-        mean, log_std = self.model["pi"](*model_inputs)
-        dist_info = DistInfoStd(mean=mean, log_std=log_std)
+        model_inputs = (observation,)
+        model_outputs: PiModelOutputs = self.model["pi"](*model_inputs)
+        dist_info = DistInfoStd(mean=model_outputs.mean, log_std=model_outputs.log_std)
         action, log_pi = self.distribution.sample_loglikelihood(dist_info)
         # action = self.distribution.sample(dist_info)
         # log_pi = self.distribution.log_likelihood(action, dist_info)
         return action, log_pi, dist_info
 
     def update_target(self, tau=1):
-        update_state_dict(self.target_q1_model, self.model["q1"].state_dict(), tau)
-        update_state_dict(self.target_q2_model, self.model["q2"].state_dict(), tau)
+        update_state_dict(self.model["target_q1"], self.model["q1"].state_dict(), tau)
+        update_state_dict(self.model["target_q2"], self.model["q2"].state_dict(), tau)
 
     def train_mode(self, elapsed_steps: int) -> None:
         super().train_mode(elapsed_steps)

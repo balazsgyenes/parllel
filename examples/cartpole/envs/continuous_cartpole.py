@@ -7,10 +7,11 @@ from gym.wrappers import (
 
 def build_cartpole(
     max_episode_steps: int = 250,
+    reward_type: str = "dense",
 ) -> Env:
     env = CartPoleEnv(
         action_type="continuous",
-        reward_type="sparse",
+        reward_type=reward_type,
     )
 
     # add time limit
