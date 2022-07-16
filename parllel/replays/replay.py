@@ -84,6 +84,9 @@ class ReplayBuffer:
 
         if self._end + self._batch_spec.T > self._size:  # Wrap.
             idxs = np.arange(self._end, self._end + self._batch_spec.T) % self._size
+            # samples at beginning are now being overwritten
+            # from now on, begin needs to be incremented too
+            self._full = True
         else:
             idxs = slice(self._end, self._end + self._batch_spec.T)
         
@@ -93,12 +96,5 @@ class ReplayBuffer:
         # move cursor forward
         self._end = (self._end + self._batch_spec.T) % self._size
         
-        if self._end == 0:
-            # samples at beginning are now being overwritten, not valid anymore
-            # from now on, begin needs to be incremented too
-            self._full = True
-
         if self._full:
             self._begin = (self._begin + self._batch_spec.T) % self._size
-
-

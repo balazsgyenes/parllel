@@ -75,6 +75,8 @@ class PPO(Algorithm):
         formed within device, without further data transfer.
         """
 
+        self.agent.train_mode(elapsed_steps)
+
         samples = torchify_buffer(samples)
 
         recurrent = self.agent.recurrent

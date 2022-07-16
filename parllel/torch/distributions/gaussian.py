@@ -6,6 +6,8 @@ from parllel.buffers import NamedArrayTupleClass
 from .distribution import Distribution
 
 
+MIN_LOG_STD = -20
+MAX_LOG_STD = 2
 EPS = 1e-8
 
 DistInfo = NamedArrayTupleClass("DistInfo", ["mean"])
@@ -29,17 +31,15 @@ class Gaussian(Distribution):
             dim,
             std=None,
             noise_clip=None,
-            min_std=None,
-            max_std=None,
+            min_log_std=MIN_LOG_STD,
+            max_log_std=MAX_LOG_STD,
             ):
         """Saves input arguments."""
         self._dim = dim
         self.set_std(std)
         self.noise_clip = noise_clip
-        self.min_std = min_std
-        self.max_std = max_std
-        self.min_log_std = np.log(min_std) if min_std is not None else None
-        self.max_log_std = np.log(max_std) if max_std is not None else None
+        self.min_log_std = min_log_std
+        self.max_log_std = max_log_std
 
     @property
     def dim(self):
@@ -80,8 +80,7 @@ class Gaussian(Distribution):
             # shape = dist_info.mean.shape[:-1]
             # log_std = torch.log(self.std).repeat(*shape, 1)
             log_std = torch.log(self.std)  # Shape broadcast in following formula.
-        return torch.sum(log_std + np.log(np.sqrt(2 * np.pi * np.e)),
-            dim=-1)
+        return torch.sum(log_std + np.log(np.sqrt(2 * np.pi * np.e)), dim=-1)
 
     def log_likelihood(self, x, /, dist_info):
         """

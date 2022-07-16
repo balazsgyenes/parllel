@@ -21,7 +21,7 @@ class SAC(Algorithm):
             optimizers: Dict[str, torch.optim.Optimizer],
             batch_size: int = 256,
             discount: float = 0.99,
-            learning_starts: int = 1e4,
+            learning_starts: int = 0,
             replay_ratio=256,  # data_consumption / data_generation
             target_update_tau=0.005,  # tau=1 for hard update.
             target_update_interval=1,  # 1000 for hard update, 1 for soft.
@@ -61,12 +61,13 @@ class SAC(Algorithm):
         by gradient updates (with the number of updates determined by replay
         ratio, sampler batch size, and training batch size).
         """
-        if samples is not None:
-            self.replay_buffer.append_samples(samples)
+        self.replay_buffer.append_samples(samples)
         # opt_info = OptInfo(*([] for _ in range(len(OptInfo._fields))))
         if elapsed_steps < self.learning_starts:
             return
         for _ in range(self.updates_per_optimize):
+            self.agent.train_mode(elapsed_steps)
+
             samples_from_replay = self.replay_buffer.sample_batch(self.batch_size)
             samples_from_replay = torchify_buffer(samples_from_replay)
             samples_from_replay = buffer_to_device(samples_from_replay, self.agent.device)

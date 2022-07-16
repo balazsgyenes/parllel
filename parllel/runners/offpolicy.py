@@ -35,10 +35,8 @@ class OffPolicyRunner:
         for itr in range(self.n_iterations):
             elapsed_steps = itr * batch_size
 
-            self.agent.sample_mode(elapsed_steps)
             batch_samples, completed_trajs = self.sampler.collect_batch(elapsed_steps)
 
-            self.agent.train_mode(elapsed_steps)
             self.algorithm.optimize_agent(elapsed_steps, batch_samples)
 
             if (itr + 1) % self.log_interval_iters == 0:

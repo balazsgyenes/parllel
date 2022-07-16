@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Dict, Optional, Union, Tuple
 
 import numpy as np
 import torch
@@ -155,7 +155,11 @@ def buffer_to_device(buffer, device=None):
         raise TypeError(f"Cannot move {type(buffer)} object to device.") from e
 
 
-def update_state_dict(model, state_dict, tau=1):
+def update_state_dict(
+    model: torch.nn.Module,
+    state_dict: Dict[str, torch.Tensor],
+    tau: Union[float, int] = 1,
+) -> None:
     """Update the state dict of ``model`` using the input ``state_dict``, which
     must match format.  ``tau==1`` applies hard update, copying the values, ``0<tau<1``
     applies soft update: ``tau * new + (1 - tau) * old``.

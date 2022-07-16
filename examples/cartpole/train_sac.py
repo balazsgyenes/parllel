@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from itertools import chain
+import itertools
 import multiprocessing as mp
 
 import torch
@@ -90,7 +90,10 @@ def build():
             "q1": q1_model,
             "q2": q2_model,
         })
-        distribution = SquashedGaussian(dim=action_space.shape[0], scale=action_space.high[0])
+        distribution = SquashedGaussian(
+            dim=action_space.shape[0],
+            scale=10,
+        )
         device = (
             torch.device("cuda", index=0)
             if torch.cuda.is_available()
@@ -162,7 +165,7 @@ def build():
                 lr=learning_rate,
             ),
             "q": torch.optim.Adam(
-                chain(
+                itertools.chain(
                     agent.model["q1"].parameters(),
                     agent.model["q2"].parameters(),
                 ),

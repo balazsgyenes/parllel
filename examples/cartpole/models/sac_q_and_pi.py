@@ -36,8 +36,7 @@ class PiMlpModel(nn.Module):
         )
 
     def forward(self, observation):
-        lead_dim, T, B, _ = infer_leading_dims(observation,
-            self._obs_ndim)
+        lead_dim, T, B, _ = infer_leading_dims(observation, self._obs_ndim)
         output = self.mlp(observation.view(T * B, -1))
         mu, log_std = output[:, :self._action_size], output[:, self._action_size:]
         mu, log_std = restore_leading_dims((mu, log_std), lead_dim, T, B)

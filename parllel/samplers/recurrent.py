@@ -164,6 +164,7 @@ class RecurrentSampler(Sampler):
         batch_samples = self.batch_transform(self.batch_buffer)
 
         # convert to underlying numpy array
+        # TODO: remove this, sampler should return Array objects for flexibility
         batch_samples = buffer_asarray(batch_samples)
 
         return batch_samples, completed_trajectories
