@@ -4,8 +4,7 @@ import numpy as np
 from nptyping import NDArray
 from numba import njit
 
-from parllel.arrays import Array, RotatingArray
-from parllel.buffers import EnvSamples, NamedArrayTupleClass, Samples
+from parllel.buffers import Samples
 
 from .running_mean_std import RunningMeanStd
 from .transform import BatchTransform
@@ -16,13 +15,13 @@ EPSILON = 1e-6
 
 @njit(fastmath=True)
 def compute_past_discount_return(
-        reward: NDArray[np.float32],
-        done: NDArray[np.bool_],
-        previous_return: NDArray[np.float32],
-        previous_done: NDArray[np.bool_],
-        discount: float,
-        out_return: NDArray[np.float32],
-    ) -> None:
+    reward: NDArray[np.float32],
+    done: NDArray[np.bool_],
+    previous_return: NDArray[np.float32],
+    previous_done: NDArray[np.bool_],
+    discount: float,
+    out_return: NDArray[np.float32],
+) -> None:
     """Computes discounted sum of past rewards from T=0 to the current time
     step. Rewards received further in the past are more heavily discounted.
     """
@@ -85,12 +84,12 @@ class NormalizeRewards(BatchTransform):
         done = np.asarray(done)
 
         compute_past_discount_return(
-            reward,
-            done,
-            previous_past_return,
-            previous_done,
-            self.discount,
-            past_return,
+            reward=reward,
+            done=done,
+            previous_return=previous_past_return,
+            previous_done=previous_done,
+            discount=self.discount,
+            out_return=past_return,
         )
 
         # update statistics of discounted return

@@ -29,6 +29,8 @@ class ReplayBuffer:
 
         # TODO: replace these hard-coded values
         self.invalid_samples_at_front = 1 # next_observation not set yet
+        # actually, all samples have a next_observation already, but it is not
+        # copied into the replay buffer because of conversion to ndarray
         self.invalid_samples_at_back = 0
 
         # only samples between _begin:_end are valid

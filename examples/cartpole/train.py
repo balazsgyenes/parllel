@@ -78,15 +78,20 @@ def build():
 
         # instantiate model and agent
         agent = CategoricalPgAgent(
-            model=model, distribution=distribution, observation_space=obs_space,
-            action_space=action_space, n_states=batch_spec.B, device=device)
+            model=model,
+            distribution=distribution,
+            observation_space=obs_space,
+            action_space=action_space,
+            n_states=batch_spec.B,
+            device=device,
+        )
         agent = TorchHandler(agent=agent)
 
         # write dict into namedarraytuple and read it back out. this ensures the
         # example is in a standard format (i.e. namedarraytuple).
         batch_env.observation[0] = obs_space.sample()
         example_obs = batch_env.observation[0]
-        
+
         # get example output from agent
         _, agent_info = agent.step(example_obs)
 

@@ -30,22 +30,25 @@ def build():
     batch_B = 16
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = False
-    EnvClass=build_cartpole
-    env_kwargs={
+    parallel = True
+    EnvClass = build_cartpole
+    env_kwargs = {
         "max_episode_steps": 1000,
         "reward_type": "dense",
     }
-    TrajInfoClass = TrajInfo
-    traj_info_kwargs = {}
     discount = 0.99
-    replay_ratio = 32
+    TrajInfoClass = TrajInfo
+    traj_info_kwargs = {
+        "discount": discount,
+    }
+    replay_ratio = 256
     reward_min = -5.
     reward_max = 5.
     learning_rate = 0.001
-    n_steps = 200 * batch_spec.size
-    replay_size = 100 * batch_spec.size
+    n_steps = 100 * batch_spec.size
+    replay_size = 20 * batch_spec.size
     log_interval_steps = 5 * batch_spec.size
+
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -71,19 +74,19 @@ def build():
             obs_space=obs_space,
             action_space=action_space,
             hidden_sizes=[64, 64],
-            hidden_nonlinearity=torch.nn.ReLU,
+            hidden_nonlinearity=torch.nn.Tanh,
         )
         q1_model = QMlpModel(
             obs_space=obs_space,
             action_space=action_space,
             hidden_sizes=[64, 64],
-            hidden_nonlinearity=torch.nn.ReLU,
+            hidden_nonlinearity=torch.nn.Tanh,
         )
         q2_model = QMlpModel(
             obs_space=obs_space,
             action_space=action_space,
             hidden_sizes=[64, 64],
-            hidden_nonlinearity=torch.nn.ReLU,
+            hidden_nonlinearity=torch.nn.Tanh,
         )
         model = torch.nn.ModuleDict({
             "pi": pi_model,
@@ -92,7 +95,7 @@ def build():
         })
         distribution = SquashedGaussian(
             dim=action_space.shape[0],
-            scale=10,
+            scale=action_space.high[0],
         )
         device = (
             torch.device("cuda", index=0)
@@ -101,20 +104,26 @@ def build():
         )
 
         # instantiate model and agent
-        agent = SacAgent(model=model, distribution=distribution, device=device,
-            obs_space=obs_space, action_space=action_space)
+        agent = SacAgent(
+            model=model,
+            distribution=distribution,
+            observation_space=obs_space,
+            action_space=action_space,
+            learning_starts=1e4,
+            device=device,
+        )
         agent = TorchHandler(agent=agent)
 
         # write dict into namedarraytuple and read it back out. this ensures the
         # example is in a standard format (i.e. namedarraytuple).
-        batch_env.observation[0, 0] = obs_space.sample()
-        example_obs = batch_env.observation[0, 0]
+        batch_env.observation[0] = obs_space.sample()
+        example_obs = batch_env.observation[0]
 
         # get example output from agent
         _, agent_info = agent.step(example_obs)
 
         # allocate batch buffer based on examples
-        batch_agent_info = buffer_from_example(agent_info, tuple(batch_spec), ArrayCls)
+        batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), ArrayCls)
         batch_agent = AgentSamples(batch_action, batch_agent_info)
         batch_buffer = Samples(batch_agent, batch_env)
 
@@ -181,6 +190,7 @@ def build():
             optimizers=optimizers,
             discount=discount,
             replay_ratio=replay_ratio,
+            learning_starts=1e4,
         )
 
         # create runner

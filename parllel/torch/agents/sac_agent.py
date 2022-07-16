@@ -31,7 +31,7 @@ class SacAgent(TorchAgent):
         model: torch.nn.Module,
         distribution: SquashedGaussian,
         device: torch.device,
-        obs_space: gym.Space,
+        observation_space: gym.Space,
         action_space: gym.Space,
         learning_starts: int = 0,
         pretrain_std: float = 0.75,  # With squash 0.75 is near uniform.
@@ -42,7 +42,7 @@ class SacAgent(TorchAgent):
 
         super().__init__(model, distribution, device)
 
-        self.obs_space = obs_space
+        self.obs_space = observation_space
         self.action_space = action_space
         self.learning_starts = learning_starts
         self.pretrain_std = pretrain_std
