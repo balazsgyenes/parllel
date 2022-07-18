@@ -14,15 +14,15 @@ from .sampler import Sampler
 
 class RecurrentSampler(Sampler):
     def __init__(self,
-            batch_spec: BatchSpec,
-            envs: Sequence[Cage],
-            agent: Handler,
-            batch_buffer: Samples,
-            max_steps_decorrelate: Optional[int] = None,
-            get_bootstrap_value: bool = False,
-            obs_transform: Transform = None,
-            batch_transform: Transform = None,
-            ) -> None:
+        batch_spec: BatchSpec,
+        envs: Sequence[Cage],
+        agent: Handler,
+        batch_buffer: Samples,
+        max_steps_decorrelate: Optional[int] = None,
+        get_bootstrap_value: bool = False,
+        obs_transform: Optional[Transform] = None,
+        batch_transform: Optional[Transform] = None,
+    ) -> None:
         """Generates samples for training recurrent agents.
         """
         for cage in envs:
@@ -73,7 +73,7 @@ class RecurrentSampler(Sampler):
         self.batch_transform = batch_transform
 
         # prepare cages for sampling
-        self.initialize()
+        self.reset()
 
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         # get references to buffer elements
@@ -89,7 +89,6 @@ class RecurrentSampler(Sampler):
             self.batch_buffer.env.valid,
         )
         envs = self.envs
-        last_T = self.batch_spec.T - 1
 
         # rotate last values from previous batch to become previous values
         buffer_rotate(self.batch_buffer)
@@ -143,7 +142,7 @@ class RecurrentSampler(Sampler):
             # if environment is already done, this value is invalid, but then
             # it will be ignored anyway
             self.agent.value(
-                observation[last_T + 1],
+                observation[observation.last + 1],
                 out_value=self.batch_buffer.agent.bootstrap_value,
             )
 
@@ -151,7 +150,7 @@ class RecurrentSampler(Sampler):
             if env.already_done:
                 self.agent.reset_one(env_index=b)
                 # overwrite next first observation with reset observation
-                env.reset_async(out_obs=observation[last_T + 1, b])
+                env.reset_async(out_obs=observation[observation.last + 1, b])
                 env.await_step()
 
         # collect all completed trajectories from envs

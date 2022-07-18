@@ -30,8 +30,8 @@ class Sampler(ABC):
         
         try:
             # try writing beyond the apparent bounds of the observation buffer
-            T_last = self.batch_spec.T - 1
-            batch_buffer.env.observation[T_last + 1] = 0
+            observation = batch_buffer.env.observation
+            observation[observation.last + 1] = 0
         except IndexError:
             raise TypeError("batch_buffer.env.observation must be a "
                 "RotatingArray")
@@ -41,11 +41,12 @@ class Sampler(ABC):
             max_steps_decorrelate = 0
         self.max_steps_decorrelate = max_steps_decorrelate
 
-    def initialize(self) -> None:
+        self.seed(seed=None)  # TODO: replace with seeding module
+
+    def reset(self) -> None:
         """Prepare environments, agents and buffers for sampling.
         """
         self.reset_envs()
-        self.seed(seed=None)  # TODO: replace with seeding module
         if self.max_steps_decorrelate > 0:
             self.decorrelate_environments()
         self.reset_agent()
@@ -56,11 +57,10 @@ class Sampler(ABC):
         rotating the batch buffer.
         """
         observation = self.batch_buffer.env.observation
-        T_last = self.batch_spec.T - 1
         for b, env in enumerate(self.envs):
             # save reset observation to the end of buffer, since it will be 
             # rotated to the beginning
-            env.reset_async(out_obs=observation[T_last + 1, b])
+            env.reset_async(out_obs=observation[observation.last + 1, b])
 
         # wait for envs to finish reset
         for b, env in enumerate(self.envs):
