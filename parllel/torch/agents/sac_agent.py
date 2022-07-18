@@ -38,7 +38,9 @@ class SacAgent(TorchAgent):
     ) -> None:
         """Saves input arguments; network defaults stored within."""
         model["target_q1"] = copy.deepcopy(model["q1"])
+        model["target_q1"].requires_grad_(False)
         model["target_q2"] = copy.deepcopy(model["q2"])
+        model["target_q2"].requires_grad_(False)
 
         super().__init__(model, distribution, device)
 
@@ -100,6 +102,10 @@ class SacAgent(TorchAgent):
         dist_info = DistInfoStd(mean=model_outputs.mean, log_std=model_outputs.log_std)
         action, log_pi = self.distribution.sample_loglikelihood(dist_info)
         return action, log_pi, dist_info
+
+    def freeze_q_models(self, freeze: bool) -> None:
+        self.model["q1"].requires_grad_(not freeze)
+        self.model["q2"].requires_grad_(not freeze)
 
     def update_target(self, tau: Union[float, int] = 1) -> None:
         update_state_dict(self.model["target_q1"], self.model["q1"].state_dict(), tau)

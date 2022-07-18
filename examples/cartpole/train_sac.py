@@ -34,7 +34,7 @@ def build():
     EnvClass = build_cartpole
     env_kwargs = {
         "max_episode_steps": 1000,
-        "reward_type": "dense",
+        "reward_type": "sparse",
     }
     discount = 0.99
     TrajInfoClass = TrajInfo
