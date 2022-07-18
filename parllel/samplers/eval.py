@@ -68,6 +68,8 @@ class EvalSampler(Sampler):
         self.agent.eval_mode(elapsed_steps)
         self.agent.reset()
         
+        # TODO: freeze statistics in obs normalization
+
         n_completed_trajs = 0
 
         # main sampling loop

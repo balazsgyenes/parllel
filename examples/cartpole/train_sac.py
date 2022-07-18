@@ -12,7 +12,7 @@ from parllel.patterns import (add_obs_normalization, add_reward_clipping,
     add_reward_normalization, build_cages_and_env_buffers)
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
-from parllel.samplers.basic import BasicSampler
+from parllel.samplers import BasicSampler, EvalSampler
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.algos.sac import SAC
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
@@ -30,7 +30,7 @@ def build():
     batch_B = 16
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = True
+    parallel = False
     EnvClass = build_cartpole
     env_kwargs = {
         "max_episode_steps": 1000,
@@ -41,14 +41,16 @@ def build():
     traj_info_kwargs = {
         "discount": discount,
     }
-    replay_ratio = 256
+    replay_ratio = 64
     reward_min = -5.
     reward_max = 5.
     learning_rate = 0.001
     n_steps = 100 * batch_spec.size
     replay_size = 20 * batch_spec.size
     log_interval_steps = 5 * batch_spec.size
-
+    max_traj_length = 2000
+    min_trajectories = 20
+    n_eval_envs = 16
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -193,13 +195,37 @@ def build():
             learning_starts=1e4,
         )
 
+        # allocate a step buffer with space for a single step
+        # RotatingArrays are preserved
+        step_buffer = buffer_from_example(batch_buffer[0], (1,))
+
+        CageCls = type(cages[0])
+        eval_cage_kwargs = dict(
+            EnvClass = EnvClass,
+            env_kwargs = env_kwargs,
+            TrajInfoClass = TrajInfoClass,
+            traj_info_kwargs = traj_info_kwargs,
+            wait_before_reset = False,
+        )
+        eval_envs = [CageCls(**eval_cage_kwargs) for _ in range(n_eval_envs)]
+
+        eval_sampler = EvalSampler(
+            max_traj_length=max_traj_length,
+            min_trajectories=min_trajectories,
+            envs=eval_envs,
+            agent=agent,
+            step_buffer=step_buffer,
+            obs_transform=Compose(step_transforms),
+        )
+
         # create runner
         runner = OffPolicyRunner(
             sampler=sampler,
             agent=agent,
             algorithm=algorithm,
-            n_steps=n_steps,
             batch_spec=batch_spec,
+            eval_sampler=eval_sampler,
+            n_steps=n_steps,
             log_interval_steps=log_interval_steps,
         )
 
