@@ -91,11 +91,11 @@ class SAC(Algorithm):
         # r + gamma * (1 - d) * (min Q_targ(s', a') - alpha * log pi(s', a'))
         # where a' ~ pi(.|s')
         with torch.no_grad():
-            target_action, target_log_pi, _ = self.agent.pi(samples.next_observation)
-            target_q1, target_q2 = self.agent.target_q(samples.next_observation, target_action)
+            next_action, next_log_prob, _ = self.agent.pi(samples.next_observation)
+            target_q1, target_q2 = self.agent.target_q(samples.next_observation, next_action)
         min_target_q = torch.min(target_q1, target_q2)
-        target_value = min_target_q - self._alpha * target_log_pi
-        y = samples.reward + self.discount * ~samples.done * target_value
+        next_q = min_target_q - self._alpha * next_log_prob
+        y = samples.reward + self.discount * ~samples.done * next_q
         q1, q2 = self.agent.q(samples.observation, samples.action)
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
 
@@ -112,12 +112,12 @@ class SAC(Algorithm):
         self.agent.freeze_q_models(True)
 
         # train policy model by maximizing the predicted Q value
-        # minimize -(min Q(s, a) - alpha * log pi(a, s))
+        # maximize (min Q(s, a) - alpha * log pi(a, s))
         # where a ~ pi(.|s)
-        new_action, log_pi, (pi_mean, pi_log_std) = self.agent.pi(samples.observation)
-        log_target1, log_target2 = self.agent.q(samples.observation, new_action)
-        min_log_target = torch.min(log_target1, log_target2)
-        pi_losses = self._alpha * log_pi - min_log_target
+        new_action, log_prob, (pi_mean, pi_log_std) = self.agent.pi(samples.observation)
+        q1, q2 = self.agent.q(samples.observation, new_action)
+        min_q = torch.min(q1, q2)
+        pi_losses = self._alpha * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
 
         # update Pi model parameters according to pi loss
