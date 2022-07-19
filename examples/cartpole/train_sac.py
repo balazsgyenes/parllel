@@ -6,7 +6,7 @@ import torch
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
-from parllel.buffers import AgentSamples, buffer_method, Samples
+from parllel.buffers import AgentSamples, EnvSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
 from parllel.patterns import (add_obs_normalization, add_reward_clipping,
     add_reward_normalization, build_cages_and_env_buffers)
@@ -30,7 +30,7 @@ def build():
     batch_B = 16
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = False
+    parallel = True
     EnvClass = build_cartpole
     env_kwargs = {
         "max_episode_steps": 1000,
@@ -197,7 +197,19 @@ def build():
 
         # allocate a step buffer with space for a single step
         # RotatingArrays are preserved
-        step_buffer = buffer_from_example(batch_buffer[0], (1,))
+        stripped_batch_buffer = Samples(
+            AgentSamples(
+                action=batch_buffer.agent.action,
+                agent_info=batch_buffer.agent.agent_info,
+            ),
+            EnvSamples(
+                observation=batch_buffer.env.observation,
+                reward=batch_buffer.env.reward,
+                done=batch_buffer.env.done,
+                env_info=batch_buffer.env.env_info,
+            )
+        )
+        step_buffer = buffer_from_example(stripped_batch_buffer[0], (1,))
 
         CageCls = type(cages[0])
         eval_cage_kwargs = dict(
@@ -206,6 +218,7 @@ def build():
             TrajInfoClass = TrajInfoClass,
             traj_info_kwargs = traj_info_kwargs,
             wait_before_reset = False,
+            buffers = step_buffer,
         )
         eval_envs = [CageCls(**eval_cage_kwargs) for _ in range(n_eval_envs)]
 
@@ -233,6 +246,10 @@ def build():
             yield runner
         
         finally:
+            for cage in eval_envs:
+                cage.close()
+            buffer_method(step_buffer, "close")
+            buffer_method(step_buffer, "destroy")
             sampler.close()
             agent.close()
             buffer_method(batch_buffer, "close")

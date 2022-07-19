@@ -41,10 +41,12 @@ class OnPolicyRunner:
         self.n_iterations = int(n_steps // batch_spec.size)
         self.log_interval_iters = int(log_interval_steps // batch_spec.size)
 
+        self._progress_bar = None
+
     def run(self) -> None:
         print("Starting training...")
         
-        progress_bar = tqdm(total=self.n_steps, unit="steps")
+        self._progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
         completed_trajs = []
 
@@ -68,7 +70,7 @@ class OnPolicyRunner:
 
                 completed_trajs.clear()
 
-            progress_bar.update(batch_size)
+            self._progress_bar.update(batch_size)
 
         print("Finished training.")
-        
+        self._progress_bar = None
