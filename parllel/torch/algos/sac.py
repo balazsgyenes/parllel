@@ -3,7 +3,7 @@ from typing import Dict, Union
 import torch
 
 from parllel.algorithm import Algorithm
-from parllel.buffers import Samples
+from parllel.buffers import Samples, buffer_asarray
 from parllel.replays.replay import ReplayBuffer
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.types.batch_spec import BatchSpec
@@ -58,6 +58,7 @@ class SAC(Algorithm):
         by gradient updates (with the number of updates determined by replay
         ratio, sampler batch size, and training batch size).
         """
+        samples = buffer_asarray(samples)
         self.replay_buffer.append_samples(samples)
         
         if elapsed_steps < self.learning_starts:

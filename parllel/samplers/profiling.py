@@ -13,10 +13,19 @@ from .sampler import Sampler
 
 
 class ProfilingSampler(Sampler):
-    def __init__(self, batch_spec: BatchSpec, envs: Sequence[Cage], batch_buffer: Samples,
-                n_iterations: int, profile_path: Optional[Path] = None
-                ) -> None:
-        super().__init__(batch_spec, envs, agent=None, batch_buffer=batch_buffer)
+    def __init__(self,
+        batch_spec: BatchSpec,
+        envs: Sequence[Cage],
+        sample_buffer: Samples,
+        n_iterations: int,
+        profile_path: Optional[Path] = None,
+    ) -> None:
+        super().__init__(
+            batch_spec=batch_spec,
+            envs=envs,
+            agent=None,
+            sample_buffer=sample_buffer,
+        )
 
         self.n_iterations = n_iterations
         self.profile_path = profile_path
@@ -26,7 +35,7 @@ class ProfilingSampler(Sampler):
         self.profiler = cProfile.Profile() if profile_path is not None else None
     
     def reset_agent(self) -> None:
-        # skip reseting agent
+        # skip resetting agent
         pass
 
     def collect_batch(self, elapsed_steps: int) -> None:
@@ -36,12 +45,12 @@ class ProfilingSampler(Sampler):
         batch_T, batch_B = self.batch_spec
         durations = self.durations
 
-        action = self.batch_buffer.agent.action
+        action = self.sample_buffer.agent.action
         observation, reward, done, env_info = (
-            self.batch_buffer.env.observation,
-            self.batch_buffer.env.reward,
-            self.batch_buffer.env.done,
-            self.batch_buffer.env.env_info,
+            self.sample_buffer.env.observation,
+            self.sample_buffer.env.reward,
+            self.sample_buffer.env.done,
+            self.sample_buffer.env.env_info,
         )
 
         if self.profiler is not None:

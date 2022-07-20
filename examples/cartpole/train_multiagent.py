@@ -180,7 +180,7 @@ def build():
             batch_spec=batch_spec,
             envs=cages,
             agent=agent,
-            batch_buffer=batch_buffer,
+            sample_buffer=batch_buffer,
             max_steps_decorrelate=50,
             get_bootstrap_value=True,
             batch_transform=Compose(batch_transforms),

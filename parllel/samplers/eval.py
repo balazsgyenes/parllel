@@ -30,16 +30,13 @@ class EvalSampler(Sampler):
                     " environments immediately. Set wait_before_reset=False")
         
         super().__init__(
-            batch_spec = BatchSpec(max_traj_length, len(envs)),
-            envs = envs,
-            agent = agent,
-            batch_buffer = step_buffer,
+            batch_spec=BatchSpec(max_traj_length, len(envs)),
+            envs=envs,
+            agent=agent,
+            sample_buffer=step_buffer,
         )
 
         self.min_trajectories = min_trajectories
-
-        if obs_transform is None:
-            obs_transform = lambda x, t: x
         self.obs_transform = obs_transform
 
         # prepare cages for sampling
@@ -48,21 +45,22 @@ class EvalSampler(Sampler):
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         # get references to buffer elements
         action, agent_info = (
-            self.batch_buffer.agent.action,
-            self.batch_buffer.agent.agent_info,
+            self.sample_buffer.agent.action,
+            self.sample_buffer.agent.agent_info,
         )
         observation, reward, done, env_info = (
-            self.batch_buffer.env.observation,
-            self.batch_buffer.env.reward,
-            self.batch_buffer.env.done,
-            self.batch_buffer.env.env_info,
+            self.sample_buffer.env.observation,
+            self.sample_buffer.env.reward,
+            self.sample_buffer.env.done,
+            self.sample_buffer.env.env_info,
         )
+        sample_buffer = self.sample_buffer
 
         # reset all environments
         self.reset_envs()
 
         # rotate last values from previous batch to become previous values
-        buffer_rotate(self.batch_buffer)
+        buffer_rotate(sample_buffer)
 
         # prepare agent for sampling
         self.agent.eval_mode(elapsed_steps)
@@ -76,7 +74,8 @@ class EvalSampler(Sampler):
         for _ in range(self.batch_spec.T):
 
             # apply any transforms to the observation before the agent steps
-            self.batch_samples = self.obs_transform(self.batch_buffer, 0)
+            if self.obs_transform is not None:
+                sample_buffer = self.obs_transform(sample_buffer, 0)
 
             # agent observes environment and outputs actions
             self.agent.step(observation[0], out_action=action[0],

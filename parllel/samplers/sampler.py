@@ -18,7 +18,7 @@ class Sampler(ABC):
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
         agent: Handler,
-        batch_buffer: Samples,
+        sample_buffer: Samples,
         max_steps_decorrelate: Optional[int] = None,
     ) -> None:
         self.batch_spec = batch_spec
@@ -30,12 +30,12 @@ class Sampler(ABC):
         
         try:
             # try writing beyond the apparent bounds of the observation buffer
-            observation = batch_buffer.env.observation
+            observation = sample_buffer.env.observation
             observation[observation.last + 1] = 0
         except IndexError:
-            raise TypeError("batch_buffer.env.observation must be a "
+            raise TypeError("sample_buffer.env.observation must be a "
                 "RotatingArray")
-        self.batch_buffer = batch_buffer
+        self.sample_buffer = sample_buffer
 
         if max_steps_decorrelate is None:
             max_steps_decorrelate = 0
@@ -56,7 +56,7 @@ class Sampler(ABC):
         of the observation buffer, assuming that batch collection begins by
         rotating the batch buffer.
         """
-        observation = self.batch_buffer.env.observation
+        observation = self.sample_buffer.env.observation
         for b, env in enumerate(self.envs):
             # save reset observation to the end of buffer, since it will be 
             # rotated to the beginning
@@ -76,12 +76,12 @@ class Sampler(ABC):
     def decorrelate_environments(self) -> None:
         """Randomly step environments so they are not all synced up."""
         # get references to buffer elements
-        action = self.batch_buffer.agent.action
+        action = self.sample_buffer.agent.action
         observation, reward, done, env_info = (
-            self.batch_buffer.env.observation,
-            self.batch_buffer.env.reward,
-            self.batch_buffer.env.done,
-            self.batch_buffer.env.env_info,
+            self.sample_buffer.env.observation,
+            self.sample_buffer.env.reward,
+            self.sample_buffer.env.done,
+            self.sample_buffer.env.env_info,
         )
         T_last = self.batch_spec.T - 1
 

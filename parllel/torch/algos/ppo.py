@@ -3,8 +3,7 @@ import torch.optim
 import numpy as np
 
 from parllel.algorithm import Algorithm
-from parllel.buffers import NamedArrayTupleClass
-from parllel.buffers import Samples
+from parllel.buffers import Samples, buffer_asarray, NamedArrayTupleClass
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
 from parllel.torch.utils import buffer_to_device, torchify_buffer, valid_mean
@@ -77,6 +76,7 @@ class PPO(Algorithm):
 
         self.agent.train_mode(elapsed_steps)
 
+        samples = buffer_asarray(samples)
         samples = torchify_buffer(samples)
 
         recurrent = self.agent.recurrent
