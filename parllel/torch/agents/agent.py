@@ -27,7 +27,7 @@ class TorchAgent(Agent):
             self.model.to(device)
         self.device = device
 
-        self.mode = None
+        self.mode = "sample"
         self.recurrent = False
         self.rnn_states = None
         self.previous_action = None
@@ -75,15 +75,32 @@ class TorchAgent(Agent):
 
     def train_mode(self, elapsed_steps: int) -> None:
         """Go into training mode (e.g. see PyTorch's ``Module.train()``)."""
+        # does not set self.mode because there is no state associated with
+        # training (i.e. we only care when moving between sample and eval
+        # modes)
         self.model.train()
-        self.mode = "train"
 
     def sample_mode(self, elapsed_steps: int) -> None:
         """Go into sampling mode."""
         self.model.eval()
+
+        # if coming from evaluation, restore states from sampling
+        if self.recurrent and self.mode == "eval":
+            self.rnn_states = self._sampler_rnn_states
+            self.previous_action = self._sampler_previous_action
+
         self.mode = "sample"
 
     def eval_mode(self, elapsed_steps: int) -> None:
         """Go into evaluation mode.  Example use could be to adjust epsilon-greedy."""
         self.model.eval()
+
+        # if coming from sampling, store states and set new blank states
+        if self.recurrent and self.mode == "sample":
+            self._sampler_rnn_states = self.rnn_states
+            self.rnn_states = torch.zeros_like(self.rnn_states)
+
+            self._sampler_previous_action = self.previous_action
+            self.previous_action = torch.zeros_like(self.previous_action)
+
         self.mode = "eval"
