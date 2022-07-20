@@ -6,13 +6,13 @@ import torch
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
-from parllel.buffers import AgentSamples, EnvSamples, buffer_method, Samples
-from parllel.cages import TrajInfo, ProcessCage
+from parllel.buffers import AgentSamples, buffer_method, Samples
+from parllel.cages import TrajInfo
 from parllel.patterns import (add_obs_normalization, add_reward_clipping,
-    add_reward_normalization, build_cages_and_env_buffers)
+    add_reward_normalization, build_cages_and_env_buffers, build_eval_sampler)
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
-from parllel.samplers import BasicSampler, EvalSampler
+from parllel.samplers import BasicSampler
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.algos.sac import SAC
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
@@ -195,66 +195,39 @@ def build():
             learning_starts=1e4,
         )
 
-        # allocate a step buffer with space for a single step
-        # RotatingArrays are preserved
-        stripped_batch_buffer = Samples(
-            AgentSamples(
-                action=batch_buffer.agent.action,
-                agent_info=batch_buffer.agent.agent_info,
-            ),
-            EnvSamples(
-                observation=batch_buffer.env.observation,
-                reward=batch_buffer.env.reward,
-                done=batch_buffer.env.done,
-                env_info=batch_buffer.env.env_info,
-            )
-        )
-        step_buffer = buffer_from_example(stripped_batch_buffer[0], (1,))
-
-        CageCls = type(cages[0])
-        eval_cage_kwargs = dict(
-            EnvClass = EnvClass,
-            env_kwargs = env_kwargs,
-            TrajInfoClass = TrajInfoClass,
-            traj_info_kwargs = traj_info_kwargs,
-            wait_before_reset = False,
-        )
-        if issubclass(CageCls, ProcessCage):
-            eval_cage_kwargs["buffers"] = step_buffer
-        eval_envs = [CageCls(**eval_cage_kwargs) for _ in range(n_eval_envs)]
-
-        eval_sampler = EvalSampler(
+        with build_eval_sampler(
+            samples_buffer=batch_buffer,
+            agent=agent,
+            step_transforms=step_transforms,
+            CageCls=type(cages[0]),
+            EnvClass=EnvClass,
+            env_kwargs=env_kwargs,
+            TrajInfoClass=TrajInfoClass,
+            traj_info_kwargs=traj_info_kwargs,
+            n_eval_envs=n_eval_envs,
             max_traj_length=max_traj_length,
             min_trajectories=min_trajectories,
-            envs=eval_envs,
-            agent=agent,
-            step_buffer=step_buffer,
-            obs_transform=Compose(step_transforms),
-        )
+        ) as eval_sampler:
 
-        # create runner
-        runner = OffPolicyRunner(
-            sampler=sampler,
-            agent=agent,
-            algorithm=algorithm,
-            batch_spec=batch_spec,
-            eval_sampler=eval_sampler,
-            n_steps=n_steps,
-            log_interval_steps=log_interval_steps,
-        )
+            # create runner
+            runner = OffPolicyRunner(
+                sampler=sampler,
+                agent=agent,
+                algorithm=algorithm,
+                batch_spec=batch_spec,
+                eval_sampler=eval_sampler,
+                n_steps=n_steps,
+                log_interval_steps=log_interval_steps,
+            )
 
-        try:
-            yield runner
-        
-        finally:
-            for cage in eval_envs:
-                cage.close()
-            buffer_method(step_buffer, "close")
-            buffer_method(step_buffer, "destroy")
-            sampler.close()
-            agent.close()
-            buffer_method(batch_buffer, "close")
-            buffer_method(batch_buffer, "destroy")
+            try:
+                yield runner
+            
+            finally:
+                sampler.close()
+                agent.close()
+                buffer_method(batch_buffer, "close")
+                buffer_method(batch_buffer, "destroy")
     
 
 if __name__ == "__main__":
