@@ -7,7 +7,7 @@ import torch
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, EnvSamples, buffer_method, Samples
-from parllel.cages import TrajInfo
+from parllel.cages import TrajInfo, ProcessCage
 from parllel.patterns import (add_obs_normalization, add_reward_clipping,
     add_reward_normalization, build_cages_and_env_buffers)
 from parllel.replays.replay import ReplayBuffer
@@ -218,8 +218,9 @@ def build():
             TrajInfoClass = TrajInfoClass,
             traj_info_kwargs = traj_info_kwargs,
             wait_before_reset = False,
-            buffers = step_buffer,
         )
+        if issubclass(CageCls, ProcessCage):
+            eval_cage_kwargs["buffers"] = step_buffer
         eval_envs = [CageCls(**eval_cage_kwargs) for _ in range(n_eval_envs)]
 
         eval_sampler = EvalSampler(

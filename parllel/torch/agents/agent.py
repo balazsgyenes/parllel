@@ -25,6 +25,7 @@ class TorchAgent(Agent):
             device = torch.device("cpu")
         if device != torch.device("cpu"):
             self.model.to(device)
+            self.distribution.to_device(device)
         self.device = device
 
         self.mode = "sample"

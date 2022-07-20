@@ -40,6 +40,11 @@ class Gaussian(Distribution):
         self.noise_clip = noise_clip
         self.min_log_std = min_log_std
         self.max_log_std = max_log_std
+        self.device = None
+
+    def to_device(self, device: torch.device):
+        self.device = device
+        self.set_std(self.std)
 
     @property
     def dim(self):
@@ -119,12 +124,10 @@ class Gaussian(Distribution):
                     max=self.max_log_std)
             std = torch.exp(log_std)
         else:
-            # shape = mean.shape[:-1]
-            # std = self.std.repeat(*shape, 1).to(mean.device)
-            std = self.std.to(mean.device)
+            std = self.std
         # For reparameterization trick: mean + std * N(0, 1)
         # (Also this gets noise on same device as mean.)
-        noise = std * torch.normal(torch.zeros_like(mean), torch.ones_like(mean))
+        noise = std * torch.normal(0, torch.ones_like(mean))
         # noise = torch.normal(mean=0, std=std)
         if self.noise_clip is not None:
             noise = torch.clamp(noise, -self.noise_clip, self.noise_clip)
@@ -146,9 +149,9 @@ class Gaussian(Distribution):
         """
         if std is not None:
             if not isinstance(std, torch.Tensor):
-                std = torch.tensor(std).float()  # Can be size == 1 or dim.
-            # Used to have, but shape of std should broadcast everywhere needed:
-            # if std.numel() == 1:
-            #     std = std * torch.ones(self.dim).float()  # Make it size dim.
-            assert std.numel() in (self.dim, 1)
+                std = torch.tensor(std)
+            assert std.shape in ((self.dim,), (1,), ())
+            std = std.float()
+            if self.device is not None:
+                std = std.to(self.device)
         self.std = std

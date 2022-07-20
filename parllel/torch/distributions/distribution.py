@@ -10,7 +10,6 @@ class Distribution(ABC):
     methods."""
 
     def to_device(self, device: torch.device):
-        # TODO: implement, e.g. for Gaussian with fixed std
         pass
 
     @property
