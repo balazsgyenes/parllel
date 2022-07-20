@@ -58,7 +58,7 @@ class Gaussian(Distribution):
         if self.std is None:
             old_log_std = old_dist_info.log_std
             new_log_std = new_dist_info.log_std
-            if self.min_std is not None or self.max_std is not None:
+            if self.min_log_std is not None or self.max_log_std is not None:
                 old_log_std = torch.clamp(old_log_std, min=self.min_log_std,
                     max=self.max_log_std)
                 new_log_std = torch.clamp(new_log_std, min=self.min_log_std,
@@ -74,7 +74,8 @@ class Gaussian(Distribution):
         return torch.sum(vals, dim=-1)
 
     def entropy(self, dist_info):
-        """Uses ``self.std`` unless that is None, then will get log_std from dist_info.
+        """Uses ``self.std`` unless that is None, then will get log_std from
+        dist_info.
         """
         if self.std is None:
             log_std = dist_info.log_std
@@ -88,8 +89,8 @@ class Gaussian(Distribution):
         return torch.sum(log_std + np.log(np.sqrt(2 * np.pi * np.e)), dim=-1)
 
     def log_likelihood(self, x, /, dist_info):
-        """
-        Uses ``self.std`` unless that is None, then uses log_std from dist_info.
+        """Uses ``self.std`` unless that is None, then uses log_std from
+        dist_info.
         """
         mean = dist_info.mean
         if self.std is None:
@@ -105,10 +106,33 @@ class Gaussian(Distribution):
         return logli
 
     def likelihood_ratio(self, x, /, old_dist_info, new_dist_info):
-        # TODO: this is stupid. fix it
-        logli_old = self.log_likelihood(x, old_dist_info)
-        logli_new = self.log_likelihood(x, new_dist_info)
-        return torch.exp(logli_new - logli_old)
+        if self.std is None:
+            # L_n/L_o = s_o/s_n * exp(-1/2 * (z_n^2 - z_o^2))
+            # where z = (x - mu) / s
+            old_log_std = old_dist_info.log_std
+            new_log_std = new_dist_info.log_std
+            if self.min_log_std is not None or self.max_log_std is not None:
+                old_log_std = torch.clamp(old_log_std, min=self.min_log_std,
+                    max=self.max_log_std)
+                new_log_std = torch.clamp(new_log_std, min=self.min_log_std,
+                    max=self.max_log_std)
+            old_std = torch.exp(old_log_std)
+            new_std = torch.exp(new_log_std)
+
+            old_z = (x - old_dist_info.mean) / (old_std + EPS)
+            new_z = (x - new_dist_info.mean) / (new_std + EPS)
+
+            ratios = old_std / new_std * torch.exp(-(new_z ** 2 - old_z ** 2) / 2)
+
+        else:
+            # L_n/L_o = exp(-1/2 * (X_n^2 - X_o^2) / s^2)
+            # where X = x - mu
+            old_X = (x - old_dist_info.mean)
+            new_X = (x - new_dist_info.mean)
+
+            ratios = torch.exp(-(new_X ** 2 - old_X ** 2) / 2 / self.std ** 2)
+
+        return torch.sum(ratios, dim=-1)
 
     def sample(self, dist_info):
         """
