@@ -167,7 +167,7 @@ def build():
         replay_buffer = ReplayBuffer(
             buffer=replay_buffer,
             batch_spec=batch_spec,
-            size=replay_size,
+            length_T=replay_size,
         )
 
         optimizers = {
