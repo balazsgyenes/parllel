@@ -66,6 +66,12 @@ class Array(Buffer):
         self._index_history += self._unresolved_indices
         self._unresolved_indices = []
 
+    def _resolve_current_indices(self) -> None:
+        self._resolve_indexing_history()
+
+        self._current_indices = compute_indices(self._base_array,
+            self._current_array)
+
     @property
     def shape(self):
         self._resolve_indexing_history()
@@ -73,45 +79,35 @@ class Array(Buffer):
 
     @property
     def index_history(self) -> Tuple[Indices, ...]:
-        # TODO: just return the current_indices with any required offset
-        # this allows efficient reconstruction in a single step
         return tuple(chain(self._index_history, self._unresolved_indices))
 
     @property
-    def current_indices(self):
-        # TODO: maybe this should not be a public property, so that it does not
-        # need to be offset for rotating arrays
-        if self._current_indices is None:
-
-            self._resolve_indexing_history()
-
-            self._current_indices = compute_indices(
-                self._base_array, self._current_array)
-
-        return self._current_indices
-
-    @property
     def previous(self):
-        leading_index = self.current_indices[0]
+        """Return a view of the Array with the same shape, but with the leading
+        time index decremented by 1.
+        """
+        if self._current_indices is None:
+            self._resolve_current_indices()
+        leading_index = self._current_indices[0]
         if leading_index == slice(None):
             raise ValueError("Cannot return previous array before time "
                 "dimension has been indexed.")
         
         leading_index = shift_index(leading_index, -1)
-        indices = (leading_index,) + tuple(self.current_indices[1:])
-        # TODO: this is wrong for RotatingArray
+        indices = (leading_index,) + tuple(self._current_indices[1:])
         return self._base_array[indices]
 
     @property
     def next(self):
-        leading_index = self.current_indices[0]
+        if self._current_indices is None:
+            self._resolve_current_indices()
+        leading_index = self._current_indices[0]
         if leading_index == slice(None):
             raise ValueError("Cannot return next array before time "
                 "dimension has been indexed.")
         
         leading_index = shift_index(leading_index, 1)
-        indices = (leading_index,) + tuple(self.current_indices[1:])
-        # TODO: this is wrong for RotatingArray
+        indices = (leading_index,) + tuple(self._current_indices[1:])
         return self._base_array[indices]
 
     def __getitem__(self, location: Indices) -> Array:

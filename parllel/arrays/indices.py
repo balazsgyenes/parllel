@@ -126,15 +126,18 @@ def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index],
     to the base array, and the base array's shape, and returns the next indices
     of the subarray relative to the base array after indexing.
 
+    NOTE: this functions converts slice `s` to standard form (start/stop
+        positive integers and step non-zero integer) using
+        `slice(*s.indices(size))`. However, does not return a slice in standard
+        form for stop=None and step < 0, where the new stop is negative. This
+        results in a "standard" slice that gives a different result than the
+        original. e.g. slice(5, None, -1) -> slice(5, -1, -1), which is a
+        0-length slice. This case is explicitly checked for, and the end point
+        is then set to None.
+
     Issues:
     - no checks to make sure that index is valid (e.g. bounds checking), so the
         indexing has to be done on the ndarray as well.
-    - this functions converts slice `s` to standard form (start/stop positive
-        integers and step non-zero integer) using `slice(*s.indices(size))`.
-        However, does not return a slice in standard form for stop=None and
-        step < 0, where the new stop is negative. This results in a "standard"
-        slice that gives a different result than the original.
-        e.g. slice(5, None, -1) -> slice(5, -1, -1), which is a 0-length slice
 
     Benefits:
     - appears to be faster than `compute_indices` (see benchmarks)
@@ -180,7 +183,9 @@ def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index],
                 new_index %= base_size
             else:  # new_index: slice
                 # make start/stop positive integers and step non-zero integer
-                new_index = slice(*new_index.indices(base_size))
+                start, stop, step = new_index.indices(base_size)
+                stop = stop if stop < 0 else None
+                new_index = slice(start, stop, step)
             current_indices[dim] = new_index
         else:
             # this dimension has been indexed with a non-trivial slice

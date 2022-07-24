@@ -59,31 +59,34 @@ class RotatingArray(Array):
 
     @property
     def first(self) -> int:
-        """The index of the first element in the array, not including padding.
+        """The index of the first element of the visible region of the array.
         Enables syntactic sugar like `arr[arr.first - 1]`
         """
         return 0
 
     @property
     def last(self) -> int:
-        """The index of the final element in the array, not including padding.
+        """The index of the final element of the visible region of the array.
         Replaces indexing at -1 in numpy arrays.
         e.g. array[-1] -> rot_array[rot_array.last]
         """
         return self._apparent_shape[0] - 1
 
     @property
-    def current_indices(self):
-        if self._current_indices is None:
+    def begin(self) -> int:
+        """Start point of a slice that begins at the beginning of the visible
+        region of the array.
+        Useful for slicing like `arr[arr.begin:arr.end]`
+        """
+        return 0
 
-            self._resolve_indexing_history()
-
-            self._current_indices = compute_indices(
-                self._base_array, self._current_array)
-
-            self._current_indices = shift_indices(self._current_indices, -self._padding)
-
-        return self._current_indices
+    @property
+    def end(self) -> int:
+        """Endpoint of a slice that ends at the end of the visible region of
+        the array.
+        Useful for slicing like `arr[arr.begin:arr.end]`
+        """
+        return self._apparent_shape[0]
 
     def _resolve_indexing_history(self) -> None:
         if self._index_history:
