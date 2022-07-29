@@ -46,7 +46,7 @@ def build():
     reward_max = 5.
     learning_rate = 0.001
     n_steps = 100 * batch_spec.size
-    replay_size = 20 * batch_spec.size
+    replay_length = 20 * batch_spec.T
     log_interval_steps = 5 * batch_spec.size
     max_traj_length = 2000
     min_trajectories = 20
@@ -163,11 +163,11 @@ def build():
         )
 
         # create the replay buffer as a longer version of the batch buffer
-        replay_buffer = buffer_from_example(batch_buffer[0], (replay_size,))
+        replay_buffer = buffer_from_example(batch_buffer[0], (replay_length,))
         replay_buffer = ReplayBuffer(
             buffer=replay_buffer,
             batch_spec=batch_spec,
-            length_T=replay_size,
+            length_T=replay_length,
         )
 
         optimizers = {
