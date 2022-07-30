@@ -6,7 +6,7 @@ import torch
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
-from parllel.buffers import AgentSamples, buffer_method, Samples
+from parllel.buffers import AgentSamples, buffer_method, Samples, NamedArrayTupleClass
 from parllel.cages import TrajInfo
 from parllel.patterns import (add_obs_normalization, add_reward_clipping,
     add_reward_normalization, build_cages_and_env_buffers, build_eval_sampler)
@@ -164,10 +164,26 @@ def build():
 
         # create the replay buffer as a longer version of the batch buffer
         replay_buffer = buffer_from_example(batch_buffer[0], (replay_length,))
+        ReplayBufferSamples = NamedArrayTupleClass("ReplayBufferSamples",
+            ["observation", "action", "reward", "done", "next_observation"])
+        replay_obs = replay_buffer.env.observation
+        replay_buffer_samples = ReplayBufferSamples(
+            observation=replay_obs,
+            action=replay_buffer.agent.action,
+            reward=replay_buffer.env.reward,
+            done=replay_buffer.env.done,
+            # TODO: replace with replay_obs.next
+            next_observation=replay_obs[1 : replay_obs.last + 2],
+        )
+
         replay_buffer = ReplayBuffer(
-            buffer=replay_buffer,
+            buffer_to_append=replay_buffer,
+            buffer_to_sample=replay_buffer_samples,
             batch_spec=batch_spec,
             length_T=replay_length,
+            newest_n_samples_invalid=1, # next_observation not set yet
+            # actually, all samples have a next_observation already, but it is not
+            # copied into the replay buffer because of conversion to ndarray
         )
 
         optimizers = {

@@ -3,6 +3,7 @@ import torch.optim
 import numpy as np
 
 from parllel.algorithm import Algorithm
+from parllel.arrays import Array
 from parllel.buffers import Samples, buffer_asarray, NamedArrayTupleClass
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
@@ -66,7 +67,7 @@ class PPO(Algorithm):
     def seed(self, seed: int):
         self.rng = np.random.default_rng(seed)
 
-    def optimize_agent(self, elapsed_steps: int, samples: Samples):
+    def optimize_agent(self, elapsed_steps: int, samples: Samples[Array]):
         """
         Train the agent, for multiple epochs over minibatches taken from the
         input samples.  Organizes agent inputs from the training data, and

@@ -1,95 +1,83 @@
-from typing import Any, Optional
+from typing import Optional
 
 import numpy as np
 from numpy import random
 
-from parllel.buffers import Buffer, Samples, NamedArrayTupleClass, buffer_asarray
+from parllel.arrays import Array
+from parllel.buffers import Buffer, Samples, buffer_asarray
 from parllel.types import BatchSpec
-
-
-SarsSamples = NamedArrayTupleClass("SarsSample",
-    ["observation", "action", "reward", "done", "next_observation"])
 
 
 class ReplayBuffer:
     def __init__(self,
-        buffer: Buffer,
+        buffer_to_append: Samples,
+        buffer_to_sample: Buffer,
         batch_spec: BatchSpec,
         length_T: int,
+        newest_n_samples_invalid: int = 0,
+        oldest_n_samples_invalid: int = 0,
     ) -> None:
         """Stores more than a batch's worth of samples in a circular buffer for
         off-policy algorithms to sample from.
         """
-        self.buffer = buffer
+        # convert to ndarray because Array cannot handle indexing with an array
+        self.append_buffer = buffer_asarray(buffer_to_append)
+        self.sample_buffer = buffer_asarray(buffer_to_sample)
         self.batch_spec = batch_spec
-        
         self.length = length_T
+        self.newest_n_samples_invalid = newest_n_samples_invalid
+        self.oldest_n_samples_invalid = oldest_n_samples_invalid
+
         self.size = self.length * self.batch_spec.B
 
-        # TODO: replace these hard-coded values
-        self.invalid_samples_at_front = 1 # next_observation not set yet
-        # actually, all samples have a next_observation already, but it is not
-        # copied into the replay buffer because of conversion to ndarray
-        self.invalid_samples_at_back = 0
-
-        # only samples between _begin:_end are valid
-        self._begin: int = 0
-        self._end: int = 0
+        self._cursor: int = 0 # index of next sample to write
         self._full = False # has the entire buffer been written to at least once?
         
         self.seed()
     
-    def seed(self, seed: Optional[int] = None):
+    def seed(self, seed: Optional[int] = None) -> None:
         # TODO: replace with seeding module
         self._rng = random.default_rng(seed)
 
-    def sample_batch(self, n_samples):
-        begin = self._begin + self.invalid_samples_at_back
-        end = self._end - self.invalid_samples_at_front
-
-        if begin > end:
+    def sample_batch(self, n_samples: int) -> Buffer[np.ndarray]:
+        if self._full:
             # valid region of buffer wraps around
             # sample integers from 0 to L, and then offset them while wrapping around
-            L = self.length + end - begin
+            offset = self._cursor + self.oldest_n_samples_invalid
+            L = (
+                self.length
+                - self.oldest_n_samples_invalid
+                - self.newest_n_samples_invalid
+            )
             T_idxs = self._rng.integers(0, L, size=(n_samples,))
-            T_idxs = (T_idxs + begin) % self.length
+            T_idxs = (T_idxs + offset) % self.length
         else:
-            T_idxs = self._rng.integers(begin, end, size=(n_samples,))
+            T_idxs = self._rng.integers(0, self._cursor, size=(n_samples,))
 
         B_idxs = self._rng.integers(0, self.batch_spec.B, size=(n_samples,))
 
-        # TODO: move this to user-defined function, currently hard-coded
-        observation = self.buffer.env.observation
+        return self.sample_buffer[T_idxs, B_idxs]
 
-        samples = SarsSamples(
-            observation=observation,
-            action=self.buffer.agent.action,
-            reward=self.buffer.env.reward,
-            done=self.buffer.env.done,
-            # TODO: replace with observation.next
-            next_observation=observation[1 : observation.last + 2],
-        )
+    def append_samples(self, samples: Samples[Array]) -> None:
 
-        samples = buffer_asarray(samples)
-        samples = samples[T_idxs, B_idxs]
-
-        return samples
-
-    def append_samples(self, samples: Samples):
-
-        if self._end + self.batch_spec.T > self.length:  # Wrap.
-            idxs = np.arange(self._end, self._end + self.batch_spec.T) % self.length
-            # samples at beginning are now being overwritten
-            # from now on, begin needs to be incremented too
-            self._full = True
+        if self._cursor + self.batch_spec.T > self.length:
+            # indices where samples are inserted wrap around end of buffer
+            idxs = np.arange(self._cursor, self._cursor + self.batch_spec.T) % self.length
         else:
-            idxs = slice(self._end, self._end + self.batch_spec.T)
+            idxs = slice(self._cursor, self._cursor + self.batch_spec.T)
         
-        # # TODO: add ability for replay buffer and batch buffer to be different
-        self.buffer[idxs] = samples
+        # TODO: add ability for replay buffer and batch buffer to be different
+        # TODO: without explicitly writing to the padding of the observation
+        # buffer, there is no way to set the next_observation for the last step
+        # in the replay buffer
+        self.append_buffer[idxs] = samples
 
         # move cursor forward
-        self._end = (self._end + self.batch_spec.T) % self.length
+        self._cursor += self.batch_spec.T
+
+        if self._cursor >= self.length:
+            # note that previous check is for greater than, but here we also
+            # check for equality
+            self._full = True
+            self._cursor %= self.length
         
-        if self._full:
-            self._begin = (self._begin + self.batch_spec.T) % self.length

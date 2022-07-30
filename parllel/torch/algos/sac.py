@@ -3,7 +3,8 @@ from typing import Dict, Union
 import torch
 
 from parllel.algorithm import Algorithm
-from parllel.buffers import Samples, buffer_asarray
+from parllel.arrays import Array
+from parllel.buffers import Samples
 from parllel.replays.replay import ReplayBuffer
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.types.batch_spec import BatchSpec
@@ -51,14 +52,13 @@ class SAC(Algorithm):
         self._alpha = torch.tensor([ent_coeff]).to(agent.device)
         self._log_alpha = torch.log(self._alpha).to(agent.device)
 
-    def optimize_agent(self, elapsed_steps: int, samples: Samples):
+    def optimize_agent(self, elapsed_steps: int, samples: Samples[Array]):
         """
         Extracts the needed fields from input samples and stores them in the 
         replay buffer.  Then samples from the replay buffer to train the agent
         by gradient updates (with the number of updates determined by replay
         ratio, sampler batch size, and training batch size).
         """
-        samples = buffer_asarray(samples)
         self.replay_buffer.append_samples(samples)
         
         if elapsed_steps < self.learning_starts:
