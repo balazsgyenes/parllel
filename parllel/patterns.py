@@ -4,11 +4,13 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.buffers import (AgentSamples, EnvSamples, NamedArrayTupleClass,
-    Samples, buffer_map)
+    Samples, buffer_map, buffer_method)
 from parllel.cages import Cage, ProcessCage
 from parllel.handlers import Agent
-from parllel.transforms import (Transform, ClipRewards, EstimateAdvantage,
-    NormalizeAdvantage, NormalizeObservations, NormalizeRewards)
+from parllel.samplers import EvalSampler
+from parllel.transforms import (Transform, Compose, ClipRewards,
+    EstimateAdvantage, NormalizeAdvantage, NormalizeObservations,
+    NormalizeRewards)
 from parllel.types import BatchSpec
 
 
@@ -76,7 +78,7 @@ def build_cages_and_env_buffers(
             cage.close()
 
 
-def add_initial_rnn_state(batch_buffer: Samples, agent: Agent):
+def add_initial_rnn_state(batch_buffer: Samples, agent: Agent) -> Samples:
 
     # get the Array type used for the rewards. reward might be a named tuple,
     # but the underlying array should be non-rotating
@@ -104,7 +106,7 @@ def add_initial_rnn_state(batch_buffer: Samples, agent: Agent):
     return batch_buffer
 
 
-def add_bootstrap_value(batch_buffer: Samples):
+def add_bootstrap_value(batch_buffer: Samples) -> Samples:
     batch_agent: AgentSamples = batch_buffer.agent    
     batch_agent_info = batch_agent.agent_info
 
@@ -124,7 +126,7 @@ def add_bootstrap_value(batch_buffer: Samples):
     return batch_buffer
 
 
-def add_valid(batch_buffer: Samples):
+def add_valid(batch_buffer: Samples) -> Samples:
     batch_buffer_env: EnvSamples = batch_buffer.env
     done = batch_buffer_env.done
 
@@ -145,12 +147,12 @@ def add_valid(batch_buffer: Samples):
 
 
 def add_advantage_estimation(
-        batch_buffer: Samples,
-        transforms: List[Transform],
-        discount: float,
-        gae_lambda: float,
-        normalize: bool = False,
-    ) -> Tuple[Samples, List[Transform]]:
+    batch_buffer: Samples,
+    transforms: List[Transform],
+    discount: float,
+    gae_lambda: float,
+    normalize: bool = False,
+) -> Tuple[Samples, List[Transform]]:
     
     # add required fields to batch_buffer
     # get convenient local references
@@ -186,10 +188,10 @@ def add_advantage_estimation(
 
 
 def add_obs_normalization(
-        batch_buffer: Samples,
-        transforms: List[Transform],
-        initial_count: Union[int, float, None] = None,
-    ) -> Tuple[Samples, List[Transform]]:
+    batch_buffer: Samples,
+    transforms: List[Transform],
+    initial_count: Union[int, float, None] = None,
+) -> Tuple[Samples, List[Transform]]:
 
     transforms.append(
         NormalizeObservations(
@@ -204,11 +206,11 @@ def add_obs_normalization(
 
 
 def add_reward_normalization(
-        batch_buffer: Samples,
-        transforms: List[Transform],
-        discount: float,
-        initial_count: Union[int, float, None] = None,
-    ) -> Tuple[Samples, List[Transform]]:
+    batch_buffer: Samples,
+    transforms: List[Transform],
+    discount: float,
+    initial_count: Union[int, float, None] = None,
+) -> Tuple[Samples, List[Transform]]:
 
     # add "past_return_" field to batch_buffer
     # get convenient local references
@@ -263,3 +265,63 @@ def add_reward_clipping(
     )
 
     return batch_buffer, transforms
+
+
+@contextmanager
+def build_eval_sampler(
+    samples_buffer: Samples,
+    agent: Agent,
+    step_transforms: List[Transform],
+    CageCls: Callable,
+    EnvClass: Callable,
+    env_kwargs: Dict,
+    TrajInfoClass: Callable,
+    traj_info_kwargs: Dict,
+    n_eval_envs: int,
+    max_traj_length: int,
+    min_trajectories: int,
+) -> EvalSampler:
+
+    # allocate a step buffer with space for a single step
+    # RotatingArrays are preserved
+    stripped_batch_buffer = Samples(
+        AgentSamples(
+            action=samples_buffer.agent.action,
+            agent_info=samples_buffer.agent.agent_info,
+        ),
+        EnvSamples(
+            observation=samples_buffer.env.observation,
+            reward=samples_buffer.env.reward,
+            done=samples_buffer.env.done,
+            env_info=samples_buffer.env.env_info,
+        )
+    )
+    step_buffer = buffer_from_example(stripped_batch_buffer[0], (1,))
+
+    eval_cage_kwargs = dict(
+        EnvClass = EnvClass,
+        env_kwargs = env_kwargs,
+        TrajInfoClass = TrajInfoClass,
+        traj_info_kwargs = traj_info_kwargs,
+        wait_before_reset = False,
+    )
+    if issubclass(CageCls, ProcessCage):
+        eval_cage_kwargs["buffers"] = step_buffer
+    eval_envs = [CageCls(**eval_cage_kwargs) for _ in range(n_eval_envs)]
+
+    eval_sampler = EvalSampler(
+        max_traj_length=max_traj_length,
+        min_trajectories=min_trajectories,
+        envs=eval_envs,
+        agent=agent,
+        step_buffer=step_buffer,
+        obs_transform=Compose(step_transforms),
+    )
+
+    try:
+        yield eval_sampler
+    finally:
+        for cage in eval_envs:
+            cage.close()
+        buffer_method(step_buffer, "close")
+        buffer_method(step_buffer, "destroy")

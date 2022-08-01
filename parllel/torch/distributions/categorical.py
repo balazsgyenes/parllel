@@ -19,7 +19,6 @@ class Categorical(DiscreteMixin, Distribution):
         q = new_dist_info.prob
         return torch.sum(p * (torch.log(p + EPS) - torch.log(q + EPS)), dim=-1)
 
-
     def sample(self, dist_info):
         """Sample from ``torch.multiomial`` over trailing dimension of
         ``dist_info.prob``."""

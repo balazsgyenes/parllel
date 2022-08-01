@@ -20,6 +20,8 @@ def buffer_from_example(example: Buffer, leading_dims: Tuple[int, ...] = (),
     if isinstance(example, Array):
         shape = leading_dims + example.shape
         dtype = example.dtype
+        # TODO: just passing **kwargs here will not be enough, if e.g. padding is not 0
+        # need to extract properties from example and overwrite with kwargs if given
         return type(example)(shape=shape, dtype=dtype, **kwargs)
     else:  # assume np.ndarray
         np_example = np.asarray(example)  # promote scalars to 0d arrays
@@ -41,13 +43,19 @@ def buffer_from_dict_example(example: Dict, leading_dims: Tuple[int, ...], Array
     # convert any Python values to numpy
     example = buffer_map(np.asanyarray, example)
 
-    # demote any 1d scalar arrays to actual scalars
-    # this ensures that the final buffer with leading dimensions is the right size
-    def to_numpy_scalar(arr):
-        if arr.shape == (1,):
-            return arr[0]
-        return arr
-    example = buffer_map(to_numpy_scalar, example)
+    # def as_any_array_preserving_scalars(obj):
+    #     """Convert to numpy array, but ensure that scalars are preserved as
+    #     0d-arrays. Normally, np.asanyarray will convert to a scalar to an array
+    #     with shape (1,).
+    #     """
+    #     was_scalar = np.isscalar(obj)
+    #     arr = np.asanyarray(obj)
+    #     if was_scalar:
+    #         arr = arr[0]
+    #     return arr
+
+    # # preserve scalars to ensure that resulting Array has the correct shape
+    # example = buffer_map(as_any_array_preserving_scalars, example)
 
     # force float64 arrays to float32 arrays to save memory
     if force_32bit:

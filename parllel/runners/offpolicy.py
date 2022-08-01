@@ -11,26 +11,28 @@ except ImportError:
     has_summary_writer = False
 
 from parllel.algorithm import Algorithm
-from parllel.handlers.agent import Agent
-from parllel.samplers.sampler import Sampler
+from parllel.samplers import Sampler, EvalSampler
+from parllel.handlers import Agent
 from parllel.types import BatchSpec
 
 
-class OnPolicyRunner:
+class OffPolicyRunner:
     def __init__(self,
             sampler: Sampler,
             agent: Agent,
             algorithm: Algorithm,
-            n_steps: int,
             batch_spec: BatchSpec,
+            eval_sampler: EvalSampler,
+            n_steps: int,
             log_interval_steps: int,
             log_dir: Optional[Path] = None,
         ) -> None:
         self.sampler = sampler
         self.agent = agent
         self.algorithm = algorithm
-        self.n_steps = n_steps
         self.batch_spec = batch_spec
+        self.eval_sampler = eval_sampler
+        self.n_steps = n_steps
 
         if log_dir is not None and has_summary_writer:
             log_dir.mkdir(parents=True)
@@ -44,33 +46,32 @@ class OnPolicyRunner:
         self._progress_bar = None
 
     def run(self) -> None:
-        print("Starting training...")
-        
         self._progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
-        completed_trajs = []
 
+        self._evaluate_agent(0)
         for itr in range(self.n_iterations):
             elapsed_steps = itr * batch_size
 
-            batch_samples, new_trajs = self.sampler.collect_batch(elapsed_steps)
-            completed_trajs.extend(new_trajs)
+            batch_samples, _ = self.sampler.collect_batch(elapsed_steps)
 
             self.algorithm.optimize_agent(elapsed_steps, batch_samples)
 
             if (itr + 1) % self.log_interval_iters == 0:
-                traj_disc_returns = [traj.DiscountedReturn for traj in completed_trajs]
-                traj_disc_returns = np.array(traj_disc_returns)
-                mean_disc_return = traj_disc_returns.mean()
-
-                if self.logger is not None:
-                    self.logger.add_scalar("DiscountedReturn", mean_disc_return, elapsed_steps)
-
-                print(f"Average discounted return: {mean_disc_return:.3f}")
-
-                completed_trajs.clear()
+                self._evaluate_agent(elapsed_steps)
 
             self._progress_bar.update(batch_size)
-
+        
         print("Finished training.")
         self._progress_bar = None
+        
+    def _evaluate_agent(self, elapsed_steps):
+        completed_trajs = self.eval_sampler.collect_batch(elapsed_steps)
+        traj_disc_returns = [traj.DiscountedReturn for traj in completed_trajs]
+        traj_disc_returns = np.array(traj_disc_returns)
+        mean_disc_return = traj_disc_returns.mean()
+
+        if self.logger is not None:
+            self.logger.add_scalar("DiscountedReturn", mean_disc_return, elapsed_steps)
+        
+        print(f"Average discounted return: {mean_disc_return:.3f}")
