@@ -24,7 +24,13 @@ class Agent(ABC):
     def reset_one(self, env_index: int) -> None:
         pass
 
+    def train_mode(self, elapsed_steps: int) -> None:
+        pass
+
     def sample_mode(self, elapsed_steps: int) -> None:
+        pass
+
+    def eval_mode(self, elapsed_steps: int) -> None:
         pass
 
     def close(self) -> None:

@@ -31,8 +31,14 @@ class Handler(ABC):
     def reset_one(self, env_index: int) -> None:
         self._agent.reset_one(env_index)
 
+    def train_mode(self, elapsed_steps: int) -> None:
+        self._agent.train_mode(elapsed_steps)
+
     def sample_mode(self, elapsed_steps: int) -> None:
         self._agent.sample_mode(elapsed_steps)
+
+    def eval_mode(self, elapsed_steps: int) -> None:
+        self._agent.eval_mode(elapsed_steps)
 
     def close(self) -> None:
         self._agent.close()

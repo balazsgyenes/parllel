@@ -40,24 +40,35 @@ rlpyt is a great piece of software, but there are several pain points when it co
         - If a seed is requested twice for the same name, an error is thrown
     - Config handling. User passes a giant dictionary of config parameters to a build method.
         - To deal with parameters reused by multiple entities (e.g. discount, batch spec), implement search method to avoid having to define a "canonical" position for these parameters (e.g. discount belongs in the algorithm parameters).
-    - Logging of start state (e.g. config, seeds, allocators, etc.) to compare runs after the fact and allow for repeating runs
-    - Logging of diagnostic data (e.g. rewards, traj length, etc.) during training to analyze results
-        - Data is saved to tensorboard, csv file, and log file
-        - `log_array` logs mean, max, min, std_dev, and median of values in the array
-        - `log_value` logs a single value as given (e.g. observation mean and std_dev)
-    - Logging of notifications and warnings
-        - Data is saved to log file and standard output
+    - **!!** Logging
+        - Logging of start state (e.g. config, seeds, allocators, etc.) to compare runs after the fact and allow for repeating runs
+        - Logging of diagnostic data (e.g. rewards, traj length, etc.) during training to analyze results
+            - Data is saved to tensorboard, csv file, and log file
+            - `log_array` logs mean, max, min, std_dev, and median of values in the array
+            - `log_value` logs a single value as given (e.g. observation mean and std_dev)
+        - Logging of notifications and warnings
+            - Data is saved to log file and standard output
     - Saving of checkpoints (e.g. model parameters, optimizer state, transform states, etc.) to allow for resuming training
     - Loading of previous runs for e.g. running a policy, repeating a run, resuming a run
-    - Allocators
+    - **!!** Allocators
         - Add allocators module with user-configurable and default logic for what Array type should be used for what buffer element
+        - Set parallel attribute in allocator module and then get default CageCls everywhere else
     - Callbacks?
 - Algos
-    - Any many more methods that subclasses could overwrite (e.g. `construct_agent_inputs` in PPO)
+    - Refactor PPO with MinibatchBuffer to remove if statement for recurrent case.
     - DDPG
     - Jax PPO :)
 - Arrays
-    - **!!** Rename attributes `first` to `begin` and `last` to `end`. Remove the `-1` offset in `end` index, such that normal index `-1` corresponds to `end - 1`.
+    - Add `begin` and `end` attributes, where `end` is intended to be used in a slice
+    - **!!** Merge Array and RotatingArray into a single class.
+        - Enforce that `-1` is never used to index the last element, i.e. `-1` is never passed to the underlying `ndarray`.
+    - **!!** Organize Array class hierarchy.
+        - Use `init_subclass` hook to register subclasses and organize them by e.g. memory type. Add `__new__` method that chooses between subclasses based on arguments.
+        - Maybe add method to return arguments required to create a duplicate `Array`.
+        - Maybe add `array_like` method to create a clone of the given array with the option to override certain parameters (e.g. shape, dtype, memory).
+    - ReplayArray allocates more space than a single batch for use in ReplayBuffer types. `rotate` shifts the writable portion in time, and another method exposes the entire array for sampling.
+        - To avoid having to deal with disjoint sections of memory when wrapping, allocate an integer multiple of `batch_T` and copy on `rotate`.
+        - ReplayArray needs to know how many samples before and after writable portion are invalid (i.e. because `n_step_returns` have been overwritten).
     - SwitchingArray wraps two arrays and switches between them on `rotate`. This is useful for asynchronous sampling, where different parts of the array are simultaneously written to by the sampler and read from by the algorithm.
         - Overloading `rotate` is useful because the batch buffer is already rotated before each batch.
         - SwitchingRotatingArray needs to add 4x padding or maybe we should just allocate 2 arrays.
@@ -77,17 +88,16 @@ rlpyt is a great piece of software, but there are several pain points when it co
         - The array slices passed to `async_step` are not sent to the child process, but the parent process verifies that they are the expected ones.
         - When `set_samples_buffer` is called on the `SynchronizedProcessCage`, it saves the array slice that it should iterate through during sampling. Since the array slice is also sent on each time step, other Cage types can ignore it.
     - VectorizedCage, similar to VecEnc in StableBaselines3, which allows for multiple environments in a single process.
-    - **??** Add argument to `ProcessCage` to choose between process creation methods
+    - Add argument to `ProcessCage` to choose between process creation methods
 - Handler:
     - Implement CPU sampling by duplicating the agent with a model parameters on the CPU. Handler overrides `sampling_mode` and `training_mode`, etc. to know when to sync model parameters.
 - Patterns
     - Include default parameter sets for things like algorithms. Remove all default values in algorithm `__init__` methods.
 - Replay buffers
-    - Add replay buffers that wrap a samples buffer and expose the ability to sample from it. All required values (e.g. discounted returns) are precomputed by Transforms.
-        - Is it possible for the sampler to write directly into the replay buffer, without copying from a smaller batch buffer? This would require calling `set_samples_buffer` before every batch in all cases, since a replay buffer could even be used with BasicSampler.
+    - Make replay buffer share memory with batch buffer, such that the Replay object simply wraps some existing buffer structure and exposes the ability to sample from it. This allows the user to define at the top-level what format the replay samples have.
+        - If the ReplayArray does not store its state in shared memory, then `set_samples_buffer` before every batch in all cases, otherwise `rotate` would have no effect in child processes.
 - Runners
     - Add logging and checkpointing
-    - Add `OffPolicyRunner`
     - Add runner that just runs trained policy and renders it
     - Add `ChainRunner`, which chains multiple Runners to execute in sequence. `ChainRunner` must implement some resource management, such that resources for a runner are not created until needed, and destroyed after they are no longer needed. This is difficult because it's likely that some resources are shared between runners.
 - Samplers
@@ -99,6 +109,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - FullEpisodeSampler, which returns only completed trajectories every iteration. This is essentially a configuration of the RecurrentSampler (cages wait to reset, sampler stops if all envs done, samples buffer allocated with T equal to maximum episode length). Depending on wait-reset semantics, it might not make sense to have a separate class for this.
 - Transforms
     - **!!** Instead of passing parameters like `valid_only`, pass `batch_buffer` so that the Transform can compute the value itself. Then remove `dry_run` from `EstimateMultiAgentAdvantage` and create a pattern for adding it.
+    - Add `freeze` method to stop statistics from being updated when evaluating agent.
     - Add `stats` attribute to normalizing transforms (and anything else in the transform that is stateful and could be logged)
     - Add test for `NormalizeObservation` transformation, which verifies that environments that are already done are not factored into running statistics.
 - Misc

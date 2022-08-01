@@ -157,6 +157,11 @@ class NamedArrayTupleClass(NamedTupleClass):
     def _make(self, iterable: Iterable[Any]) -> NamedArrayTuple:
         return NamedArrayTuple(self._typename, self._fields, iterable)
 
+    def __getitem__(self, loc: Any) -> None:
+        # convenience method for type hints, allowing typing like 
+        # "Samples[np.ndarray]"
+        pass
+
 
 class NamedArrayTuple(NamedTuple, Buffer):
     def __new__(cls, typename, fields: Tuple[str], values: Iterable[Any]):

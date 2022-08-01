@@ -6,6 +6,8 @@ from parllel.buffers import NamedArrayTupleClass
 from .distribution import Distribution
 
 
+MIN_LOG_STD = -20
+MAX_LOG_STD = 2
 EPS = 1e-8
 
 DistInfo = NamedArrayTupleClass("DistInfo", ["mean"])
@@ -28,31 +30,27 @@ class Gaussian(Distribution):
             self,
             dim,
             std=None,
-            clip=None,
             noise_clip=None,
-            min_std=None,
-            max_std=None,
-            squash=None,  # None or > 0
+            min_log_std=MIN_LOG_STD,
+            max_log_std=MAX_LOG_STD,
             ):
         """Saves input arguments."""
         self._dim = dim
         self.set_std(std)
-        self.clip = clip
         self.noise_clip = noise_clip
-        self.min_std = min_std
-        self.max_std = max_std
-        self.min_log_std = np.log(min_std) if min_std is not None else None
-        self.max_log_std = np.log(max_std) if max_std is not None else None
-        self.squash = squash
-        assert (clip is None or squash is None), "Choose one."
+        self.min_log_std = min_log_std
+        self.max_log_std = max_log_std
+        self.device = None
+
+    def to_device(self, device: torch.device):
+        self.device = device
+        self.set_std(self.std)
 
     @property
     def dim(self):
         return self._dim
 
     def kl(self, old_dist_info, new_dist_info):
-        if self.squash is not None:
-            raise NotImplementedError
         old_mean = old_dist_info.mean
         new_mean = new_dist_info.mean
         # Formula: {[(m1 - m2)^2 + (s1^2 - s2^2)] / (2*s2^2)} + ln(s1/s2)
@@ -60,7 +58,7 @@ class Gaussian(Distribution):
         if self.std is None:
             old_log_std = old_dist_info.log_std
             new_log_std = new_dist_info.log_std
-            if self.min_std is not None or self.max_std is not None:
+            if self.min_log_std is not None or self.max_log_std is not None:
                 old_log_std = torch.clamp(old_log_std, min=self.min_log_std,
                     max=self.max_log_std)
                 new_log_std = torch.clamp(new_log_std, min=self.min_log_std,
@@ -76,11 +74,9 @@ class Gaussian(Distribution):
         return torch.sum(vals, dim=-1)
 
     def entropy(self, dist_info):
-        """Uses ``self.std`` unless that is None, then will get log_std from dist_info.  Not
-        implemented for squashing.
+        """Uses ``self.std`` unless that is None, then will get log_std from
+        dist_info.
         """
-        if self.squash is not None:
-            raise NotImplementedError
         if self.std is None:
             log_std = dist_info.log_std
             if self.min_log_std is not None or self.max_log_std is not None:
@@ -90,14 +86,11 @@ class Gaussian(Distribution):
             # shape = dist_info.mean.shape[:-1]
             # log_std = torch.log(self.std).repeat(*shape, 1)
             log_std = torch.log(self.std)  # Shape broadcast in following formula.
-        return torch.sum(log_std + np.log(np.sqrt(2 * np.pi * np.e)),
-            dim=-1)
+        return torch.sum(log_std + np.log(np.sqrt(2 * np.pi * np.e)), dim=-1)
 
     def log_likelihood(self, x, /, dist_info):
-        """
-        Uses ``self.std`` unless that is None, then uses log_std from dist_info.
-        When squashing: instead of numerically risky arctanh, assume param
-        'x' is pre-squash action, see ``sample_loglikelihood()`` below.
+        """Uses ``self.std`` unless that is None, then uses log_std from
+        dist_info.
         """
         mean = dist_info.mean
         if self.std is None:
@@ -108,39 +101,38 @@ class Gaussian(Distribution):
             std = torch.exp(log_std)
         else:
             std, log_std = self.std, torch.log(self.std)
-        # When squashing: instead of numerically risky arctanh, assume param
-        # 'x' is pre-squash action, see sample_loglikelihood() below.
-        # if self.squash is not None:
-        #     x = torch.atanh(x / self.squash)  # No torch implementation.
         z = (x - mean) / (std + EPS)
-        logli = -(torch.sum(log_std + 0.5 * z ** 2, dim=-1) +
-            0.5 * self.dim * np.log(2 * np.pi))
-        if self.squash is not None:
-            logli -= torch.sum(
-                torch.log(self.squash * (1 - torch.tanh(x) ** 2) + EPS),
-                dim=-1)
+        logli = -(torch.sum(log_std + 0.5 * z ** 2, dim=-1) + 0.5 * self.dim * np.log(2 * np.pi))
         return logli
 
     def likelihood_ratio(self, x, /, old_dist_info, new_dist_info):
-        logli_old = self.log_likelihood(x, old_dist_info)
-        logli_new = self.log_likelihood(x, new_dist_info)
-        return torch.exp(logli_new - logli_old)
+        if self.std is None:
+            # L_n/L_o = s_o/s_n * exp(-1/2 * (z_n^2 - z_o^2))
+            # where z = (x - mu) / s
+            old_log_std = old_dist_info.log_std
+            new_log_std = new_dist_info.log_std
+            if self.min_log_std is not None or self.max_log_std is not None:
+                old_log_std = torch.clamp(old_log_std, min=self.min_log_std,
+                    max=self.max_log_std)
+                new_log_std = torch.clamp(new_log_std, min=self.min_log_std,
+                    max=self.max_log_std)
+            old_std = torch.exp(old_log_std)
+            new_std = torch.exp(new_log_std)
 
-    def sample_loglikelihood(self, dist_info):
-        """
-        Special method for use with SAC algorithm, which returns a new sampled 
-        action and its log-likelihood for training use.  Temporarily turns OFF
-        squashing, so that log_likelihood can be computed on non-squashed sample,
-        and then restores squashing and applies it to the sample before output.
-        """
-        squash = self.squash
-        self.squash = None  # Temporarily turn OFF, raw sample into log_likelihood.
-        sample = self.sample(dist_info)
-        self.squash = squash  # Turn it back ON, squash correction in log_likelihood.
-        logli = self.log_likelihood(sample, dist_info)
-        if squash is not None:
-            sample = squash * torch.tanh(sample)
-        return sample, logli
+            old_z = (x - old_dist_info.mean) / (old_std + EPS)
+            new_z = (x - new_dist_info.mean) / (new_std + EPS)
+
+            ratios = old_std / new_std * torch.exp(-(new_z ** 2 - old_z ** 2) / 2)
+
+        else:
+            # L_n/L_o = exp(-1/2 * (X_n^2 - X_o^2) / s^2)
+            # where X = x - mu
+            old_X = (x - old_dist_info.mean)
+            new_X = (x - new_dist_info.mean)
+
+            ratios = torch.exp(-(new_X ** 2 - old_X ** 2) / 2 / self.std ** 2)
+
+        return torch.sum(ratios, dim=-1)
 
     def sample(self, dist_info):
         """
@@ -156,12 +148,10 @@ class Gaussian(Distribution):
                     max=self.max_log_std)
             std = torch.exp(log_std)
         else:
-            # shape = mean.shape[:-1]
-            # std = self.std.repeat(*shape, 1).to(mean.device)
-            std = self.std.to(mean.device)
+            std = self.std
         # For reparameterization trick: mean + std * N(0, 1)
         # (Also this gets noise on same device as mean.)
-        noise = std * torch.normal(torch.zeros_like(mean), torch.ones_like(mean))
+        noise = std * torch.normal(0, torch.ones_like(mean))
         # noise = torch.normal(mean=0, std=std)
         if self.noise_clip is not None:
             noise = torch.clamp(noise, -self.noise_clip, self.noise_clip)
@@ -169,22 +159,7 @@ class Gaussian(Distribution):
         # Other way to do reparameterization trick:
         # dist = torch.distributions.Normal(mean, std)
         # sample = dist.rsample()
-        if self.clip is not None:
-            sample = torch.clamp(sample, -self.clip, self.clip)
-        elif self.squash is not None:
-            sample = self.squash * torch.tanh(sample)
         return sample
-
-    def set_clip(self, clip):
-        """Input value or ``None`` to turn OFF."""
-        self.clip = clip  # Can be None.
-        assert self.clip is None or self.squash is None
-
-    def set_squash(self, squash):
-        """Input multiplicative factor for ``squash * tanh(sample)`` (usually
-        will be 1), or ``None`` to turn OFF."""
-        self.squash = squash  # Can be None.
-        assert self.clip is None or self.squash is None
 
     def set_noise_clip(self, noise_clip):
         """Input value or ``None`` to turn OFF."""
@@ -198,9 +173,9 @@ class Gaussian(Distribution):
         """
         if std is not None:
             if not isinstance(std, torch.Tensor):
-                std = torch.tensor(std).float()  # Can be size == 1 or dim.
-            # Used to have, but shape of std should broadcast everywhere needed:
-            # if std.numel() == 1:
-            #     std = std * torch.ones(self.dim).float()  # Make it size dim.
-            assert std.numel() in (self.dim, 1)
+                std = torch.tensor(std)
+            assert std.shape in ((self.dim,), (1,), ())
+            std = std.float()
+            if self.device is not None:
+                std = std.to(self.device)
         self.std = std

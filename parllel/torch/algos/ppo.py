@@ -2,8 +2,9 @@ import torch
 import torch.optim
 import numpy as np
 
-from parllel.buffers import NamedArrayTupleClass
-from parllel.buffers import Samples
+from parllel.algorithm import Algorithm
+from parllel.arrays import Array
+from parllel.buffers import Samples, buffer_asarray, NamedArrayTupleClass
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
 from parllel.torch.utils import buffer_to_device, torchify_buffer, valid_mean
@@ -18,7 +19,7 @@ LossInputs = NamedArrayTupleClass("LossInputs",
     ["agent_inputs", "action", "return_", "advantage", "valid", "old_dist_info", "old_values"])
 
 
-class PPO:
+class PPO(Algorithm):
     """
     Proximal Policy Optimization algorithm.  Trains the agent by taking
     multiple epochs of gradient steps on minibatches of the training data at
@@ -66,7 +67,7 @@ class PPO:
     def seed(self, seed: int):
         self.rng = np.random.default_rng(seed)
 
-    def optimize_agent(self, elapsed_steps: int, samples: Samples):
+    def optimize_agent(self, elapsed_steps: int, samples: Samples[Array]):
         """
         Train the agent, for multiple epochs over minibatches taken from the
         input samples.  Organizes agent inputs from the training data, and
@@ -74,6 +75,9 @@ class PPO:
         formed within device, without further data transfer.
         """
 
+        self.agent.train_mode(elapsed_steps)
+
+        samples = buffer_asarray(samples)
         samples = torchify_buffer(samples)
 
         recurrent = self.agent.recurrent
@@ -128,7 +132,7 @@ class PPO:
                     *loss_inputs[T_idxs, B_idxs], minibatch_rnn_state)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
-                    self.agent.parameters(), self.clip_grad_norm)
+                    self.agent.model.parameters(), self.clip_grad_norm)
                 self.optimizer.step()
         
         if self.lr_scheduler is not None:

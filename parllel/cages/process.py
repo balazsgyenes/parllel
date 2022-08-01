@@ -127,9 +127,11 @@ class ProcessCage(Cage, mp.Process):
         out_obs: Buffer,
         out_reward: Buffer,
         out_done: Buffer,
-        out_info: Buffer
+        out_info: Buffer,
     ) -> None:
         """Take a step with a random action from the env's action space.
+        TODO: is there an efficient way to enable use without buffers, i.e. by
+        cage/buffer allocation patterns?
         """
         assert self._last_command is None
         args = (out_action, out_obs, out_reward, out_done, out_info)

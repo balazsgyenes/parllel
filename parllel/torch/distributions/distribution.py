@@ -9,6 +9,9 @@ class Distribution(ABC):
     """Base distribution class.  Not all subclasses will implement all
     methods."""
 
+    def to_device(self, device: torch.device):
+        pass
+
     @property
     def dim(self):
         raise NotImplementedError

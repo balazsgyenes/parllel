@@ -1,5 +1,7 @@
 from contextlib import contextmanager
+from datetime import datetime
 import multiprocessing as mp
+from pathlib import Path
 
 import torch
 
@@ -7,35 +9,37 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
-from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
-    add_obs_normalization, add_reward_clipping, add_reward_normalization,
-    add_valid, build_cages_and_env_buffers, add_initial_rnn_state)
+from parllel.patterns import (add_bootstrap_value, add_reward_clipping,
+    add_reward_normalization, add_valid, build_cages_and_env_buffers,
+    add_initial_rnn_state)
 from parllel.runners.onpolicy import OnPolicyRunner
-from parllel.samplers import RecurrentSampler
+from parllel.samplers.recurrent import RecurrentSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
+from parllel.torch.agents.ensemble import AgentProfile
+from parllel.torch.agents.independent import IndependentPgAgents
 from parllel.torch.algos.ppo import PPO
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
-from parllel.transforms import Compose
+from parllel.transforms import Compose, EstimateMultiAgentAdvantage
 from parllel.types import BatchSpec
 
-from envs.cartpole import build_cartpole
-from models.lstm_model import CartPoleLstmPgModel
-from hera_gym.wrappers import add_human_render_wrapper, add_subprocess_wrapper
+from hera_gym.builds.multi_agent_cartpole import build_multi_agent_cartpole
+from models.atari_lstm_model import AtariLstmPgModel
 
 
 @contextmanager
 def build():
 
-    render_during_training = False
+    render_during_training = True
 
     batch_B = 16
     batch_T = 128
     batch_spec = BatchSpec(batch_T, batch_B)
     parallel = True
-    EnvClass = build_cartpole
+    EnvClass = build_multi_agent_cartpole
     env_kwargs = {
         "max_episode_steps": 1000,
+        "headless": True,
     }
     discount = 0.99
     TrajInfoClass = TrajInfo
@@ -46,13 +50,13 @@ def build():
     reward_min = -5.
     reward_max = 5.
     learning_rate = 0.001
-    n_steps = 100 * batch_spec.size
-    log_interval_steps = 10 * batch_spec.size
+    n_steps = 200 * batch_spec.size
+    log_interval_steps = 1e4
+    log_dir = Path(f'log_data/cartpole/multiagent_independentppo/{datetime.now().strftime("%Y-%m-%d_%H-%M")}')
 
     if render_during_training:
-        if parallel:
-            EnvClass = add_subprocess_wrapper(EnvClass)
-        EnvClass = add_human_render_wrapper(EnvClass)
+        env_kwargs["headless"] = False
+        env_kwargs["subprocess"] = parallel
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -74,22 +78,55 @@ def build():
         obs_space, action_space = cages[0].spaces
 
         # instantiate model and agent
-        model = CartPoleLstmPgModel(
-            obs_space=obs_space,
-            action_space=action_space,
-            pre_lstm_hidden_sizes=32,
-            lstm_size=16,
-            post_lstm_hidden_sizes=32,
-            hidden_nonlinearity=torch.nn.Tanh,
-            )
-        distribution = Categorical(dim=action_space.n)
         device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
-
-        # instantiate model and agent
-        agent = CategoricalPgAgent(
-            model=model, distribution=distribution, observation_space=obs_space,
-            action_space=action_space, n_states=batch_spec.B, device=device,
+        ## cart
+        cart_model = AtariLstmPgModel(
+            obs_space=obs_space,
+            action_space=action_space["cart"],
+            channels=[32, 64, 128, 256],
+            kernel_sizes=[3, 3, 3, 3],
+            strides=[2, 2, 2, 2],
+            paddings=[0, 0, 0, 0],
+            use_maxpool=False,
+            post_conv_hidden_sizes=1024,
+            post_conv_output_size=None,
+            post_conv_nonlinearity=torch.nn.ReLU,
+            lstm_size=512,
+            post_lstm_hidden_sizes=512,
+            post_lstm_nonlinearity=torch.nn.ReLU,
+        )
+        cart_distribution = Categorical(dim=action_space["cart"].n)
+        cart_agent = CategoricalPgAgent(
+            model=cart_model, distribution=cart_distribution, observation_space=obs_space,
+            action_space=action_space["cart"], n_states=batch_spec.B, device=device,
             recurrent=True)
+        cart_profile = AgentProfile(instance=cart_agent, action_key="cart")
+
+        ## camera
+        camera_model = AtariLstmPgModel(
+            obs_space=obs_space,
+            action_space=action_space["camera"],
+            channels=[32, 64, 128, 256],
+            kernel_sizes=[3, 3, 3, 3],
+            strides=[2, 2, 2, 2],
+            paddings=[0, 0, 0, 0],
+            use_maxpool=False,
+            post_conv_hidden_sizes=1024,
+            post_conv_output_size=None,
+            post_conv_nonlinearity=torch.nn.ReLU,
+            lstm_size=512,
+            post_lstm_hidden_sizes=512,
+            post_lstm_nonlinearity=torch.nn.ReLU,
+        )
+        camera_distribution = Categorical(dim=action_space["camera"].n)
+        camera_agent = CategoricalPgAgent(
+            model=camera_model, distribution=camera_distribution,
+            observation_space=obs_space, action_space=action_space["camera"],
+            n_states=batch_spec.B, device=device, recurrent=True)
+        camera_profile = AgentProfile(instance=camera_agent, action_key="camera")
+
+        agent = IndependentPgAgents([cart_profile, camera_profile],
+            observation_space=obs_space, action_space=action_space)
         agent = TorchHandler(agent=agent)
 
         # write dict into namedarraytuple and read it back out. this ensures the
@@ -118,13 +155,7 @@ def build():
         batch_buffer = add_valid(batch_buffer)
 
         # add several helpful transforms
-        batch_transforms, step_transforms = [], []
-
-        batch_buffer, step_transforms = add_obs_normalization(
-            batch_buffer,
-            step_transforms,
-            initial_count=10000,
-        )
+        batch_transforms = []
 
         batch_buffer, batch_transforms = add_reward_normalization(
             batch_buffer,
@@ -140,27 +171,23 @@ def build():
         )
 
         # add advantage normalization, required for PPO
-        batch_buffer, batch_transforms = add_advantage_estimation(
-            batch_buffer,
-            batch_transforms,
-            discount=discount,
-            gae_lambda=gae_lambda,
-            normalize=True,
-        )
+        advantage_transform = EstimateMultiAgentAdvantage(discount=discount,
+            gae_lambda=gae_lambda)
+        batch_buffer = advantage_transform.dry_run(batch_buffer, ArrayCls)
+        batch_transforms.append(advantage_transform)
 
         sampler = RecurrentSampler(
             batch_spec=batch_spec,
             envs=cages,
             agent=agent,
-            batch_buffer=batch_buffer,
+            sample_buffer=batch_buffer,
             max_steps_decorrelate=50,
             get_bootstrap_value=True,
-            obs_transform=Compose(step_transforms),
             batch_transform=Compose(batch_transforms),
         )
 
         optimizer = torch.optim.Adam(
-            agent.parameters(),
+            agent.model.parameters(),
             lr=learning_rate,
         )
         
@@ -179,6 +206,7 @@ def build():
             n_steps=n_steps,
             batch_spec=batch_spec,
             log_interval_steps=log_interval_steps,
+            log_dir=log_dir,
         )
 
         try:
