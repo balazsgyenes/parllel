@@ -7,13 +7,14 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
+from parllel.configuration import add_default_config_fields
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
     add_obs_normalization, add_reward_clipping, add_reward_normalization,
     build_cages_and_env_buffers)
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers.basic import BasicSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
-from parllel.torch.algos.ppo import PPO
+from parllel.torch.algos.ppo import PPO, add_default_ppo_config
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
@@ -24,28 +25,16 @@ from models.model import CartPoleFfPgModel
 
 
 @contextmanager
-def build():
+def build(config):
 
-    batch_B = 16
-    batch_T = 128
-    batch_spec = BatchSpec(batch_T, batch_B)
-    parallel = True
-    EnvClass = build_cartpole
-    env_kwargs = {
-        "max_episode_steps": 1000,
-    }
-    discount = 0.99
-    TrajInfoClass = TrajInfo
+    parallel = config["parallel"]
+    batch_spec = BatchSpec(
+        config["batch_T"],
+        config["batch_B"],
+    )
     traj_info_kwargs = {
-        "discount": discount,
+        "discount": config["discount"],
     }
-    gae_lambda = 0.95
-    reward_min = -5.
-    reward_max = 5.
-    learning_rate = 0.001
-    n_steps = 50 * batch_spec.size
-    log_interval_steps = 5 * batch_spec.size
-
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -55,9 +44,9 @@ def build():
         RotatingArrayCls = RotatingArray
 
     with build_cages_and_env_buffers(
-            EnvClass=EnvClass,
-            env_kwargs=env_kwargs,
-            TrajInfoClass=TrajInfoClass,
+            EnvClass=build_cartpole,
+            env_kwargs=config["env"],
+            TrajInfoClass=TrajInfo,
             traj_info_kwargs=traj_info_kwargs,
             wait_before_reset=False,
             batch_spec=batch_spec,
@@ -70,9 +59,8 @@ def build():
         model = CartPoleFfPgModel(
             obs_space=obs_space,
             action_space=action_space,
-            hidden_sizes=[64, 64],
-            hidden_nonlinearity=torch.nn.Tanh,
-            )
+            **config["model"],
+        )
         distribution = Categorical(dim=action_space.n)
         device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
 
@@ -110,29 +98,29 @@ def build():
         batch_buffer, step_transforms = add_obs_normalization(
             batch_buffer,
             step_transforms,
-            initial_count=10000,
+            initial_count=config["obs_norm_initial_count"],
         )
 
         batch_buffer, batch_transforms = add_reward_normalization(
             batch_buffer,
             batch_transforms,
-            discount=discount,
+            discount=config["discount"],
         )
 
         batch_buffer, batch_transforms = add_reward_clipping(
             batch_buffer,
             batch_transforms,
-            reward_min=reward_min,
-            reward_max=reward_max,
+            reward_clip_min=config["reward_clip_min"],
+            reward_clip_max=config["reward_clip_max"],
         )
 
         # add advantage normalization, required for PPO
         batch_buffer, batch_transforms = add_advantage_estimation(
             batch_buffer,
             batch_transforms,
-            discount=discount,
-            gae_lambda=gae_lambda,
-            normalize=True,
+            discount=config["discount"],
+            gae_lambda=config["gae_lambda"],
+            normalize=config["advantage_normalize"],
         )
 
         sampler = BasicSampler(
@@ -140,7 +128,7 @@ def build():
             envs=cages,
             agent=agent,
             sample_buffer=batch_buffer,
-            max_steps_decorrelate=50,
+            max_steps_decorrelate=config["max_steps_decorrelate"],
             get_bootstrap_value=True,
             obs_transform=Compose(step_transforms),
             batch_transform=Compose(batch_transforms),
@@ -148,7 +136,8 @@ def build():
 
         optimizer = torch.optim.Adam(
             agent.model.parameters(),
-            lr=learning_rate,
+            lr=config["learning_rate"],
+            **config["optimizer"],
         )
         
         # create algorithm
@@ -156,6 +145,7 @@ def build():
             batch_spec=batch_spec,
             agent=agent,
             optimizer=optimizer,
+            **config["algo"],
         )
 
         # create runner
@@ -163,9 +153,8 @@ def build():
             sampler=sampler,
             agent=agent,
             algorithm=algorithm,
-            n_steps=n_steps,
             batch_spec=batch_spec,
-            log_interval_steps=log_interval_steps,
+            **config["runner"],
         )
 
         try:
@@ -180,5 +169,35 @@ def build():
 
 if __name__ == "__main__":
     mp.set_start_method("fork")
-    with build() as runner:
+
+    config = dict(
+        parallel = True,
+        batch_T = 128,
+        batch_B = 16,
+        discount = 0.99,
+        learning_rate = 0.001,
+        gae_lambda = 0.95,
+        reward_clip_min = -5,
+        reward_clip_max = 5,
+        obs_norm_initial_count = 10000,
+        advantage_normalize = True,
+        max_steps_decorrelate = 50,
+        env = dict(
+            max_episode_steps = 1000,
+        ),
+        model = dict(
+            hidden_sizes = [64, 64],
+            hidden_nonlinearity=torch.nn.Tanh,
+        ),
+        runner = dict(
+            n_steps = 50 * 16 * 128,
+            log_interval_steps = 5 * 16 * 128,
+        )
+    )
+
+    config = add_default_config_fields(config)
+
+    config = add_default_ppo_config(config)
+
+    with build(config) as runner:
         runner.run()

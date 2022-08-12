@@ -1,3 +1,5 @@
+from typing import Dict
+
 import torch
 import torch.optim
 import numpy as np
@@ -36,16 +38,16 @@ class PPO(Algorithm):
             batch_spec: BatchSpec,
             agent: TorchAgent,
             optimizer: torch.optim.Optimizer,
-            learning_rate_scheduler: torch.optim.lr_scheduler._LRScheduler = None,
-            value_loss_coeff: float = 1.,
-            entropy_loss_coeff: float = 0.01,
-            clip_grad_norm: float = 1.,
-            minibatches: int = 4,
-            epochs: int = 4,
-            ratio_clip: float = 0.1,
-            value_delta_clip: float = 0.1,
-            value_ratio_clip: float = 0.1,
-            value_clipping_mode: str = "none",
+            learning_rate_scheduler: torch.optim.lr_scheduler._LRScheduler,
+            value_loss_coeff: float,
+            entropy_loss_coeff: float,
+            clip_grad_norm: float,
+            minibatches: int,
+            epochs: int,
+            ratio_clip: float,
+            value_clipping_mode: str,
+            value_delta_clip: float,
+            value_ratio_clip: float,
             ):
         """Saves input settings."""
         self.batch_spec = batch_spec
@@ -209,3 +211,21 @@ def minibatch_indices(data_length: int, minibatch_size: int, rng: np.random.Gene
             # if shuffling, 
             batch = indexes[batch]
         yield batch
+
+
+def add_default_ppo_config(config: Dict) -> Dict:
+    defaults = dict(
+        learning_rate_scheduler = None,
+        value_loss_coeff = 1.,
+        entropy_loss_coeff = 0.01,
+        clip_grad_norm = 1.,
+        minibatches = 4,
+        epochs = 4,
+        ratio_clip = 0.1,
+        value_clipping_mode = "none",
+        value_delta_clip = 0.1,
+        value_ratio_clip = 0.1,
+    )
+
+    config["algo"] = defaults | config["algo"]
+    return config

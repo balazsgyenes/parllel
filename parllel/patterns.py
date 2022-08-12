@@ -253,14 +253,14 @@ def add_reward_normalization(
 def add_reward_clipping(
         batch_buffer: Samples,
         transforms: List[Transform],
-        reward_min: Optional[float] = None,
-        reward_max: Optional[float] = None,
+        reward_clip_min: Optional[float] = None,
+        reward_clip_max: Optional[float] = None,
     ) -> Tuple[Samples, List[Transform]]:
 
     transforms.append(
         ClipRewards(
-            reward_min=reward_min,
-            reward_max=reward_max,
+            reward_min=reward_clip_min,
+            reward_max=reward_clip_max,
         )
     )
 
