@@ -18,15 +18,15 @@ from parllel.types import BatchSpec
 
 class OffPolicyRunner:
     def __init__(self,
-            sampler: Sampler,
-            agent: Agent,
-            algorithm: Algorithm,
-            batch_spec: BatchSpec,
-            eval_sampler: EvalSampler,
-            n_steps: int,
-            log_interval_steps: int,
-            log_dir: Optional[Path] = None,
-        ) -> None:
+        sampler: Sampler,
+        agent: Agent,
+        algorithm: Algorithm,
+        batch_spec: BatchSpec,
+        eval_sampler: EvalSampler,
+        n_steps: int,
+        log_interval_steps: int,
+        log_dir: Optional[Path] = None,
+    ) -> None:
         self.sampler = sampler
         self.agent = agent
         self.algorithm = algorithm
@@ -43,13 +43,11 @@ class OffPolicyRunner:
         self.n_iterations = int(n_steps // batch_spec.size)
         self.log_interval_iters = int(log_interval_steps // batch_spec.size)
 
-        self._progress_bar = None
-
     def run(self) -> None:
-        self._progress_bar = tqdm(total=self.n_steps, unit="steps")
+        progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
 
-        self._evaluate_agent(0)
+        self._evaluate_agent(elapsed_steps=0)
         for itr in range(self.n_iterations):
             elapsed_steps = itr * batch_size
 
@@ -60,12 +58,12 @@ class OffPolicyRunner:
             if (itr + 1) % self.log_interval_iters == 0:
                 self._evaluate_agent(elapsed_steps)
 
-            self._progress_bar.update(batch_size)
+            progress_bar.update(batch_size)
         
         print("Finished training.")
-        self._progress_bar = None
+        progress_bar = None
         
-    def _evaluate_agent(self, elapsed_steps):
+    def _evaluate_agent(self, elapsed_steps: int):
         completed_trajs = self.eval_sampler.collect_batch(elapsed_steps)
         traj_disc_returns = [traj.DiscountedReturn for traj in completed_trajs]
         traj_disc_returns = np.array(traj_disc_returns)

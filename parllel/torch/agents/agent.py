@@ -1,4 +1,5 @@
-from typing import Iterable, Union
+from os import PathLike
+from typing import Union
 
 import torch
 
@@ -73,6 +74,9 @@ class TorchAgent(Agent):
         self.previous_action[env_indices] = action
 
         return previous_action
+
+    def save_model(self, path: PathLike) -> None:
+        torch.save(self.model.state_dict(), path)
 
     def train_mode(self, elapsed_steps: int) -> None:
         """Go into training mode (e.g. see PyTorch's ``Module.train()``)."""

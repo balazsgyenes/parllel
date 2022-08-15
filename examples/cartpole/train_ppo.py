@@ -1,5 +1,7 @@
 from contextlib import contextmanager
+from datetime import datetime
 import multiprocessing as mp
+from pathlib import Path
 
 import torch
 
@@ -7,7 +9,7 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
-from parllel.configuration import add_default_config_fields
+from parllel.configuration import add_default_config_fields, log_config
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
     add_obs_normalization, add_reward_clipping, add_reward_normalization,
     build_cages_and_env_buffers)
@@ -26,6 +28,8 @@ from models.model import CartPoleFfPgModel
 
 @contextmanager
 def build(config):
+
+    log_config(config, config["runner"]["log_dir"])
 
     parallel = config["parallel"]
     batch_spec = BatchSpec(
@@ -170,6 +174,8 @@ def build(config):
 if __name__ == "__main__":
     mp.set_start_method("fork")
 
+    log_dir = str(Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"))
+
     config = dict(
         parallel = True,
         batch_T = 128,
@@ -192,6 +198,7 @@ if __name__ == "__main__":
         runner = dict(
             n_steps = 50 * 16 * 128,
             log_interval_steps = 5 * 16 * 128,
+            log_dir = log_dir,
         )
     )
 
