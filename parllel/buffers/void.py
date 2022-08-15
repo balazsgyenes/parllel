@@ -16,3 +16,9 @@ class VoidBuffer(Buffer):
 
     def __setitem__(self, location: Indices, value: Any) -> None:
         pass
+
+    def close(self) -> None:
+        pass
+
+    def destroy(self) -> None:
+        pass

@@ -11,6 +11,7 @@ except ImportError:
     has_summary_writer = False
 
 from parllel.cages.traj_info import TrajInfo
+from parllel.logging import MODEL_FILENAME
 
 
 class Runner(ABC):
@@ -44,6 +45,6 @@ class Runner(ABC):
 
         if self.log_dir is not None:
             # TODO: technically, the agent should be added to this base class
-            self.agent.save_model(path=self.log_dir / "model.pt")
+            self.agent.save_model(path=self.log_dir / MODEL_FILENAME)
 
         print(f"Average discounted return: {mean_disc_return:.3f}")

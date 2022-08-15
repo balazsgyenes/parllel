@@ -11,9 +11,6 @@ from parllel.types import BatchSpec
 
 
 class Sampler(ABC):
-    """Generates a batch of samples, where environments that are done are reset
-    immediately. Use this sampler for non-recurrent agents.
-    """
     def __init__(self,
         batch_spec: BatchSpec,
         envs: Sequence[Cage],

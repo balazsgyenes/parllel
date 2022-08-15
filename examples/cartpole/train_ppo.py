@@ -15,8 +15,8 @@ from parllel.logging import init_log_folder, log_config
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
     add_obs_normalization, add_reward_clipping, add_reward_normalization,
     build_cages_and_env_buffers)
-from parllel.runners.onpolicy import OnPolicyRunner
-from parllel.samplers.basic import BasicSampler
+from parllel.runners import OnPolicyRunner
+from parllel.samplers import BasicSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO, add_default_ppo_config
 from parllel.torch.distributions import Categorical
@@ -180,7 +180,7 @@ if __name__ == "__main__":
 
     config = dict(
         log_dir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
-        parallel = False,
+        parallel = True,
         batch_T = 128,
         batch_B = 16,
         discount = 0.99,
