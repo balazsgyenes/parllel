@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Union
 
 import numpy as np
 from tqdm import tqdm
@@ -25,7 +25,7 @@ class OnPolicyRunner:
         n_steps: int,
         batch_spec: BatchSpec,
         log_interval_steps: int,
-        log_dir: Optional[Path] = None,
+        log_dir: Union[Path, str, None] = None,
     ) -> None:
         self.sampler = sampler
         self.agent = agent
@@ -33,15 +33,21 @@ class OnPolicyRunner:
         self.n_steps = n_steps
         self.batch_spec = batch_spec
 
-        self.log_dir = None
-        self.logger = None
         if log_dir is not None:
             print(f"Saving model checkpoints to {log_dir}.")
             self.log_dir = Path(log_dir)
-            self.log_dir.mkdir(parents=True, exist_ok=True)
             if has_summary_writer:
                 print("Saving learning statistics to tensorboard.")
                 self.logger = SummaryWriter(log_dir=str(log_dir))
+            else:
+                print("WARNING: Tensorboard not installed, so no tensorboard "
+                    "records will be created")
+                self.logger = None
+        else:
+            print("WARNING: No log_dir was specified, so nothing from this "
+                "run will be saved.")
+            self.log_dir = None
+            self.logger = None
 
         self.n_iterations = int(n_steps // batch_spec.size)
         self.log_interval_iters = int(log_interval_steps // batch_spec.size)

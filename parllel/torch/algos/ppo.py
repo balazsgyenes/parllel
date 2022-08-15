@@ -227,5 +227,5 @@ def add_default_ppo_config(config: Dict) -> Dict:
         value_ratio_clip = 0.1,
     )
 
-    config["algo"] = defaults | config["algo"]
+    config["algo"] = defaults | config.get("algo", {})
     return config
