@@ -30,8 +30,6 @@ class Runner(ABC):
                     "records will be created")
                 self.logger = None
         else:
-            print("WARNING: No log_dir was specified, so nothing from this "
-                "run will be saved.")
             self.log_dir = None
             self.logger = None
 

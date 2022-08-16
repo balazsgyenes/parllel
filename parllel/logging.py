@@ -16,11 +16,18 @@ def init_log_folder(path: PathLike) -> None:
     If the folder already exists, it raises FileExistsError so as not to
     overwrite previous data.
     """
+    if path is None:
+        print("WARNING: No log_dir was specified, so nothing from this run "
+            "will be saved.")
+        return
     path = Path(path)
     path.mkdir(parents=True, exist_ok=False)
 
 
 def log_config(config: Dict, path: PathLike) -> None:
+
+    if path is None:
+        return
 
     # define a pattern to look for, when loading objects from the params.json again
     regex_pattern = "^__callable__(.+)__from__(.+)$"

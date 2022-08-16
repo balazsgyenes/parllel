@@ -127,7 +127,7 @@ def build(config: Dict) -> OnPolicyRunner:
             batch_transforms,
             discount=config["discount"],
             gae_lambda=config["gae_lambda"],
-            normalize=config["advantage_normalize"],
+            normalize=config["normalize_advantage"],
         )
 
         sampler = BasicSampler(
@@ -179,7 +179,8 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        log_dir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        # log_dir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        log_dir = None,
         parallel = True,
         batch_T = 128,
         batch_B = 16,
@@ -189,7 +190,7 @@ if __name__ == "__main__":
         reward_clip_min = -5,
         reward_clip_max = 5,
         obs_norm_initial_count = 10000,
-        advantage_normalize = True,
+        normalize_advantage = True,
         max_steps_decorrelate = 50,
         env = dict(
             max_episode_steps = 1000,

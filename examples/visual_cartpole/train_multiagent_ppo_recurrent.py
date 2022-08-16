@@ -12,7 +12,7 @@ from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
 from parllel.configuration import add_default_config_fields, add_metadata
 from parllel.logging import init_log_folder, log_config
-from parllel.patterns import (add_bootstrap_value, add_reward_clipping,
+from parllel.patterns import (add_advantage_estimation, add_bootstrap_value, add_reward_clipping,
     add_reward_normalization, add_valid, build_cages_and_env_buffers,
     add_initial_rnn_state)
 from parllel.runners import OnPolicyRunner
@@ -23,7 +23,7 @@ from parllel.torch.agents.independent import IndependentPgAgents
 from parllel.torch.algos.ppo import PPO, add_default_ppo_config
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
-from parllel.transforms import Compose, EstimateMultiAgentAdvantage
+from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
 from hera_gym.builds.multi_agent_cartpole import build_multi_agent_cartpole
@@ -150,19 +150,14 @@ def build(config: Dict) -> OnPolicyRunner:
             reward_clip_max=config["reward_clip_max"],
         )
 
-        # add advantage normalization, required for PPO
-        # TODO: replace with nice pattern
-        advantage_transform = EstimateMultiAgentAdvantage(
+        batch_buffer, batch_transforms = add_advantage_estimation(
+            batch_buffer,
+            batch_transforms,
             discount=config["discount"],
             gae_lambda=config["gae_lambda"],
+            multiagent=True,
+            normalize=config["normalize_advantage"],
         )
-        batch_buffer = advantage_transform.dry_run(batch_buffer, ArrayCls)
-        batch_transforms.append(advantage_transform)
-
-        # normalize advantage estimation per batch
-        # TODO: add multi agent advantage normalization
-        # norm_advantage_transform = NormalizeAdvantage(only_valid=True)
-        # batch_transforms.append(norm_advantage_transform)
 
         sampler = RecurrentSampler(
             batch_spec=batch_spec,
@@ -235,6 +230,7 @@ if __name__ == "__main__":
         gae_lambda = 0.8,
         reward_clip_min = -5,
         reward_clip_max = 5,
+        normalize_advantage = True,
         max_steps_decorrelate = 50,
         render_during_training = True,
         env = dict(
@@ -244,7 +240,7 @@ if __name__ == "__main__":
         cart_model = model_config.copy(),
         camera_model = model_config.copy(),
         runner = dict(
-            n_steps = 1e6,
+            n_steps = 2e6,
             log_interval_steps = 1e4,
         ),
         meta = dict(
