@@ -207,22 +207,22 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     model_config = dict(
-        channels=[16, 32],
-        kernel_sizes=[8, 4],
-        strides=[4, 2],
-        paddings=[0, 1],
-        use_maxpool=False,
-        post_conv_hidden_sizes=512,
-        post_conv_output_size=None,
-        post_conv_nonlinearity=torch.nn.ReLU,
-        lstm_size=512,
-        post_lstm_hidden_sizes=None,
-        post_lstm_nonlinearity=torch.nn.ReLU,
+        channels = [32, 64, 64],
+        kernel_sizes = [8, 4, 3],
+        strides = [4, 2, 1],
+        paddings = [0, 0, 0],
+        use_maxpool = False,
+        post_conv_hidden_sizes = 256,
+        post_conv_output_size = None,
+        post_conv_nonlinearity = torch.nn.ReLU,
+        lstm_size = 256,
+        post_lstm_hidden_sizes = None,
+        post_lstm_nonlinearity = torch.nn.ReLU,
     )
 
     config = dict(
         log_dir = Path(f"log_data/cartpole-multiagent-independentppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
-        parallel = True,
+        parallel = False,
         batch_T = 64,
         batch_B = 16,
         discount = 0.99,
@@ -232,9 +232,10 @@ if __name__ == "__main__":
         reward_clip_max = 5,
         normalize_advantage = True,
         max_steps_decorrelate = 50,
-        render_during_training = True,
+        render_during_training = False,
         env = dict(
-            max_episode_steps = 250,
+            max_episode_steps = 1000,
+            reward_type = "sparse",
             headless = True,
         ),
         cart_model = model_config.copy(),

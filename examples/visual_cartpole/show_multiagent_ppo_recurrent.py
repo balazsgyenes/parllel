@@ -10,6 +10,7 @@ from parllel.arrays import Array, RotatingArray, buffer_from_dict_example
 from parllel.buffers import AgentSamples, EnvSamples, buffer_method, Samples
 from parllel.buffers.void import VoidBuffer
 from parllel.cages import Cage, TrajInfo
+from parllel.configuration import merge_dicts
 from parllel.logging import MODEL_FILENAME, load_config
 from parllel.runners import ShowPolicy
 from parllel.samplers import EvalSampler
@@ -120,7 +121,7 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
         envs=[cage],
         agent=agent,
         step_buffer=step_buffer,
-        # add obs_transforms loaded from snapshot
+        # TODO: add obs_transforms loaded from snapshot
     )
 
     # create runner
@@ -142,16 +143,22 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
 
 if __name__ == "__main__":
 
-    log_dir = Path("log_data/cartpole-multiagent-independentppo/2022-08-15_15-39")
+    log_dir = Path("log_data/cartpole-multiagent-independentppo/2022-08-16_17-16")
 
     eval_config = dict(
+        discount = 1.0,
         max_steps = None,
         min_trajectories = 20,
+        env = dict(
+            headless = False,
+            subprocess = False,
+            reward_type = "dense",
+        )
     )
 
     config = load_config(log_dir)
 
-    config |= eval_config
+    config = merge_dicts(config, eval_config)
 
     model_checkpoint_path = log_dir / MODEL_FILENAME
 

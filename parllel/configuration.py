@@ -27,3 +27,12 @@ def add_metadata(config: Dict, build_func: Callable) -> Dict:
     # TODO: save git commit hash
 
     return config
+
+
+def merge_dicts(a: Dict, b: Dict, /) -> Dict:
+    for key in b:
+        if isinstance(a.get(key, None), dict) and isinstance(b[key], dict):
+            a[key] = merge_dicts(a[key], b[key])
+        else:
+            a[key] = b[key]
+    return a
