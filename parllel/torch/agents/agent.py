@@ -1,5 +1,5 @@
 from os import PathLike
-from typing import Union
+from typing import Callable, Union
 
 import torch
 
@@ -78,8 +78,11 @@ class TorchAgent(Agent):
     def save_model(self, path: PathLike) -> None:
         torch.save(self.model.state_dict(), path)
 
-    def load_model(self, path: PathLike) -> None:
-        state_dict = torch.load(path)
+    def load_model(self,
+        path: PathLike,
+        load_to_device: Union[Callable, torch.device, str, None] = None,
+    ) -> None:
+        state_dict = torch.load(path, load_to_device)
         self.model.load_state_dict(state_dict)
 
     def train_mode(self, elapsed_steps: int) -> None:

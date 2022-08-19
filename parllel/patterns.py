@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -6,7 +5,7 @@ import numpy as np
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
 from parllel.buffers import (AgentSamples, EnvSamples, Samples, 
-    NamedArrayTupleClass, NamedTuple, buffer_map, buffer_method)
+    NamedArrayTupleClass, NamedTuple, buffer_map)
 from parllel.cages import Cage, ProcessCage
 from parllel.handlers import Agent
 from parllel.samplers import EvalSampler
@@ -16,7 +15,6 @@ from parllel.transforms import (Transform, Compose, ClipRewards,
 from parllel.types import BatchSpec
 
 
-@contextmanager
 def build_cages_and_env_buffers(
     EnvClass: Callable,
     env_kwargs: Dict,
@@ -73,11 +71,7 @@ def build_cages_and_env_buffers(
     # create cages to manage environments
     cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
-    try:
-        yield cages, batch_action, batch_buffer_env
-    finally:
-        for cage in cages:
-            cage.close()
+    return cages, batch_action, batch_buffer_env
 
 
 def add_initial_rnn_state(batch_buffer: Samples, agent: Agent) -> Samples:
@@ -292,7 +286,6 @@ def add_reward_clipping(
     return batch_buffer, transforms
 
 
-@contextmanager
 def build_eval_sampler(
     samples_buffer: Samples,
     agent: Agent,
@@ -343,10 +336,4 @@ def build_eval_sampler(
         obs_transform=Compose(step_transforms),
     )
 
-    try:
-        yield eval_sampler
-    finally:
-        for cage in eval_envs:
-            cage.close()
-        buffer_method(step_buffer, "close")
-        buffer_method(step_buffer, "destroy")
+    return eval_sampler, step_buffer

@@ -28,7 +28,7 @@ class Agent(ABC):
     def save_model(self, path: PathLike) -> None:
         pass
 
-    def load_model(self, path: PathLike) -> None:
+    def load_model(self, path: PathLike, *args, **kwargs) -> None:
         pass
 
     def train_mode(self, elapsed_steps: int) -> None:

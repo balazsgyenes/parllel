@@ -92,3 +92,7 @@ class EnsembleAgent(TorchAgent):
         self._mode = "eval"
         for agent in self._agent_instances:
             agent.eval_mode(elapsed_steps)
+
+    @property
+    def n_subagents(self) -> int:
+        return len(self._agent_profiles)

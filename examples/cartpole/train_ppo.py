@@ -50,130 +50,132 @@ def build(config: Dict) -> OnPolicyRunner:
         ArrayCls = Array
         RotatingArrayCls = RotatingArray
 
-    with build_cages_and_env_buffers(
-            EnvClass=build_cartpole,
-            env_kwargs=config["env"],
-            TrajInfoClass=TrajInfo,
-            traj_info_kwargs=traj_info_kwargs,
-            wait_before_reset=False,
-            batch_spec=batch_spec,
-            parallel=parallel,
-        ) as (cages, batch_action, batch_env):
+    cages, batch_action, batch_env = build_cages_and_env_buffers(
+        EnvClass=build_cartpole,
+        env_kwargs=config["env"],
+        TrajInfoClass=TrajInfo,
+        traj_info_kwargs=traj_info_kwargs,
+        wait_before_reset=False,
+        batch_spec=batch_spec,
+        parallel=parallel,
+    )
 
-        obs_space, action_space = cages[0].spaces
+    obs_space, action_space = cages[0].spaces
 
-        # instantiate model and agent
-        model = CartPoleFfPgModel(
-            obs_space=obs_space,
-            action_space=action_space,
-            **config["model"],
-        )
-        distribution = Categorical(dim=action_space.n)
-        device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
+    # instantiate model and agent
+    model = CartPoleFfPgModel(
+        obs_space=obs_space,
+        action_space=action_space,
+        **config["model"],
+    )
+    distribution = Categorical(dim=action_space.n)
+    device = torch.device(config["device"])
 
-        # instantiate model and agent
-        agent = CategoricalPgAgent(
-            model=model,
-            distribution=distribution,
-            observation_space=obs_space,
-            action_space=action_space,
-            n_states=batch_spec.B,
-            device=device,
-        )
-        agent = TorchHandler(agent=agent)
+    # instantiate model and agent
+    agent = CategoricalPgAgent(
+        model=model,
+        distribution=distribution,
+        observation_space=obs_space,
+        action_space=action_space,
+        n_states=batch_spec.B,
+        device=device,
+    )
+    agent = TorchHandler(agent=agent)
 
-        # write dict into namedarraytuple and read it back out. this ensures the
-        # example is in a standard format (i.e. namedarraytuple).
-        batch_env.observation[0] = obs_space.sample()
-        example_obs = batch_env.observation[0]
+    # write dict into namedarraytuple and read it back out. this ensures the
+    # example is in a standard format (i.e. namedarraytuple).
+    batch_env.observation[0] = obs_space.sample()
+    example_obs = batch_env.observation[0]
 
-        # get example output from agent
-        _, agent_info = agent.step(example_obs)
+    # get example output from agent
+    _, agent_info = agent.step(example_obs)
 
-        # allocate batch buffer based on examples
-        batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), ArrayCls)
-        batch_agent = AgentSamples(batch_action, batch_agent_info)
-        batch_buffer = Samples(batch_agent, batch_env)
+    # allocate batch buffer based on examples
+    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), ArrayCls)
+    batch_agent = AgentSamples(batch_action, batch_agent_info)
+    batch_buffer = Samples(batch_agent, batch_env)
 
-        # for advantage estimation, we need to estimate the value of the last
-        # state in the batch
-        batch_buffer = add_bootstrap_value(batch_buffer)
+    # for advantage estimation, we need to estimate the value of the last
+    # state in the batch
+    batch_buffer = add_bootstrap_value(batch_buffer)
 
-        # add several helpful transforms
-        batch_transforms, step_transforms = [], []
+    # add several helpful transforms
+    batch_transforms, step_transforms = [], []
 
-        batch_buffer, step_transforms = add_obs_normalization(
-            batch_buffer,
-            step_transforms,
-            initial_count=config["obs_norm_initial_count"],
-        )
+    batch_buffer, step_transforms = add_obs_normalization(
+        batch_buffer,
+        step_transforms,
+        initial_count=config["obs_norm_initial_count"],
+    )
 
-        batch_buffer, batch_transforms = add_reward_normalization(
-            batch_buffer,
-            batch_transforms,
-            discount=config["discount"],
-        )
+    batch_buffer, batch_transforms = add_reward_normalization(
+        batch_buffer,
+        batch_transforms,
+        discount=config["discount"],
+    )
 
-        batch_buffer, batch_transforms = add_reward_clipping(
-            batch_buffer,
-            batch_transforms,
-            reward_clip_min=config["reward_clip_min"],
-            reward_clip_max=config["reward_clip_max"],
-        )
+    batch_buffer, batch_transforms = add_reward_clipping(
+        batch_buffer,
+        batch_transforms,
+        reward_clip_min=config["reward_clip_min"],
+        reward_clip_max=config["reward_clip_max"],
+    )
 
-        # add advantage normalization, required for PPO
-        batch_buffer, batch_transforms = add_advantage_estimation(
-            batch_buffer,
-            batch_transforms,
-            discount=config["discount"],
-            gae_lambda=config["gae_lambda"],
-            normalize=config["normalize_advantage"],
-        )
+    # add advantage normalization, required for PPO
+    batch_buffer, batch_transforms = add_advantage_estimation(
+        batch_buffer,
+        batch_transforms,
+        discount=config["discount"],
+        gae_lambda=config["gae_lambda"],
+        normalize=config["normalize_advantage"],
+    )
 
-        sampler = BasicSampler(
-            batch_spec=batch_spec,
-            envs=cages,
-            agent=agent,
-            sample_buffer=batch_buffer,
-            max_steps_decorrelate=config["max_steps_decorrelate"],
-            get_bootstrap_value=True,
-            obs_transform=Compose(step_transforms),
-            batch_transform=Compose(batch_transforms),
-        )
+    sampler = BasicSampler(
+        batch_spec=batch_spec,
+        envs=cages,
+        agent=agent,
+        sample_buffer=batch_buffer,
+        max_steps_decorrelate=config["max_steps_decorrelate"],
+        get_bootstrap_value=True,
+        obs_transform=Compose(step_transforms),
+        batch_transform=Compose(batch_transforms),
+    )
 
-        optimizer = torch.optim.Adam(
-            agent.model.parameters(),
-            lr=config["learning_rate"],
-            **config["optimizer"],
-        )
-        
-        # create algorithm
-        algorithm = PPO(
-            batch_spec=batch_spec,
-            agent=agent,
-            optimizer=optimizer,
-            **config["algo"],
-        )
-
-        # create runner
-        runner = OnPolicyRunner(
-            sampler=sampler,
-            agent=agent,
-            algorithm=algorithm,
-            batch_spec=batch_spec,
-            log_dir=config["log_dir"],
-            **config["runner"],
-        )
-
-        try:
-            yield runner
-        
-        finally:
-            sampler.close()
-            agent.close()
-            buffer_method(batch_buffer, "close")
-            buffer_method(batch_buffer, "destroy")
+    optimizer = torch.optim.Adam(
+        agent.model.parameters(),
+        lr=config["learning_rate"],
+        **config["optimizer"],
+    )
     
+    # create algorithm
+    algorithm = PPO(
+        batch_spec=batch_spec,
+        agent=agent,
+        optimizer=optimizer,
+        **config["algo"],
+    )
+
+    # create runner
+    runner = OnPolicyRunner(
+        sampler=sampler,
+        agent=agent,
+        algorithm=algorithm,
+        batch_spec=batch_spec,
+        log_dir=config["log_dir"],
+        **config["runner"],
+    )
+
+    try:
+        yield runner
+    
+    finally:
+        sampler.close()
+        agent.close()
+        for cage in cages:
+            cage.close()
+        buffer_method(batch_buffer, "close")
+        buffer_method(batch_buffer, "destroy")
+
 
 if __name__ == "__main__":
     mp.set_start_method("fork")
@@ -195,6 +197,7 @@ if __name__ == "__main__":
         env = dict(
             max_episode_steps = 1000,
         ),
+        device = "cuda:0" if torch.cuda.is_available() else "cpu",
         model = dict(
             hidden_sizes = [64, 64],
             hidden_nonlinearity=torch.nn.Tanh,

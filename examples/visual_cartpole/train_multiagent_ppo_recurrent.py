@@ -52,156 +52,158 @@ def build(config: Dict) -> OnPolicyRunner:
         ArrayCls = Array
         RotatingArrayCls = RotatingArray
 
-    with build_cages_and_env_buffers(
-            EnvClass=build_multi_agent_cartpole,
-            env_kwargs=config["env"],
-            TrajInfoClass=TrajInfo,
-            traj_info_kwargs=traj_info_kwargs,
-            wait_before_reset=True,
-            batch_spec=batch_spec,
-            parallel=parallel,
-        ) as (cages, batch_action, batch_env):
+    cages, batch_action, batch_env = build_cages_and_env_buffers(
+        EnvClass=build_multi_agent_cartpole,
+        env_kwargs=config["env"],
+        TrajInfoClass=TrajInfo,
+        traj_info_kwargs=traj_info_kwargs,
+        wait_before_reset=True,
+        batch_spec=batch_spec,
+        parallel=parallel,
+    )
 
-        obs_space, action_space = cages[0].spaces
+    obs_space, action_space = cages[0].spaces
 
-        # instantiate model and agent
-        device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
-        ## cart
-        cart_model = AtariLstmPgModel(
-            obs_space=obs_space,
-            action_space=action_space["cart"],
-            **config["cart_model"],
-        )
-        cart_distribution = Categorical(dim=action_space["cart"].n)
-        cart_agent = CategoricalPgAgent(
-            model=cart_model,
-            distribution=cart_distribution,
-            observation_space=obs_space,
-            action_space=action_space["cart"],
-            n_states=batch_spec.B,
-            device=device,
-            recurrent=True,
-        )
-        cart_profile = AgentProfile(instance=cart_agent, action_key="cart")
+    # instantiate model and agent
+    device = torch.device(config["device"])
+    ## cart
+    cart_model = AtariLstmPgModel(
+        obs_space=obs_space,
+        action_space=action_space["cart"],
+        **config["cart_model"],
+    )
+    cart_distribution = Categorical(dim=action_space["cart"].n)
+    cart_agent = CategoricalPgAgent(
+        model=cart_model,
+        distribution=cart_distribution,
+        observation_space=obs_space,
+        action_space=action_space["cart"],
+        n_states=batch_spec.B,
+        device=device,
+        recurrent=True,
+    )
+    cart_profile = AgentProfile(instance=cart_agent, action_key="cart")
 
-        ## camera
-        camera_model = AtariLstmPgModel(
-            obs_space=obs_space,
-            action_space=action_space["camera"],
-            **config["camera_model"],
-        )
-        camera_distribution = Categorical(dim=action_space["camera"].n)
-        camera_agent = CategoricalPgAgent(
-            model=camera_model,
-            distribution=camera_distribution,
-            observation_space=obs_space,
-            action_space=action_space["camera"],
-            n_states=batch_spec.B,
-            device=device,
-            recurrent=True,
-        )
-        camera_profile = AgentProfile(instance=camera_agent, action_key="camera")
+    ## camera
+    camera_model = AtariLstmPgModel(
+        obs_space=obs_space,
+        action_space=action_space["camera"],
+        **config["camera_model"],
+    )
+    camera_distribution = Categorical(dim=action_space["camera"].n)
+    camera_agent = CategoricalPgAgent(
+        model=camera_model,
+        distribution=camera_distribution,
+        observation_space=obs_space,
+        action_space=action_space["camera"],
+        n_states=batch_spec.B,
+        device=device,
+        recurrent=True,
+    )
+    camera_profile = AgentProfile(instance=camera_agent, action_key="camera")
 
-        agent = IndependentPgAgents(
-            agent_profiles=[cart_profile, camera_profile],
-            observation_space=obs_space,
-            action_space=action_space,
-        )
-        agent = TorchHandler(agent=agent)
+    agent = IndependentPgAgents(
+        agent_profiles=[cart_profile, camera_profile],
+        observation_space=obs_space,
+        action_space=action_space,
+    )
+    agent = TorchHandler(agent=agent)
 
-        # write dict into namedarraytuple and read it back out. this ensures the
-        # example is in a standard format (i.e. namedarraytuple).
-        batch_env.observation[0] = obs_space.sample()
-        example_obs = batch_env.observation[0]
+    # write dict into namedarraytuple and read it back out. this ensures the
+    # example is in a standard format (i.e. namedarraytuple).
+    batch_env.observation[0] = obs_space.sample()
+    example_obs = batch_env.observation[0]
 
-        # get example output from agent
-        _, agent_info = agent.step(example_obs)
+    # get example output from agent
+    _, agent_info = agent.step(example_obs)
 
-        # allocate batch buffer based on examples
-        batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), ArrayCls)
-        batch_agent = AgentSamples(batch_action, batch_agent_info)
-        batch_buffer = Samples(batch_agent, batch_env)
+    # allocate batch buffer based on examples
+    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), ArrayCls)
+    batch_agent = AgentSamples(batch_action, batch_agent_info)
+    batch_buffer = Samples(batch_agent, batch_env)
 
-        # for recurrent problems, we need to save the initial state at the 
-        # beginning of the batch
-        batch_buffer = add_initial_rnn_state(batch_buffer, agent)
+    # for recurrent problems, we need to save the initial state at the 
+    # beginning of the batch
+    batch_buffer = add_initial_rnn_state(batch_buffer, agent)
 
-        # for advantage estimation, we need to estimate the value of the last
-        # state in the batch
-        batch_buffer = add_bootstrap_value(batch_buffer)
-        
-        # for recurrent problems, compute mask that zeroes out samples after
-        # environments are done before they can be reset
-        batch_buffer = add_valid(batch_buffer)
-
-        # add several helpful transforms
-        batch_transforms = []
-
-        batch_buffer, batch_transforms = add_reward_normalization(
-            batch_buffer,
-            batch_transforms,
-            discount=config["discount"],
-        )
-
-        batch_buffer, batch_transforms = add_reward_clipping(
-            batch_buffer,
-            batch_transforms,
-            reward_clip_min=config["reward_clip_min"],
-            reward_clip_max=config["reward_clip_max"],
-        )
-
-        batch_buffer, batch_transforms = add_advantage_estimation(
-            batch_buffer,
-            batch_transforms,
-            discount=config["discount"],
-            gae_lambda=config["gae_lambda"],
-            multiagent=True,
-            normalize=config["normalize_advantage"],
-        )
-
-        sampler = RecurrentSampler(
-            batch_spec=batch_spec,
-            envs=cages,
-            agent=agent,
-            sample_buffer=batch_buffer,
-            max_steps_decorrelate=config["max_steps_decorrelate"],
-            get_bootstrap_value=True,
-            batch_transform=Compose(batch_transforms),
-        )
-
-        optimizer = torch.optim.Adam(
-            agent.model.parameters(),
-            lr=config["learning_rate"],
-            **config["optimizer"],
-        )
-        
-        # create algorithm
-        algorithm = PPO(
-            batch_spec=batch_spec,
-            agent=agent,
-            optimizer=optimizer,
-            **config["algo"],
-        )
-
-        # create runner
-        runner = OnPolicyRunner(
-            sampler=sampler,
-            agent=agent,
-            algorithm=algorithm,
-            batch_spec=batch_spec,
-            log_dir=config["log_dir"],
-            **config["runner"],
-        )
-
-        try:
-            yield runner
-        
-        finally:
-            sampler.close()
-            agent.close()
-            buffer_method(batch_buffer, "close")
-            buffer_method(batch_buffer, "destroy")
+    # for advantage estimation, we need to estimate the value of the last
+    # state in the batch
+    batch_buffer = add_bootstrap_value(batch_buffer)
     
+    # for recurrent problems, compute mask that zeroes out samples after
+    # environments are done before they can be reset
+    batch_buffer = add_valid(batch_buffer)
+
+    # add several helpful transforms
+    batch_transforms = []
+
+    batch_buffer, batch_transforms = add_reward_normalization(
+        batch_buffer,
+        batch_transforms,
+        discount=config["discount"],
+    )
+
+    batch_buffer, batch_transforms = add_reward_clipping(
+        batch_buffer,
+        batch_transforms,
+        reward_clip_min=config["reward_clip_min"],
+        reward_clip_max=config["reward_clip_max"],
+    )
+
+    batch_buffer, batch_transforms = add_advantage_estimation(
+        batch_buffer,
+        batch_transforms,
+        discount=config["discount"],
+        gae_lambda=config["gae_lambda"],
+        multiagent=True,
+        normalize=config["normalize_advantage"],
+    )
+
+    sampler = RecurrentSampler(
+        batch_spec=batch_spec,
+        envs=cages,
+        agent=agent,
+        sample_buffer=batch_buffer,
+        max_steps_decorrelate=config["max_steps_decorrelate"],
+        get_bootstrap_value=True,
+        batch_transform=Compose(batch_transforms),
+    )
+
+    optimizer = torch.optim.Adam(
+        agent.model.parameters(),
+        lr=config["learning_rate"],
+        **config["optimizer"],
+    )
+    
+    # create algorithm
+    algorithm = PPO(
+        batch_spec=batch_spec,
+        agent=agent,
+        optimizer=optimizer,
+        **config["algo"],
+    )
+
+    # create runner
+    runner = OnPolicyRunner(
+        sampler=sampler,
+        agent=agent,
+        algorithm=algorithm,
+        batch_spec=batch_spec,
+        log_dir=config["log_dir"],
+        **config["runner"],
+    )
+
+    try:
+        yield runner
+    
+    finally:
+        sampler.close()
+        agent.close()
+        for cage in cages:
+            cage.close()
+        buffer_method(batch_buffer, "close")
+        buffer_method(batch_buffer, "destroy")
+
 
 if __name__ == "__main__":
     mp.set_start_method("fork")
@@ -238,6 +240,7 @@ if __name__ == "__main__":
             reward_type = "sparse",
             headless = True,
         ),
+        device = "cuda:0" if torch.cuda.is_available() else "cpu",
         cart_model = model_config.copy(),
         camera_model = model_config.copy(),
         runner = dict(
@@ -249,7 +252,7 @@ if __name__ == "__main__":
         ),
     )
 
-    if config["render_during_training"]:
+    if config.get("render_during_training", False):
         config["env"]["headless"] = False
         config["env"]["subprocess"] = config["parallel"]
 
