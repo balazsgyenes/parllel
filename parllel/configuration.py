@@ -36,3 +36,14 @@ def merge_dicts(a: Dict, b: Dict, /) -> Dict:
         else:
             a[key] = b[key]
     return a
+
+
+_parallel = False
+def set_parallel(parallel: bool) -> None:
+    global _parallel
+    _parallel = parallel
+
+
+def get_parallel() -> bool:
+    global _parallel
+    return _parallel
