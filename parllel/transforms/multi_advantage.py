@@ -2,8 +2,7 @@ import enum
 
 import numpy as np
 
-from parllel.arrays import Array
-from parllel.buffers import EnvSamples, NamedTuple, NamedArrayTupleClass, Samples
+from parllel.buffers import EnvSamples, Samples, NamedTuple
 
 from .advantage import compute_discount_return, compute_gae_advantage
 from .transform import BatchTransform
@@ -20,26 +19,31 @@ class ProblemType(enum.Enum):
 
 
 class EstimateMultiAgentAdvantage(BatchTransform):
-    def __init__(self, discount: float, gae_lambda: float) -> None:
-        """Computes per-agent advantage based on a shared reward and agent-
-        specific value estimates. This wrapper should be used any time the
-        agent has a MultiDistribution, either because it is an EnsembleAgent,
-        or because it outputs e.g. both discrete and continuous actions.
-        
-        Requires fields:
-            - .env.reward
-            - .env.done
-            - .agent.action
-            - .agent.agent_info.value
-            - .agent.bootstrap_value
-        
-        Adds fields:
-            - .env.advantage
-            - .env.return_
+    """Computes per-agent advantage based on a shared reward and agent-specific
+    value estimates. This wrapper should be used any time the agent has a
+    MultiDistribution, either because it is an EnsembleAgent, or because it
+    outputs e.g. both discrete and continuous actions.
+    
+    Requires fields:
+        - .env.reward
+        - .env.done
+        - .agent.action
+        - .agent.agent_info.value
+        - .agent.bootstrap_value
+    
+    Adds fields:
+        - .env.advantage
+        - .env.return_
 
-        :param discount: discount (gamma) for discounting rewards over time
-        :param gae_lambda: lambda parameter for GAE algorithm
-        """
+    :param batch_buffer: the batch buffer that will be passed to `__call__`.
+    :param discount: discount (gamma) for discounting rewards over time
+    :param gae_lambda: lambda parameter for GAE algorithm
+    """
+    def __init__(self,
+        batch_buffer: Samples,
+        discount: float,
+        gae_lambda: float,
+    ) -> None:
         self._discount = discount
         self._lambda = gae_lambda
         if gae_lambda == 1.0:
@@ -48,53 +52,33 @@ class EstimateMultiAgentAdvantage(BatchTransform):
         else:
             self.estimator = compute_gae_advantage
 
-    def dry_run(self, batch_samples: Samples, ArrayCls: Array) -> Samples:
         # get convenient local references
-        env_samples: EnvSamples = batch_samples.env
+        env_samples: EnvSamples = batch_buffer.env
         reward = env_samples.reward
-        action = batch_samples.agent.action
-        value = np.asarray(batch_samples.agent.agent_info.value)
-
-        if not isinstance(action, NamedTuple):
-            raise TypeError("MultiAgent Advantage requires a dictionary action"
-            " space.")
-
-        # create new NamedArrayTuple for env samples with additional fields
-        EnvSamplesClass = NamedArrayTupleClass(
-            typename = env_samples._typename,
-            fields = env_samples._fields + ("advantage", "return_")
-        )
+        value = batch_buffer.agent.agent_info.value
+        advantage = env_samples.advantage
 
         # determine number of reward values and value estimates
-        if value.ndim > 2:
+        if np.asarray(value).ndim > 2:
             if isinstance(reward, NamedTuple):
                 self.problem_type = ProblemType.markov_game
             else:
                 self.problem_type = ProblemType.independent_critics
-            advantage_shape = value.shape
+            
+            if advantage.shape != value.shape:
+                raise ValueError("Advantage and Value must have the same shape")
         else:
             self.problem_type = ProblemType.single_critic
-            # in algo, advantage must broadcast with distribution values (e.g.
-            # log likelihood, likelihood ratio)
-            advantage_shape = value.shape + (1,)
-
-        # allocate new Array objects for advantage and return_
-        advantage = ArrayCls(shape=advantage_shape, dtype=value.dtype)
-        # in algo, return_ must broadcast with value
-        return_ = ArrayCls(shape=value.shape, dtype=value.dtype)
-
-        # package everything back into batch_samples
-        env_samples = EnvSamplesClass(
-            **env_samples._asdict(), advantage=advantage, return_=return_,
-        )
-        batch_samples = batch_samples._replace(env = env_samples)
-
-        return batch_samples
+            if advantage.shape != (value.shape + (1,)):
+                # in algo, advantage must broadcast with distribution values
+                # (e.g. log likelihood, likelihood ratio)
+                raise ValueError("Advantage must match shape of Value except"
+                    " for added trailing singleton dimension")
 
     def __call__(self, batch_samples: Samples) -> Samples:
         """Cases:
         scalar reward, dict value (independent actor-critic agents)
-        dict reward, dict value (stochastic game)
+        dict reward, dict value (markov game)
         scalar reward, scalar value (central critic, expand advantage)
         """
         reward = batch_samples.env.reward

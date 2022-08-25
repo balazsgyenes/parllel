@@ -6,7 +6,7 @@ from gym.wrappers import (
 
 
 def build_cartpole(
-    max_episode_steps: int = 250,
+    max_episode_steps: int,
 ) -> Env:
     env = CartPoleEnv()
 

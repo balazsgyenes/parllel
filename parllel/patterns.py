@@ -1,20 +1,20 @@
-from contextlib import contextmanager
 from typing import Callable, Dict, List, Optional, Tuple, Union
+
+import numpy as np
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
-from parllel.buffers import (AgentSamples, EnvSamples, NamedArrayTupleClass,
-    Samples, buffer_map, buffer_method)
+from parllel.buffers import (AgentSamples, EnvSamples, Samples, 
+    NamedArrayTupleClass, NamedTuple, buffer_map)
 from parllel.cages import Cage, ProcessCage
 from parllel.handlers import Agent
 from parllel.samplers import EvalSampler
 from parllel.transforms import (Transform, Compose, ClipRewards,
     EstimateAdvantage, NormalizeAdvantage, NormalizeObservations,
-    NormalizeRewards)
+    NormalizeRewards, EstimateMultiAgentAdvantage)
 from parllel.types import BatchSpec
 
 
-@contextmanager
 def build_cages_and_env_buffers(
     EnvClass: Callable,
     env_kwargs: Dict,
@@ -71,11 +71,7 @@ def build_cages_and_env_buffers(
     # create cages to manage environments
     cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
-    try:
-        yield cages, batch_action, batch_buffer_env
-    finally:
-        for cage in cages:
-            cage.close()
+    return cages, batch_action, batch_buffer_env
 
 
 def add_initial_rnn_state(batch_buffer: Samples, agent: Agent) -> Samples:
@@ -151,13 +147,19 @@ def add_advantage_estimation(
     transforms: List[Transform],
     discount: float,
     gae_lambda: float,
+    multiagent: bool = False,
     normalize: bool = False,
 ) -> Tuple[Samples, List[Transform]]:
     
     # add required fields to batch_buffer
     # get convenient local references
     env_samples: EnvSamples = batch_buffer.env
-    reward = env_samples.reward
+    action = batch_buffer.agent.action
+    value = batch_buffer.agent.agent_info.value
+
+    if multiagent and not isinstance(action, NamedTuple):
+        raise TypeError("MultiAgent Advantage requires a dictionary action"
+        " space.")
 
     # create new NamedArrayTuple for env samples with additional fields
     EnvSamplesClass = NamedArrayTupleClass(
@@ -165,9 +167,18 @@ def add_advantage_estimation(
         fields = env_samples._fields + ("advantage", "return_")
     )
 
+    if multiagent and np.asarray(value).ndim <= 2:
+        # in algo, advantage must broadcast with distribution values (e.g.
+        # log likelihood, likelihood ratio)
+        advantage_shape = value.shape + (1,)
+    else:
+        advantage_shape = value.shape
+
     # allocate new Array objects for advantage and return_
-    batch_advantage = buffer_from_example(reward)
-    batch_return_ = buffer_from_example(reward)
+    # TODO: replace type(value) with array_like
+    batch_advantage = type(value)(shape=advantage_shape, dtype=value.dtype)
+    # in algo, return_ must broadcast with value
+    batch_return_ = buffer_from_example(value)
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(
@@ -176,13 +187,21 @@ def add_advantage_estimation(
     batch_buffer = batch_buffer._replace(env = env_samples)
 
     # create required transforms and add to list
-    transforms.append(EstimateAdvantage(discount=discount,
-        gae_lambda=gae_lambda))
+    if multiagent:
+        transforms.append(
+            EstimateMultiAgentAdvantage(
+                batch_buffer=batch_buffer,
+                discount=discount,
+                gae_lambda=gae_lambda,
+            )
+        )
+    else:
+        transforms.append(
+            EstimateAdvantage(discount=discount, gae_lambda=gae_lambda)
+        )
 
     if normalize:
-        transforms.append(NormalizeAdvantage(
-            only_valid=hasattr(batch_buffer.env, "valid"),
-        ))
+        transforms.append(NormalizeAdvantage(batch_buffer=batch_buffer))
 
     return batch_buffer, transforms
 
@@ -195,9 +214,9 @@ def add_obs_normalization(
 
     transforms.append(
         NormalizeObservations(
+            batch_buffer=batch_buffer,
             # get shape of observation assuming 2 leading dimensions
             obs_shape=batch_buffer.env.observation.shape[2:],
-            only_valid=hasattr(batch_buffer.env, "valid"),
             initial_count=initial_count,
         )
     )
@@ -241,8 +260,8 @@ def add_reward_normalization(
     # create NormalizeReward transform and add to list
     transforms.append(
         NormalizeRewards(
+            batch_buffer=batch_buffer,
             discount=discount,
-            only_valid=hasattr(batch_buffer.env, "valid"),
             initial_count=initial_count,
         )
     )
@@ -253,25 +272,23 @@ def add_reward_normalization(
 def add_reward_clipping(
         batch_buffer: Samples,
         transforms: List[Transform],
-        reward_min: Optional[float] = None,
-        reward_max: Optional[float] = None,
+        reward_clip_min: Optional[float] = None,
+        reward_clip_max: Optional[float] = None,
     ) -> Tuple[Samples, List[Transform]]:
 
     transforms.append(
         ClipRewards(
-            reward_min=reward_min,
-            reward_max=reward_max,
+            reward_min=reward_clip_min,
+            reward_max=reward_clip_max,
         )
     )
 
     return batch_buffer, transforms
 
 
-@contextmanager
 def build_eval_sampler(
     samples_buffer: Samples,
     agent: Agent,
-    step_transforms: List[Transform],
     CageCls: Callable,
     EnvClass: Callable,
     env_kwargs: Dict,
@@ -280,6 +297,7 @@ def build_eval_sampler(
     n_eval_envs: int,
     max_traj_length: int,
     min_trajectories: int,
+    step_transforms: Optional[List[Transform]] = None,
 ) -> EvalSampler:
 
     # allocate a step buffer with space for a single step
@@ -309,19 +327,16 @@ def build_eval_sampler(
         eval_cage_kwargs["buffers"] = step_buffer
     eval_envs = [CageCls(**eval_cage_kwargs) for _ in range(n_eval_envs)]
 
+    if step_transforms is not None:
+        step_transforms = Compose(step_transforms)
+
     eval_sampler = EvalSampler(
         max_traj_length=max_traj_length,
         min_trajectories=min_trajectories,
         envs=eval_envs,
         agent=agent,
         step_buffer=step_buffer,
-        obs_transform=Compose(step_transforms),
+        obs_transform=step_transforms,
     )
 
-    try:
-        yield eval_sampler
-    finally:
-        for cage in eval_envs:
-            cage.close()
-        buffer_method(step_buffer, "close")
-        buffer_method(step_buffer, "destroy")
+    return eval_sampler, step_buffer
