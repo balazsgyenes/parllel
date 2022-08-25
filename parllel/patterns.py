@@ -289,7 +289,6 @@ def add_reward_clipping(
 def build_eval_sampler(
     samples_buffer: Samples,
     agent: Agent,
-    step_transforms: List[Transform],
     CageCls: Callable,
     EnvClass: Callable,
     env_kwargs: Dict,
@@ -298,6 +297,7 @@ def build_eval_sampler(
     n_eval_envs: int,
     max_traj_length: int,
     min_trajectories: int,
+    step_transforms: Optional[List[Transform]] = None,
 ) -> EvalSampler:
 
     # allocate a step buffer with space for a single step
@@ -327,13 +327,16 @@ def build_eval_sampler(
         eval_cage_kwargs["buffers"] = step_buffer
     eval_envs = [CageCls(**eval_cage_kwargs) for _ in range(n_eval_envs)]
 
+    if step_transforms is not None:
+        step_transforms = Compose(step_transforms)
+
     eval_sampler = EvalSampler(
         max_traj_length=max_traj_length,
         min_trajectories=min_trajectories,
         envs=eval_envs,
         agent=agent,
         step_buffer=step_buffer,
-        obs_transform=Compose(step_transforms),
+        obs_transform=step_transforms,
     )
 
     return eval_sampler, step_buffer

@@ -28,9 +28,6 @@ from models.atari_lstm_model import AtariLstmPgModel
 @contextmanager
 def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
 
-    if config["max_steps"] is None:
-        config["max_steps"] = np.iinfo(int).max
-
     traj_info_kwargs = {
         "discount": config["discount"],
     }
@@ -159,6 +156,9 @@ if __name__ == "__main__":
     config = load_config(log_dir)
 
     config = merge_dicts(config, eval_config)
+
+    if config["max_steps"] is None:
+        config["max_steps"] = np.iinfo(int).max
 
     model_checkpoint_path = log_dir / MODEL_FILENAME
 

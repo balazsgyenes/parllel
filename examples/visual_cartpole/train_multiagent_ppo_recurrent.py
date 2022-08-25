@@ -248,7 +248,7 @@ if __name__ == "__main__":
             log_interval_steps = 1e4,
         ),
         meta = dict(
-            name = "[Example 1] Multiagent Visual CartPole with Independent PPO",
+            name = "[Example 5] Multiagent Visual CartPole with Independent PPO",
         ),
     )
 
