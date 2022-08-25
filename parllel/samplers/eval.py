@@ -13,9 +13,6 @@ from .sampler import Sampler
 
 
 class EvalSampler(Sampler):
-    """Generates a batch of samples, where environments that are done are reset
-    immediately. Use this sampler for non-recurrent agents.
-    """
     def __init__(self,
         max_traj_length: int,
         min_trajectories: int,

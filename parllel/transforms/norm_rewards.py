@@ -5,6 +5,7 @@ from nptyping import NDArray
 from numba import njit
 
 from parllel.buffers import Samples
+from ..buffers.named_tuple import NamedTuple
 
 from .running_mean_std import RunningMeanStd
 from .transform import BatchTransform
@@ -39,6 +40,9 @@ class NormalizeRewards(BatchTransform):
     buffer for the discounted returns gained by the agent up to the current
     time.
 
+    If .env.valid exists, then only advantage of steps where .env.valid == True
+    are used for calculating statistics. Other data points are ignored.
+
     Requires fields:
         - .env.reward
         - .env.done
@@ -47,22 +51,24 @@ class NormalizeRewards(BatchTransform):
     Adds fields:
         - .env.past_return
 
+    :param batch_buffer: the batch buffer that will be passed to `__call__`.
     :param discount: discount (gamma) for discounting rewards over time
-    :param only_valid: when calculating statistics, only use data points where
-        `batch_samples.env.valid` is True. Other data points are ignored. This
-        should be True if mid-batch resets are turned off.
     :param initial_count: seed the running mean and standard deviation model
         with `initial_count` instances of x~N(0,1). Increase this to improve
         stability, to prevent the mean and standard deviation from changing too
         quickly during early training.
     """
     def __init__(self,
+        batch_buffer: Samples,
         discount: float,
-        only_valid: bool,
         initial_count: Optional[float] = None
     ) -> None:
+        if isinstance(batch_buffer.env.reward, NamedTuple):
+            raise NotImplementedError("Not implemented for markov games, where"
+                "rewards are agent-specific.")
+
+        self.only_valid = hasattr(batch_buffer.env, "valid")
         self.discount = discount
-        self.only_valid = only_valid
 
         if initial_count is not None and initial_count < 1.:
             raise ValueError("Initial count must be at least 1")

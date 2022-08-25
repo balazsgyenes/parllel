@@ -38,18 +38,18 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Seeding
         - Add seeding module that maintains a SeedSequence and spawns a new seed sequence each time an entity requests a new seed. Seeds are saved by name so they can be reloaded. Seeds are logged to a json file.
         - If a seed is requested twice for the same name, an error is thrown
-    - Config handling. User passes a giant dictionary of config parameters to a build method.
-        - To deal with parameters reused by multiple entities (e.g. discount, batch spec), implement search method to avoid having to define a "canonical" position for these parameters (e.g. discount belongs in the algorithm parameters).
+    - To deal with parameters reused by multiple entities (e.g. discount, batch spec), maybe implement search method to avoid having to define a "canonical" position for these parameters (e.g. discount belongs in the algorithm parameters).
     - **!!** Logging
-        - Logging of start state (e.g. config, seeds, allocators, etc.) to compare runs after the fact and allow for repeating runs
-        - Logging of diagnostic data (e.g. rewards, traj length, etc.) during training to analyze results
+        - Log random seeds to enable repeatable runs
+            - Enable setting seed to repeat a previous run
+        - User-configurable logging of diagnostic data (e.g. rewards, traj length, etc.) during training to analyze results
             - Data is saved to tensorboard, csv file, and log file
             - `log_array` logs mean, max, min, std_dev, and median of values in the array
             - `log_value` logs a single value as given (e.g. observation mean and std_dev)
         - Logging of notifications and warnings
             - Data is saved to log file and standard output
-    - Saving of checkpoints (e.g. model parameters, optimizer state, transform states, etc.) to allow for resuming training
-    - Loading of previous runs for e.g. running a policy, repeating a run, resuming a run
+    - Add rest of program state (e.g. optimizer state, transform states, etc.) to checkpoints
+    - Enable resuming run from checkpoint
     - **!!** Allocators
         - Add allocators module with user-configurable and default logic for what Array type should be used for what buffer element
         - Set parallel attribute in allocator module and then get default CageCls everywhere else
@@ -90,15 +90,12 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - VectorizedCage, similar to VecEnc in StableBaselines3, which allows for multiple environments in a single process.
     - Add argument to `ProcessCage` to choose between process creation methods
 - Handler:
+    - Make Handler a subclass of Agent to prevent silly linter problems and redundant wrapper functions.
     - Implement CPU sampling by duplicating the agent with a model parameters on the CPU. Handler overrides `sampling_mode` and `training_mode`, etc. to know when to sync model parameters.
-- Patterns
-    - Include default parameter sets for things like algorithms. Remove all default values in algorithm `__init__` methods.
 - Replay buffers
     - Make replay buffer share memory with batch buffer, such that the Replay object simply wraps some existing buffer structure and exposes the ability to sample from it. This allows the user to define at the top-level what format the replay samples have.
         - If the ReplayArray does not store its state in shared memory, then `set_samples_buffer` before every batch in all cases, otherwise `rotate` would have no effect in child processes.
 - Runners
-    - Add logging and checkpointing
-    - Add runner that just runs trained policy and renders it
     - Add `ChainRunner`, which chains multiple Runners to execute in sequence. `ChainRunner` must implement some resource management, such that resources for a runner are not created until needed, and destroyed after they are no longer needed. This is difficult because it's likely that some resources are shared between runners.
 - Samplers
     - All samplers call `set_samples_buffer` on the cages at least once (AsynchronousSampler calls before each batch), where each cage is passed the Array slice where it should write. 
@@ -106,9 +103,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - AsynchronousSampler, which samples in a child process while the algorithm is optimizing.
         - This class should inherit from the standard sampler types much like how ProcessCage inherits from Cage.
         - Calls `set_samples_buffer` on cages before each batch, so that they write to the correct buffer
-    - FullEpisodeSampler, which returns only completed trajectories every iteration. This is essentially a configuration of the RecurrentSampler (cages wait to reset, sampler stops if all envs done, samples buffer allocated with T equal to maximum episode length). Depending on wait-reset semantics, it might not make sense to have a separate class for this.
 - Transforms
-    - **!!** Instead of passing parameters like `valid_only`, pass `batch_buffer` so that the Transform can compute the value itself. Then remove `dry_run` from `EstimateMultiAgentAdvantage` and create a pattern for adding it.
     - Add `freeze` method to stop statistics from being updated when evaluating agent.
     - Add `stats` attribute to normalizing transforms (and anything else in the transform that is stateful and could be logged)
     - Add test for `NormalizeObservation` transformation, which verifies that environments that are already done are not factored into running statistics.

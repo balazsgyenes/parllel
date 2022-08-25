@@ -1,8 +1,9 @@
-from typing import Iterable, Union
+from os import PathLike
+from typing import Callable, Union
 
 import torch
 
-from parllel.buffers import Buffer
+from parllel.buffers import Buffer, buffer_map
 from parllel.handlers import Agent
 from parllel.torch.distributions import Distribution
 
@@ -74,6 +75,16 @@ class TorchAgent(Agent):
 
         return previous_action
 
+    def save_model(self, path: PathLike) -> None:
+        torch.save(self.model.state_dict(), path)
+
+    def load_model(self,
+        path: PathLike,
+        load_to_device: Union[Callable, torch.device, str, None] = None,
+    ) -> None:
+        state_dict = torch.load(path, load_to_device)
+        self.model.load_state_dict(state_dict)
+
     def train_mode(self, elapsed_steps: int) -> None:
         """Go into training mode (e.g. see PyTorch's ``Module.train()``)."""
         # does not set self.mode because there is no state associated with
@@ -99,9 +110,10 @@ class TorchAgent(Agent):
         # if coming from sampling, store states and set new blank states
         if self.recurrent and self.mode == "sample":
             self._sampler_rnn_states = self.rnn_states
-            self.rnn_states = torch.zeros_like(self.rnn_states)
+            self.rnn_states = buffer_map(torch.zeros_like, self.rnn_states)
 
             self._sampler_previous_action = self.previous_action
-            self.previous_action = torch.zeros_like(self.previous_action)
+            self.previous_action = buffer_map(torch.zeros_like,
+                self.previous_action)
 
         self.mode = "eval"

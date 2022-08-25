@@ -19,14 +19,14 @@ class SAC(Algorithm):
         agent: SacAgent,
         replay_buffer: ReplayBuffer,
         optimizers: Dict[str, torch.optim.Optimizer],
-        batch_size: int = 256,
-        discount: float = 0.99,
-        learning_starts: int = 0,
-        replay_ratio=256,  # data_consumption / data_generation
-        target_update_tau=0.005,  # tau=1 for hard update.
-        target_update_interval=1,  # 1000 for hard update, 1 for soft.
-        ent_coeff: Union[str, float] = 1e-5, # "auto" for adaptive alpha, float for any fixed value
-        clip_grad_norm: float = 1e9,
+        batch_size: int,
+        discount: float,
+        learning_starts: int,
+        replay_ratio: int,  # data_consumption / data_generation
+        target_update_tau: float,  # tau=1 for hard update.
+        target_update_interval: int,  # 1000 for hard update, 1 for soft.
+        ent_coeff: Union[str, float], # "auto" for adaptive alpha, float for any fixed value
+        clip_grad_norm: float,
     ):
         """Save input arguments."""
         self.batch_spec = batch_spec
@@ -130,3 +130,19 @@ class SAC(Algorithm):
 
         # unfreeze Q models for next training iteration
         self.agent.freeze_q_models(False)
+
+
+def add_default_sac_config(config: Dict) -> Dict:
+    defaults = dict(
+        batch_size= 256,
+        discount = 0.99,
+        learning_starts = 0,
+        replay_ratio = 256,
+        target_update_tau = 0.005,
+        target_update_interval = 1,
+        ent_coeff = 1e-5,
+        clip_grad_norm = 1e9,
+    )
+
+    config["algo"] = defaults | config.get("algo", {})
+    return config

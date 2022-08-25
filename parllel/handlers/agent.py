@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from os import PathLike
 from typing import Union
 
 from parllel.buffers import Buffer, NamedTupleClass
@@ -22,6 +23,12 @@ class Agent(ABC):
         pass
 
     def reset_one(self, env_index: int) -> None:
+        pass
+
+    def save_model(self, path: PathLike) -> None:
+        pass
+
+    def load_model(self, path: PathLike, *args, **kwargs) -> None:
         pass
 
     def train_mode(self, elapsed_steps: int) -> None:

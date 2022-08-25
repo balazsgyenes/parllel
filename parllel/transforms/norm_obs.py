@@ -2,7 +2,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from parllel.buffers import Samples
+from parllel.buffers import Samples, NamedTuple
 
 from .running_mean_std import RunningMeanStd
 from .transform import StepTransform
@@ -15,25 +15,30 @@ class NormalizeObservations(StepTransform):
     """Normalizes the observation by subtracting the mean and dividing by the
     standard deviation.
 
+    If .env.valid exists, then only advantage of steps where .env.valid == True
+    are used for calculating statistics. Other data points are ignored.
+    
     Requires fields:
         - .env.observation
         - [.env.valid]
 
+    :param batch_buffer: the batch buffer that will be passed to `__call__`.
     :param obs_shape: shape of a single observation
-    :param only_valid: when calculating statistics, only use data points where
-        `batch_samples.env.valid` is True. Other data points are ignored. This
-        should be True if mid-batch resets are turned off.
     :param initial_count: seed the running mean and standard deviation model
         with `initial_count` instances of x~N(0,1). Increase this to improve
         stability, to prevent the mean and standard deviation from changing too
         quickly during early training.
     """
     def __init__(self,
-            obs_shape: Tuple[int, ...],
-            only_valid: bool,
-            initial_count: Optional[float] = None,
-        ) -> None:
-        self.only_valid = only_valid
+        batch_buffer: Samples,
+        obs_shape: Tuple[int, ...],
+        initial_count: Optional[float] = None,
+    ) -> None:
+        if isinstance(batch_buffer.env.observation, NamedTuple):
+            raise NotImplementedError("Not implemented for dictionary "
+                "observations.")
+
+        self.only_valid = hasattr(batch_buffer.env, "valid")
 
         if initial_count is not None and initial_count < 1.:
             raise ValueError("Initial count must be at least 1")
