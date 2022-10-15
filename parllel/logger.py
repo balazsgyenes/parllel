@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from os import PathLike
 from pathlib import Path
@@ -8,7 +10,7 @@ from typing import Any, Dict, List, Optional, Sequence, TextIO, Tuple, Union
 
 import numpy as np
 import torch as torch
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -27,20 +29,24 @@ try:
 except ImportError:
     has_wandb = False
 
-# _log_dir = None
-# _summary_writer = None
 
-# def init(config: Dict):
-#     pass
+# logger API
+_logger = None
+record = None
+record_mean = None
+dump = None
+log = None
+debug = None
+info = None
+warn = None
+error = None
+set_verbosity = None
+close = None
 
-# def from_wandb(run: wandb.Run):
-#     if not has_wandb:
-#         raise RuntimeError("Weights and Biases is not installed!")
+# logger attributes
+model_save_path = None
 
-# def log(data: Dict[str, Any]):
-#     pass
-
-
+# logger verbosity levels
 DISABLED = 0
 ERROR = 1
 WARN = 2
@@ -286,7 +292,7 @@ class TxtFileWriter(KeyValueWriter, MessageWriter, LogWriter, name="txt"):
             self.file.close()
 
 
-class StdOutWriter(TxtFileWriter, LogWriter, name="stdout"):
+class StdOutWriter(TxtFileWriter, name="stdout"):
     def __init__(self, path: str, max_length: int = 36, **kwargs):
         super().__init__(sys.stdout, max_length, **kwargs)
 
@@ -387,7 +393,7 @@ class CSVWriter(KeyValueWriter, LogWriter, name="csv"):
         self.file.close()
 
 
-class TensorBoardOutputFormat(KeyValueWriter, LogWriter, name="tensorboard"):
+class TensorBoardWriter(KeyValueWriter, LogWriter, name="tensorboard"):
     """
     Dumps key/value pairs into TensorBoard's numeric format.
 
@@ -448,6 +454,8 @@ class Logger:
     :param verbosity: the logging level (can be DEBUG=4, INFO=3, WARN=2, ERROR=1, DISABLED=0)
     """
     def __init__(self, output_formats: Dict[str, Path] = None, verbosity: int = INFO):
+        # TODO: add logdir folder path to act as default destination for filenames
+        # TODO: add more input parameters for e.g. stdout
 
         if output_formats is None:
             # TODO: maybe using warnings module
@@ -463,7 +471,9 @@ class Logger:
         self.counts = defaultdict(int)
         self.excluded_writers = defaultdict(str)
         self.verbosity = verbosity # TODO: each writer has its verbosity level
-        
+
+        # TODO: print info about where logs are saved
+
     def record(self, key: str, value: Any, excluded_outputs: Optional[Union[str, Tuple[str, ...]]] = None) -> None:
         """
         Log a value of some diagnostic
@@ -477,7 +487,11 @@ class Logger:
         self.values[key] = value
         self.excluded_writers[key] = excluded_outputs
 
-    def record_mean(self, key: str, value: Any, excluded_outputs: Optional[Union[str, Tuple[str, ...]]] = None) -> None:
+    def record_mean(self,
+        key: str,
+        value: Union[np.ndarray, float],
+        excluded_outputs: Optional[Union[str, Tuple[str, ...]]] = None,
+    ) -> None:
         """
         The same as record(), but if called many times, values averaged.
 
@@ -485,9 +499,17 @@ class Logger:
         :param value: save to log this value
         :param excluded_outputs: outputs to be excluded
         """
+        if isinstance(value, np.ndarray):
+            n = len(value)
+            batch_mean = np.mean(value)
+        else:
+            n = 1
+            batch_mean = value
         old_val, count = self.values[key], self.counts[key]
-        self.values[key] = old_val * count / (count + 1) + value / (count + 1)
-        self.counts[key] = count + 1
+        delta = batch_mean - old_val
+        new_count = count + n
+        self.values[key] = old_val + delta * n / new_count
+        self.counts[key] = new_count
         self.excluded_writers[key] = excluded_outputs
 
     def dump(self, step: int = 0) -> None:
@@ -518,7 +540,7 @@ class Logger:
                     the level argument here, don't print to stdout.
 
         :param args: log the arguments
-        :param level: the logging level (can be DEBUG=10, INFO=20, WARN=30, ERROR=40, DISABLED=50)
+        :param level: the logging level (can be DEBUG=4, INFO=3, WARN=2, ERROR=1, DISABLED=0)
         """
         if self.verbosity >= level:
             for writer in self.writers:
@@ -554,6 +576,7 @@ class Logger:
         :param args: log the arguments
         """
         self.log(*args, level=WARN)
+        # TODO: throw warning, maybe with warnings module
 
     def error(self, *args) -> None:
         """
@@ -564,6 +587,7 @@ class Logger:
         :param args: log the arguments
         """
         self.log(*args, level=ERROR)
+        # TODO: throw runtime exception here
 
     # Configuration
     # ----------------------------------------
@@ -571,7 +595,7 @@ class Logger:
         """
         Set logging threshold on current logger.
 
-        :param verbosity: the logging level (can be DEBUG=10, INFO=20, WARN=30, ERROR=40, DISABLED=50)
+        :param verbosity: the logging level (can be DEBUG=4, INFO=3, WARN=2, ERROR=1, DISABLED=0)
         """
         self.verbosity = verbosity
 
@@ -581,3 +605,61 @@ class Logger:
         """
         for writer in self.writers.values():
             writer.close()
+
+
+class DefaultLogger(Logger):
+    def __init__(self) -> None:
+        self.warned = False
+
+    def _warn_no_logger(self) -> None:
+        if not self.warned:
+            print("Logging is not enabled! Call `parllel.logger.init()`")
+            self.warned = True
+
+    def log(self, *args, **kwargs) -> None:
+        self._warn_no_logger()
+
+    record = log
+    record_mean = log
+    dump = log
+    debug = log
+    info = log
+    warn = log
+    error = log
+    set_verbosity = log
+    close = log
+
+
+def _set_logger(new_logger: Logger):
+    globals()["_logger"] = new_logger
+
+    # API calls need to point to bound methods of new logger object
+    globals()["record"] = _logger.record
+    globals()["record_mean"] = _logger.record_mean
+    globals()["dump"] = _logger.dump
+    globals()["log"] = _logger.log
+    globals()["debug"] = _logger.debug
+    globals()["info"] = _logger.info
+    globals()["warn"] = _logger.warn
+    globals()["error"] = _logger.error
+    globals()["set_verbosity"] = _logger.set_verbosity
+    globals()["close"] = _logger.close
+
+
+def init(
+    output_formats: Dict[str, Path] = None,
+    model_save_path: Path = None,
+    verbosity: int = INFO,
+) -> None:
+    if not isinstance(_logger, DefaultLogger):
+        raise RuntimeError("Logging has already been initialized!")
+
+    logger = Logger(output_formats=output_formats, verbosity=verbosity)
+
+    _set_logger(logger)
+
+    globals()["model_save_path"] = model_save_path
+
+
+# create default logger to alert user that logging has not been initialized
+_set_logger(DefaultLogger())

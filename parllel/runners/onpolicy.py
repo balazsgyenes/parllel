@@ -1,6 +1,3 @@
-from pathlib import Path
-from typing import Union
-
 from tqdm import tqdm
 
 from parllel.algorithm import Algorithm
@@ -19,12 +16,7 @@ class OnPolicyRunner(Runner):
         n_steps: int,
         batch_spec: BatchSpec,
         log_interval_steps: int,
-        log_dir: Union[Path, str, None] = None,
     ) -> None:
-
-        super().__init__(
-            log_dir=log_dir,
-        )
 
         self.sampler = sampler
         self.agent = agent
@@ -40,19 +32,16 @@ class OnPolicyRunner(Runner):
         
         progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
-        completed_trajs = []
 
         for itr in range(self.n_iterations):
             elapsed_steps = itr * batch_size
 
-            batch_samples, new_trajs = self.sampler.collect_batch(elapsed_steps)
-            completed_trajs.extend(new_trajs)
+            batch_samples, _ = self.sampler.collect_batch(elapsed_steps)
 
             self.algorithm.optimize_agent(elapsed_steps, batch_samples)
 
             if (itr + 1) % self.log_interval_iters == 0:
-                self.log_progress(elapsed_steps, completed_trajs)
-                completed_trajs.clear()
+                self.log_progress(elapsed_steps)
 
             progress_bar.update(batch_size)
 

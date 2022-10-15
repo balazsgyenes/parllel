@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict
 
 import torch
+import wandb
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
@@ -12,6 +13,7 @@ from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
 from parllel.configuration import add_default_config_fields, add_metadata
 from parllel.logging import init_log_folder, log_config
+import parllel.logger as logger
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
     add_obs_normalization, add_reward_clipping, add_reward_normalization,
     build_cages_and_env_buffers)
@@ -181,8 +183,6 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        # log_dir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
-        log_dir = None,
         parallel = True,
         batch_T = 128,
         batch_B = 16,
@@ -206,14 +206,43 @@ if __name__ == "__main__":
             n_steps = 50 * 16 * 128,
             log_interval_steps = 5 * 16 * 128,
         ),
-        meta = dict(
-            name = "[Example 1] CartPole with PPO",
-        ),
     )
 
     config = add_default_ppo_config(config)
     config = add_metadata(config, build)
     config = add_default_config_fields(config)
 
+    # run = wandb.init(
+    #     anonymous="allow", # TODO: verify
+    #     project="Visual CartPole",
+    #     group="Recurrent PPO",
+    #     config=config,
+    #     sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
+    #     monitor_gym=True,  # auto-upload the videos of agents playing the game
+    #     save_code=True,  # optional
+    # )
+
+    # logger.from_wandb(run=run)
+
+    logdir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+
+    logger.init(
+        output_formats={
+            "stdout": "",
+            "txt": logdir / "log.txt",
+            "tensorboard": logdir,
+        },
+        model_save_path=logdir / "model.pt"
+    )
+
     with build(config) as runner:
         runner.run()
+
+    # run.finish()
+
+    # TODO:
+    # compatibility with tqdm progress bar
+    # runner only commands logger to dump and agent to save model
+    # some entity needs to create the log folder
+    # PPO needs to save its diagnostics
+    # some entity needs to save diagnostics like fps, etc.

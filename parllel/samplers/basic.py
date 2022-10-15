@@ -2,7 +2,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from parllel.buffers import Samples, buffer_asarray
+from parllel.buffers import Samples
 from parllel.buffers.utils import buffer_rotate
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
@@ -109,6 +109,8 @@ class BasicSampler(Sampler):
             for env in self.envs
             for traj in env.collect_completed_trajs()
         ]
+
+        self.log_completed_trajectories(completed_trajectories)
 
         # apply user-defined transforms
         if self.batch_transform is not None:
