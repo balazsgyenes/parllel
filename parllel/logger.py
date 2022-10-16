@@ -29,6 +29,8 @@ try:
 except ImportError:
     has_wandb = False
 
+from parllel.logging import log_config
+
 
 # logger API
 _logger = None
@@ -201,12 +203,13 @@ class TxtFileWriter(KeyValueWriter, MessageWriter, LogWriter, name="txt"):
     """
 
     def __init__(self,
-        filename_or_file: Union[PathLike, TextIO],
+        filename_or_file: Union[str, Path, TextIO],
         max_length: int = 36,
         **kwargs,
     ) -> None:
         self.max_length = max_length
-        if isinstance(filename_or_file, str):
+        # TODO: this can be made safer, since we know what we expect
+        if isinstance(filename_or_file, (str, Path)):
             self.file = open(filename_or_file, "wt")
             self.own_file = True
         else:
@@ -465,7 +468,7 @@ class Logger:
         self.writers: Dict[str, LogWriter] = {}
         for _format, path in output_formats.items():
             # TODO: how to set other parameters like max_length for stdout?
-            self.writers[_format] = LogWriter(_format, path)
+            self.writers[_format] = LogWriter(path, name=_format)
 
         self.values = defaultdict(float)  # values this iteration
         self.counts = defaultdict(int)
@@ -490,7 +493,7 @@ class Logger:
     def record_mean(self,
         key: str,
         value: Union[np.ndarray, float],
-        excluded_outputs: Optional[Union[str, Tuple[str, ...]]] = None,
+        excluded_outputs: Optional[Union[str, Tuple[str, ...]]] = "",
     ) -> None:
         """
         The same as record(), but if called many times, values averaged.
@@ -543,7 +546,7 @@ class Logger:
         :param level: the logging level (can be DEBUG=4, INFO=3, WARN=2, ERROR=1, DISABLED=0)
         """
         if self.verbosity >= level:
-            for writer in self.writers:
+            for writer in self.writers.values():
                 if isinstance(writer, MessageWriter):
                     writer.write_message(map(str, args))
 
@@ -648,15 +651,22 @@ def _set_logger(new_logger: Logger):
 
 def init(
     output_formats: Dict[str, Path] = None,
-    model_save_path: Path = None,
     verbosity: int = INFO,
+    log_dir: PathLike = None,
+    config: Dict[str, Any] = None,
+    model_save_path: Path = None,
 ) -> None:
     if not isinstance(_logger, DefaultLogger):
         raise RuntimeError("Logging has already been initialized!")
 
-    logger = Logger(output_formats=output_formats, verbosity=verbosity)
+    if log_dir is not None:
+        log_dir = Path(log_dir)
+        log_dir.mkdir(parents=True)
 
+    logger = Logger(output_formats=output_formats, verbosity=verbosity)
     _set_logger(logger)
+
+    log_config(config=config, path=log_dir / "config.json")
 
     globals()["model_save_path"] = model_save_path
 

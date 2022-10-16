@@ -55,6 +55,7 @@ class Sampler(ABC):
         of the observation buffer, assuming that batch collection begins by
         rotating the batch buffer.
         """
+        logger.debug("Resetting all environments.")
         observation = self.sample_buffer.env.observation
         for b, env in enumerate(self.envs):
             # save reset observation to the end of buffer, since it will be 
@@ -67,6 +68,7 @@ class Sampler(ABC):
 
     def reset_agent(self) -> None:
         """Reset RNN state of agent, if it has one"""
+        logger.debug("Resetting agent.")
         self.agent.reset()
 
     def seed(self, seed) -> None:
@@ -74,6 +76,8 @@ class Sampler(ABC):
 
     def decorrelate_environments(self) -> None:
         """Randomly step environments so they are not all synced up."""
+        logger.info("Decorrelating environments with up to "
+            f"{self.max_steps_decorrelate} random steps each.")
         # get references to buffer elements
         action = self.sample_buffer.agent.action
         observation, reward, done, env_info = (
@@ -131,17 +135,18 @@ class Sampler(ABC):
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         pass
 
-    def log_completed_trajectories(trajectories: List[TrajInfo]) -> None:
+    def log_completed_trajectories(self, trajectories: List[TrajInfo]) -> None:
 
         # (((key1, value1), (key2, value2)), ((key1, value1), (key2, value2)))
-        trajectories = (asdict(traj) for traj in trajectories)
+        trajectories = (asdict(traj).items() for traj in trajectories)
 
-        # zip1 -> (((key1, value1), (key1, value1)), ((key2, value2), (key2, value2)))
-        # zip2 -> (((key1, key1), (value1, value1)), ((key2, key2), (value2, value2)))
-        for (fields, values) in zip(zip(trajectories)):
-            name = fields[0]
-            # TODO: remove this assert
-            assert all(field == name for field in fields)
+        # zip -> (((key1, value1), (key1, value1)), ((key2, value2), (key2, value2)))
+        for keys_and_values in zip(*trajectories):
+            # ((key1, value1), (key1, value1)) -> (((key1, key1), (value1, value1))
+            keys, values = zip(*keys_and_values)
+            name = keys[0]
+            if name[0] == "_" or name == "discount":
+                continue # do not log these "private" variables
             values = np.array(values)
             logger.record_mean(name, values)
 

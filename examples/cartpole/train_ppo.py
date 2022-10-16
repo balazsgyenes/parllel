@@ -33,9 +33,6 @@ from models.model import CartPoleFfPgModel
 @contextmanager
 def build(config: Dict) -> OnPolicyRunner:
 
-    init_log_folder(config["log_dir"])
-    log_config(config, config["log_dir"])
-
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -163,7 +160,6 @@ def build(config: Dict) -> OnPolicyRunner:
         agent=agent,
         algorithm=algorithm,
         batch_spec=batch_spec,
-        log_dir=config["log_dir"],
         **config["runner"],
     )
 
@@ -209,7 +205,6 @@ if __name__ == "__main__":
     )
 
     config = add_default_ppo_config(config)
-    config = add_metadata(config, build)
     config = add_default_config_fields(config)
 
     # run = wandb.init(
@@ -224,15 +219,17 @@ if __name__ == "__main__":
 
     # logger.from_wandb(run=run)
 
-    logdir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+    log_dir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}")
 
     logger.init(
         output_formats={
             "stdout": "",
-            "txt": logdir / "log.txt",
-            "tensorboard": logdir,
+            "txt": log_dir / "log.txt",
+            "tensorboard": log_dir,
         },
-        model_save_path=logdir / "model.pt"
+        log_dir=log_dir,
+        config=config,
+        model_save_path=log_dir / "model.pt",
     )
 
     with build(config) as runner:
@@ -246,3 +243,6 @@ if __name__ == "__main__":
     # some entity needs to create the log folder
     # PPO needs to save its diagnostics
     # some entity needs to save diagnostics like fps, etc.
+    # some entity needs to log the config
+    # add support for custom fields in env_info or traj_info for logging
+    # make sure entries are grouped correctly in tensorboard

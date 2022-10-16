@@ -44,7 +44,7 @@ def log_config(config: Dict, path: PathLike) -> None:
             return str(obj)
         return format_specifier.format(obj.__name__, obj.__module__)
 
-    with open(path / CONFIG_FILENAME, "w") as f:
+    with open(path, "w") as f:
         json.dump(
             config,
             f,
