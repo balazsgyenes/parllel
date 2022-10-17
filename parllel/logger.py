@@ -477,7 +477,11 @@ class Logger:
 
         # TODO: print info about where logs are saved
 
-    def record(self, key: str, value: Any, excluded_outputs: Optional[Union[str, Tuple[str, ...]]] = None) -> None:
+    def record(self,
+        key: str,
+        value: Any,
+        do_not_write_to: Optional[Union[str, Tuple[str, ...]]] = "",
+    ) -> None:
         """
         Log a value of some diagnostic
         Call this once for each diagnostic quantity, each iteration
@@ -485,23 +489,25 @@ class Logger:
 
         :param key: save to log this key
         :param value: save to log this value
-        :param excluded_outputs: outputs to be excluded
+        :param do_not_write_to: outputs to be excluded
         """
         self.values[key] = value
-        self.excluded_writers[key] = excluded_outputs
+        self.excluded_writers[key] = do_not_write_to
 
     def record_mean(self,
         key: str,
-        value: Union[np.ndarray, float],
-        excluded_outputs: Optional[Union[str, Tuple[str, ...]]] = "",
+        value: Union[np.ndarray, List[float], float],
+        do_not_write_to: Optional[Union[str, Tuple[str, ...]]] = "",
     ) -> None:
         """
         The same as record(), but if called many times, values averaged.
 
         :param key: save to log this key
         :param value: save to log this value
-        :param excluded_outputs: outputs to be excluded
+        :param do_not_write_to: outputs to be excluded
         """
+        if isinstance(value, list):
+            value = np.array(value)
         if isinstance(value, np.ndarray):
             n = len(value)
             batch_mean = np.mean(value)
@@ -513,7 +519,7 @@ class Logger:
         new_count = count + n
         self.values[key] = old_val + delta * n / new_count
         self.counts[key] = new_count
-        self.excluded_writers[key] = excluded_outputs
+        self.excluded_writers[key] = do_not_write_to
 
     def dump(self, step: int = 0) -> None:
         """

@@ -11,8 +11,7 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
-from parllel.configuration import add_default_config_fields, add_metadata
-from parllel.logging import init_log_folder, log_config
+from parllel.configuration import add_default_config_fields
 import parllel.logger as logger
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
     add_obs_normalization, add_reward_clipping, add_reward_normalization,
@@ -246,3 +245,5 @@ if __name__ == "__main__":
     # some entity needs to log the config
     # add support for custom fields in env_info or traj_info for logging
     # make sure entries are grouped correctly in tensorboard
+    # may need to delegate logging to the runner, which has all the context required
+    # e.g. for off-policy algorithms, only the eval trajectories need to be logged

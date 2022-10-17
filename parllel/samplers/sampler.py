@@ -148,7 +148,7 @@ class Sampler(ABC):
             if name[0] == "_" or name == "discount":
                 continue # do not log these "private" variables
             values = np.array(values)
-            logger.record_mean(name, values)
+            logger.record_mean("trajectory/" + name, values)
 
     def close(self) -> None:
         pass

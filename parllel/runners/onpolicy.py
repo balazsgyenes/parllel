@@ -2,6 +2,7 @@ from tqdm import tqdm
 
 from parllel.algorithm import Algorithm
 from parllel.handlers.agent import Agent
+import parllel.logger as logger
 from parllel.samplers.sampler import Sampler
 from parllel.types import BatchSpec
 
@@ -17,6 +18,7 @@ class OnPolicyRunner(Runner):
         batch_spec: BatchSpec,
         log_interval_steps: int,
     ) -> None:
+        super().__init__()
 
         self.sampler = sampler
         self.agent = agent
@@ -28,7 +30,7 @@ class OnPolicyRunner(Runner):
         self.log_interval_iters = int(log_interval_steps // batch_spec.size)
 
     def run(self) -> None:
-        print("Starting training...")
+        logger.info("Starting training...")
         
         progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
@@ -41,9 +43,11 @@ class OnPolicyRunner(Runner):
             self.algorithm.optimize_agent(elapsed_steps, batch_samples)
 
             if (itr + 1) % self.log_interval_iters == 0:
+                logger.record("time/iterations", itr)
                 self.log_progress(elapsed_steps)
 
             progress_bar.update(batch_size)
 
-        print("Finished training.")
+        progress_bar.close()
         progress_bar = None
+        logger.info("Finished training.")

@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Dict
 
 import torch
@@ -7,6 +8,7 @@ import numpy as np
 from parllel.algorithm import Algorithm
 from parllel.arrays import Array
 from parllel.buffers import Samples, buffer_asarray, NamedArrayTupleClass
+import parllel.logger as logger
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
 from parllel.torch.utils import buffer_to_device, torchify_buffer, valid_mean
@@ -64,6 +66,7 @@ class PPO(Algorithm):
         self.value_ratio_clip = value_ratio_clip
         self.value_clipping_mode = value_clipping_mode
 
+        self.update_counter = 0
         self.rng = np.random.default_rng()
 
     def seed(self, seed: int):
@@ -111,6 +114,7 @@ class PPO(Algorithm):
             (loss_inputs, init_rnn_state), device=self.agent.device)
 
         self.agent.train_mode(elapsed_steps)
+        self.algo_log_info = defaultdict(list)
 
         T, B = self.batch_spec
         
@@ -130,8 +134,7 @@ class PPO(Algorithm):
                     
                 self.optimizer.zero_grad()
                 # NOTE: if not recurrent, leading T and B dims are combined
-                loss, entropy, perplexity = self.loss(
-                    *loss_inputs[T_idxs, B_idxs], minibatch_rnn_state)
+                loss = self.loss(*loss_inputs[T_idxs, B_idxs], minibatch_rnn_state)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.agent.model.parameters(), self.clip_grad_norm)
@@ -139,6 +142,13 @@ class PPO(Algorithm):
         
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
+
+        for key, values in self.algo_log_info.items():
+            logger.record_mean("algo/" + key, values)
+        self.algo_log_info.clear()
+
+        self.update_counter += self.epochs * self.minibatches
+        logger.record("algo/n_updates", self.update_counter)
 
     def loss(self, agent_inputs, action, return_, advantage, valid, old_dist_info,
              old_values, init_rnn_state):
@@ -192,7 +202,22 @@ class PPO(Algorithm):
         loss = pi_loss + value_loss + entropy_loss
 
         perplexity = dist.mean_perplexity(dist_info, valid)
-        return loss, entropy, perplexity
+
+        self.algo_log_info["entropy"].append(entropy.item())
+        self.algo_log_info["perplexity"].append(perplexity.item())
+        self.algo_log_info["entropy_loss"].append(entropy_loss.item())
+        self.algo_log_info["value_loss"].append(value_loss.item())
+        self.algo_log_info["policy_gradient_loss"].append(pi_loss.item())
+        self.algo_log_info["loss"].append(loss.item())
+        # TODO:
+        # approx_kl
+        # clip_fraction
+        # explained_variance
+        # policy_log_std
+        # clip_range
+        # clip_range_vf
+
+        return loss
 
 
 def minibatch_indices(data_length: int, minibatch_size: int, rng: np.random.Generator = None):
