@@ -233,15 +233,26 @@ if __name__ == "__main__":
 
     run.finish()
 
-    # TODO:
-    # compatibility with tqdm progress bar
-    # runner only commands logger to dump and agent to save model
-    # some entity needs to create the log folder
-    # PPO needs to save its diagnostics
-    # some entity needs to save diagnostics like fps, etc.
-    # some entity needs to log the config
+    # TODO: minimal
     # add support for custom fields in env_info or traj_info for logging
-    # make sure entries are grouped correctly in tensorboard
-    # may need to delegate logging to the runner, which has all the context required
-    # e.g. for off-policy algorithms, only the eval trajectories need to be logged
-    # (maybe) move logger into parllel __init__.py, so we don't need to set module globals in logger.py
+    # move logging calls into the runner only
+    # move writer types to another file
+    # port remaining diagnostics to PPO from SB3
+    # add support for recording videos of rollouts
+
+    # TODO: future
+    # add separate wandb writer, making tensorboard optional
+    # add additional serializers for config files
+        # investigate using pickle to serialize classes (but needs to be detectable on read)
+        # ensure no collisions with wandb's config.yaml file
+
+    # TODO: test
+    # do not init logging
+    # init wandb first
+    # verify that writing to wandb folder is equivalent to wandb.save(policy="live")
+    # no log_dir
+    # no model_save_path
+    # no config
+    # explicit config_save_path
+    # setting verbosity in a clean way
+    # Why does sb3 use cloud pickle?

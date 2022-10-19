@@ -209,7 +209,7 @@ class PPO(Algorithm):
         self.algo_log_info["value_loss"].append(value_loss.item())
         self.algo_log_info["policy_gradient_loss"].append(pi_loss.item())
         self.algo_log_info["loss"].append(loss.item())
-        # TODO:
+        # TODO: add these diagnostics
         # approx_kl
         # clip_fraction
         # explained_variance
