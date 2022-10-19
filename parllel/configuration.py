@@ -7,7 +7,6 @@ default_fields = [
     "optimizer",
     "algo",
     "runner",
-    "meta",
 ]
 def add_default_config_fields(config: Dict) -> Dict:
     for field in default_fields:

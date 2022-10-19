@@ -22,6 +22,5 @@ class Runner(ABC):
         # update elapsed steps for next fps calculation
         self.last_elapsed_steps = elapsed_steps
 
-        if logger.model_save_path is not None:
-            # TODO: technically, the agent should be added to this base class
-            self.agent.save_model(path=logger.model_save_path)
+        # TODO: technically, the agent should be added to this base class
+        logger.save_model(agent=self.agent)

@@ -206,35 +206,32 @@ if __name__ == "__main__":
     config = add_default_ppo_config(config)
     config = add_default_config_fields(config)
 
-    # run = wandb.init(
-    #     anonymous="allow", # TODO: verify
-    #     project="Visual CartPole",
-    #     group="Recurrent PPO",
-    #     config=config,
-    #     sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
-    #     monitor_gym=True,  # auto-upload the videos of agents playing the game
-    #     save_code=True,  # optional
-    # )
-
-    # logger.from_wandb(run=run)
-
-    log_dir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}")
-
-    logger.init(
-        output_formats={
-            "stdout": "",
-            "txt": log_dir / "log.txt",
-            "tensorboard": log_dir,
-        },
-        log_dir=log_dir,
+    run = wandb.init(
+        anonymous="allow", # for this example, wandb should not be mandatory
+        project="CartPole",
+        group="PPO",
         config=config,
-        model_save_path=log_dir / "model.pt",
+        sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
+        monitor_gym=True,  # auto-upload the videos of agents playing the game
+        save_code=True,  # optional
+    )
+
+    # log_dir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}")
+    logger.init(
+        # log_dir=log_dir,
+        tensorboard=True,
+        wandb=run,
+        output_files={
+            "txt": "log.txt",
+        },
+        config=config,
+        model_save_path="model.pt",
     )
 
     with build(config) as runner:
         runner.run()
 
-    # run.finish()
+    run.finish()
 
     # TODO:
     # compatibility with tqdm progress bar
@@ -247,3 +244,4 @@ if __name__ == "__main__":
     # make sure entries are grouped correctly in tensorboard
     # may need to delegate logging to the runner, which has all the context required
     # e.g. for off-policy algorithms, only the eval trajectories need to be logged
+    # (maybe) move logger into parllel __init__.py, so we don't need to set module globals in logger.py

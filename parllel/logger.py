@@ -1,3 +1,5 @@
+# because this module is full of types from 3rd party packages, treat type
+# annotations as strings and do not evaluate them
 from __future__ import annotations
 
 import json
@@ -30,6 +32,7 @@ except ImportError:
     has_wandb = False
 
 from parllel.logging import log_config
+from parllel.handlers.agent import Agent
 
 
 # logger API
@@ -37,6 +40,7 @@ _logger = None
 record = None
 record_mean = None
 dump = None
+save_model = None
 log = None
 debug = None
 info = None
@@ -44,9 +48,6 @@ warn = None
 error = None
 set_verbosity = None
 close = None
-
-# logger attributes
-model_save_path = None
 
 # logger verbosity levels
 DISABLED = 0
@@ -138,11 +139,22 @@ class LogWriter:
 
     _writer_classes = {}
 
-    def __init_subclass__(cls, /, name: str, **kwargs) -> None:
+    def __init_subclass__(cls, /, **kwargs) -> None:
+        name = kwargs.pop("name", None)
         super().__init_subclass__(**kwargs)
-        cls._writer_classes[name] = cls
+        # register subclass if defined with a name
+        if name is not None:
+            cls._writer_classes[name] = cls
 
-    def __new__(cls, *args, name: str, **kwargs):
+    def __new__(cls, *args, **kwargs):
+        # if instantiating a subclass directly, just create that class
+        if cls != LogWriter:
+            return super().__new__(cls)
+        # otherwise look up name in dictionary of registered subclasses
+        try:
+            name = kwargs["name"]
+        except KeyError:
+            raise ValueError("Missing required keyword-only argument 'name'")
         try:
             return super().__new__(cls._writer_classes[name])
         except KeyError:
@@ -162,14 +174,12 @@ class KeyValueWriter:
     """
     Key Value writer
     """
-    def write(self, key_values: Dict[str, Any], key_excluded: Dict[str, Union[str, Tuple[str, ...]]], step: int = 0) -> None:
+    def write(self, key_values: Dict[str, Any], step: int = 0) -> None:
         """
         Write a dictionary to file
 
         :param key_values:
-        :param key_excluded:
         :param step:
-        # TODO: add excluded keys to Logger class instead of writers
         """
         raise NotImplementedError
 
@@ -184,6 +194,7 @@ class MessageWriter:
         Write a message to the log file.
 
         :param sequence:
+        # TODO: update these parameters and type hints
         """
         raise NotImplementedError
 
@@ -295,8 +306,8 @@ class TxtFileWriter(KeyValueWriter, MessageWriter, LogWriter, name="txt"):
             self.file.close()
 
 
-class StdOutWriter(TxtFileWriter, name="stdout"):
-    def __init__(self, path: str, max_length: int = 36, **kwargs):
+class StdOutWriter(TxtFileWriter): # must be created explicitly
+    def __init__(self, max_length: int = 36, **kwargs):
         super().__init__(sys.stdout, max_length, **kwargs)
 
 
@@ -453,27 +464,35 @@ class Logger:
     """
     The logger class.
 
-    :param output_formats: the list of output formats
+    :param output_files: the list of output formats
     :param verbosity: the logging level (can be DEBUG=4, INFO=3, WARN=2, ERROR=1, DISABLED=0)
     """
-    def __init__(self, output_formats: Dict[str, Path] = None, verbosity: int = INFO):
-        # TODO: add logdir folder path to act as default destination for filenames
-        # TODO: add more input parameters for e.g. stdout
-
-        if output_formats is None:
-            # TODO: maybe using warnings module
-            print("WARNING: no output will be logged")
-            output_formats = {"stdout": ""}
-
+    def __init__(self,
+        output_files: Dict[str, Path] = None,
+        stdout: bool = True,
+        verbosity: int = INFO,
+        model_save_path: Path = None,
+        use_wandb: bool = False,
+    ):
         self.writers: Dict[str, LogWriter] = {}
-        for _format, path in output_formats.items():
+        for _format, path in output_files.items():
             # TODO: how to set other parameters like max_length for stdout?
             self.writers[_format] = LogWriter(path, name=_format)
+
+        if stdout:
+            self.writers["stdout"] = StdOutWriter()
+
+        if not output_files:
+            # TODO: maybe using warnings module
+            print("WARNING: no output will be logged")
+
+        self.verbosity = verbosity # TODO: each writer has its verbosity level
+        self.model_save_path = model_save_path
+        self.use_wandb = use_wandb
 
         self.values = defaultdict(float)  # values this iteration
         self.counts = defaultdict(int)
         self.excluded_writers = defaultdict(str)
-        self.verbosity = verbosity # TODO: each writer has its verbosity level
 
         # TODO: print info about where logs are saved
 
@@ -539,6 +558,13 @@ class Logger:
         self.values.clear()
         self.counts.clear()
         self.excluded_writers.clear()
+
+    def save_model(self, agent: Agent):
+        if self.model_save_path is not None:
+            agent.save_model(self.model_save_path)
+            if self.use_wandb:
+                # sync model with wandb server
+                wandb.save(str(self.model_save_path), base_path=self.model_save_path.parent)
 
     def log(self, *args, level: int = INFO) -> None:
         """
@@ -617,6 +643,8 @@ class Logger:
 
 
 class DefaultLogger(Logger):
+    # TODO: is this class necessary, or is the default logger just the logger
+    # with default arguments?
     def __init__(self) -> None:
         self.warned = False
 
@@ -640,12 +668,14 @@ class DefaultLogger(Logger):
 
 
 def _set_logger(new_logger: Logger):
+    # TODO: is there a cleaner paradigm for global resources?
     globals()["_logger"] = new_logger
 
     # API calls need to point to bound methods of new logger object
     globals()["record"] = _logger.record
     globals()["record_mean"] = _logger.record_mean
     globals()["dump"] = _logger.dump
+    globals()["save_model"] = _logger.save_model
     globals()["log"] = _logger.log
     globals()["debug"] = _logger.debug
     globals()["info"] = _logger.info
@@ -656,25 +686,70 @@ def _set_logger(new_logger: Logger):
 
 
 def init(
-    output_formats: Dict[str, Path] = None,
-    verbosity: int = INFO,
-    log_dir: PathLike = None,
+    log_dir: Optional[PathLike] = None,
+    tensorboard: bool = False, # TODO: add passing tensorboard dir explicitly
+    wandb: Optional[wandb.Run] = None,
+    stdout: bool = True,
+    output_files: Dict[str, PathLike] = None,
     config: Dict[str, Any] = None,
-    model_save_path: Path = None,
+    config_path: Optional[PathLike] = None,
+    model_save_path: Optional[PathLike] = None,
+    verbosity: int = INFO,
 ) -> None:
     if not isinstance(_logger, DefaultLogger):
         raise RuntimeError("Logging has already been initialized!")
 
-    if log_dir is not None:
+    # TODO: can the presence of a wandb run be automatically detected?
+    # also want to prevent the user from initializing parllel logging
+    # before wandb logging
+
+    # log_dir defaults to wandb folder if using wandb
+    if wandb is not None:
+        log_dir = Path(wandb.dir)
+    elif log_dir is not None:
+        # if log_dir set manually, create it
         log_dir = Path(log_dir)
         log_dir.mkdir(parents=True)
+    else: # add outputs must have absolute paths
+        # TODO: add option to specify all paths absolutely
+        assert not tensorboard, "Not implemented yet"
 
-    logger = Logger(output_formats=output_formats, verbosity=verbosity)
+    # if requested, add tensorboard to output files
+    if tensorboard:
+        output_files["tensorboard"] = ""
+
+    # make relative paths absolute by prepending log_dir
+    for name, path in output_files.items():
+        path = Path(path)
+        if not path.is_absolute():
+            path = log_dir / path
+        output_files[name] = path
+
+    # make model_save_path absolute
+    if model_save_path is not None:
+        model_save_path = Path(model_save_path)
+        if not model_save_path.is_absolute():
+            model_save_path = log_dir / model_save_path
+
+    # make Logger object and assign it to module globals
+    logger = Logger(
+        output_files=output_files,
+        stdout=stdout,
+        verbosity=verbosity,
+        model_save_path=model_save_path,
+        use_wandb=(wandb is not None),
+    )
     _set_logger(logger)
 
-    log_config(config=config, path=log_dir / "config.json")
+    # make config_path absolute
+    if config_path is None:
+        config_path = Path("config.json")
+    if not config_path.is_absolute():
+        config_path = log_dir / config_path
 
-    globals()["model_save_path"] = model_save_path
+    # if given, write config to file
+    if config is not None:
+        log_config(config=config, path=config_path)
 
 
 # create default logger to alert user that logging has not been initialized
