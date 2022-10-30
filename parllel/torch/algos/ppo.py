@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, List, Union
 
 import torch
 import torch.optim
@@ -68,11 +68,15 @@ class PPO(Algorithm):
 
         self.update_counter = 0
         self.rng = np.random.default_rng()
+        self.algo_log_info = defaultdict(list)
 
     def seed(self, seed: int):
         self.rng = np.random.default_rng(seed)
 
-    def optimize_agent(self, elapsed_steps: int, samples: Samples[Array]):
+    def optimize_agent(self,
+        elapsed_steps: int,
+        samples: Samples[Array],
+    ) -> Dict[str, Union[int, List[float]]]:
         """
         Train the agent, for multiple epochs over minibatches taken from the
         input samples.  Organizes agent inputs from the training data, and
@@ -114,7 +118,7 @@ class PPO(Algorithm):
             (loss_inputs, init_rnn_state), device=self.agent.device)
 
         self.agent.train_mode(elapsed_steps)
-        self.algo_log_info = defaultdict(list)
+        self.algo_log_info.clear()
 
         T, B = self.batch_spec
         
@@ -137,18 +141,19 @@ class PPO(Algorithm):
                 loss = self.loss(*loss_inputs[T_idxs, B_idxs], minibatch_rnn_state)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
-                    self.agent.model.parameters(), self.clip_grad_norm)
+                    self.agent.model.parameters(),
+                    self.clip_grad_norm,
+                )
+                self.algo_log_info["grad_norm"].append(grad_norm.item())
                 self.optimizer.step()
         
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
 
-        for key, values in self.algo_log_info.items():
-            logger.record_mean("algo/" + key, values)
-        self.algo_log_info.clear()
-
         self.update_counter += self.epochs * self.minibatches
-        logger.record("algo/n_updates", self.update_counter)
+        self.algo_log_info["n_updates"] = self.update_counter
+
+        return self.algo_log_info
 
     def loss(self, agent_inputs, action, return_, advantage, valid, old_dist_info,
              old_values, init_rnn_state):

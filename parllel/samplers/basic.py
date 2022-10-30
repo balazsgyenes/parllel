@@ -110,8 +110,6 @@ class BasicSampler(Sampler):
             for traj in env.collect_completed_trajs()
         ]
 
-        self.log_completed_trajectories(completed_trajectories)
-
         # apply user-defined transforms
         if self.batch_transform is not None:
             sample_buffer = self.batch_transform(sample_buffer)

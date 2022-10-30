@@ -38,13 +38,19 @@ class OnPolicyRunner(Runner):
         for itr in range(self.n_iterations):
             elapsed_steps = itr * batch_size
 
-            batch_samples, _ = self.sampler.collect_batch(elapsed_steps)
+            batch_samples, completed_trajs = self.sampler.collect_batch(
+                elapsed_steps,
+            )
+            self.log_completed_trajectories(completed_trajs)
 
-            self.algorithm.optimize_agent(elapsed_steps, batch_samples)
+            algo_info = self.algorithm.optimize_agent(
+                elapsed_steps,
+                batch_samples,
+            )
+            self.log_algo_info(algo_info)
 
             if (itr + 1) % self.log_interval_iters == 0:
-                logger.record("time/iterations", itr)
-                self.log_progress(elapsed_steps)
+                self.log_progress(elapsed_steps, itr)
 
             progress_bar.update(batch_size)
 

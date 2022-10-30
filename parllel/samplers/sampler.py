@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from dataclasses import asdict
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -134,21 +133,6 @@ class Sampler(ABC):
     @abstractmethod
     def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
         pass
-
-    def log_completed_trajectories(self, trajectories: List[TrajInfo]) -> None:
-
-        # (((key1, value1), (key2, value2)), ((key1, value1), (key2, value2)))
-        trajectories = (asdict(traj).items() for traj in trajectories)
-
-        # zip -> (((key1, value1), (key1, value1)), ((key2, value2), (key2, value2)))
-        for keys_and_values in zip(*trajectories):
-            # ((key1, value1), (key1, value1)) -> (((key1, key1), (value1, value1))
-            keys, values = zip(*keys_and_values)
-            name = keys[0]
-            if name[0] == "_" or name == "discount":
-                continue # do not log these "private" variables
-            values = np.array(values)
-            logger.record_mean("trajectory/" + name, values)
 
     def close(self) -> None:
         pass
