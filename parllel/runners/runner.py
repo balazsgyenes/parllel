@@ -43,7 +43,7 @@ class Runner(ABC):
             # (key1, value1), (key1, value1), ... -> (key1, key1, ...), (value1, value1, ...)
             keys, values = zip(*keys_and_values)
             key = keys[0]
-            if key[0] == "_" or key == "discount":
+            if key[0] == "_":
                 continue # do not log these "private" variables
             values = np.array(values)
             logger.record_mean("trajectory/" + key, values)

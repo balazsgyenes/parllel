@@ -18,8 +18,6 @@ class Cage:
     :param env_kwargs (Dict): Key word arguments that should be passed to the
         `__init__` of `EnvClass` or to the factory function
     :param TrajInfoClass (Callable): TrajectoryInfo class or factory function
-    :param traj_info_kwargs (Dict): Key word arguments that should be passed to
-        the `__init__` of `TrajInfoClass` or to the factory function
     wait_before_reset (bool): If True, environment does not reset when done
         until `reset_async` is called, and `already_done` is set to True. If
         False (default), the environment resets immediately.
@@ -28,13 +26,11 @@ class Cage:
         EnvClass: Callable,
         env_kwargs: Dict,
         TrajInfoClass: Callable,
-        traj_info_kwargs: Dict,
         wait_before_reset: bool = False,
     ) -> None:
         self.EnvClass = EnvClass
         self.env_kwargs = env_kwargs
         self.TrajInfoClass = TrajInfoClass
-        self.traj_info_kwargs = traj_info_kwargs
         self.wait_before_reset = wait_before_reset
 
         self._already_done: bool = False
@@ -42,7 +38,7 @@ class Cage:
 
     def _create_env(self) -> None:
         self._completed_trajs: List[TrajInfo] = []
-        self._traj_info: TrajInfo = self.TrajInfoClass(**self.traj_info_kwargs)
+        self._traj_info: TrajInfo = self.TrajInfoClass()
         self._step_result: Union[EnvStep, str] = None
         self._reset_obs: Union[Buffer, str] = None
 
@@ -95,7 +91,7 @@ class Cage:
         if done:
             # store finished trajectory and start new one
             self._completed_trajs.append(self._traj_info)
-            self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
+            self._traj_info = self.TrajInfoClass()
             if self.wait_before_reset:
                 # store done state
                 self._already_done = True
@@ -116,7 +112,7 @@ class Cage:
 
     def _defer_env_reset(self) -> None:
         self._reset_obs = self._env.reset()
-        self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
+        self._traj_info = self.TrajInfoClass()
 
     def await_step(self) -> Union[EnvStep, Tuple[Buffer, ...], Buffer, bool]:
         result = self._step_result
@@ -157,7 +153,7 @@ class Cage:
             self._reset_obs = None
         else:
             _reset_obs = self._env.reset()
-            self._traj_info = self.TrajInfoClass(**self.traj_info_kwargs)
+            self._traj_info = self.TrajInfoClass()
 
         if out_obs is None:
             self._step_result = _reset_obs

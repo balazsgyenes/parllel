@@ -28,9 +28,7 @@ from models.atari_lstm_model import AtariLstmPgModel
 @contextmanager
 def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
 
-    traj_info_kwargs = {
-        "discount": config["discount"],
-    }
+    TrajInfo.set_discount(config["discount"])
 
     batch_spec = BatchSpec(
         T=config["max_steps"],
@@ -41,7 +39,6 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
         EnvClass = build_multi_agent_cartpole,
         env_kwargs = config["env"],
         TrajInfoClass = TrajInfo,
-        traj_info_kwargs = traj_info_kwargs,
         wait_before_reset = False,
     )
 

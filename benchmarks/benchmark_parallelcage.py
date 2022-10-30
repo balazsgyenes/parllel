@@ -61,7 +61,6 @@ def build(config, parallel, profile_path):
         EnvClass = config["env"]["EnvClass"],
         env_kwargs = config["env"]["env_kwargs"],
         TrajInfoClass = config["env"]["TrajInfoClass"],
-        traj_info_kwargs = config["env"]["traj_info_kwargs"],
         wait_before_reset = False, # reset immediately for speed test
     )
 
@@ -129,7 +128,6 @@ if __name__ == "__main__":
                 "step_duration": 0.03,
             },
             TrajInfoClass = TrajInfo,
-            traj_info_kwargs = {},
         ),
         sampler = dict(
             batch_spec = BatchSpec(

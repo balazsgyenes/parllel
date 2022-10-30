@@ -95,7 +95,6 @@ def envs(action_space, observation_space, batch_spec, multireward):
             multireward=multireward,
         ),
         TrajInfoClass=MultiAgentTrajInfo if multireward else TrajInfo,
-        traj_info_kwargs={},
         wait_before_reset=False,
     ) for length in episode_lengths]
 

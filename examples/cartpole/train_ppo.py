@@ -37,9 +37,7 @@ def build(config: Dict) -> OnPolicyRunner:
         config["batch_T"],
         config["batch_B"],
     )
-    traj_info_kwargs = {
-        "discount": config["discount"],
-    }
+    TrajInfo.set_discount(config["discount"])
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -52,7 +50,6 @@ def build(config: Dict) -> OnPolicyRunner:
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
-        traj_info_kwargs=traj_info_kwargs,
         wait_before_reset=False,
         batch_spec=batch_spec,
         parallel=parallel,
@@ -234,8 +231,6 @@ if __name__ == "__main__":
     run.finish()
 
     # TODO: minimal
-    # add support for custom fields in env_info or traj_info for logging
-    # move logging calls into the runner only
     # move writer types to another file
     # port remaining diagnostics to PPO from SB3
     # add support for recording videos of rollouts
@@ -247,6 +242,7 @@ if __name__ == "__main__":
         # ensure no collisions with wandb's config.yaml file
 
     # TODO: test
+    # custom fields in traj_info for logging
     # do not init logging
     # init wandb first
     # verify that writing to wandb folder is equivalent to wandb.save(policy="live")

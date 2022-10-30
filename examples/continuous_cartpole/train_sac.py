@@ -40,9 +40,7 @@ def build(config: Dict) -> OffPolicyRunner:
         config["batch_T"],
         config["batch_B"],
     )
-    traj_info_kwargs = {
-        "discount": config["discount"],
-    }
+    TrajInfo.set_discount(config["discount"])
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -55,7 +53,6 @@ def build(config: Dict) -> OffPolicyRunner:
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
-        traj_info_kwargs=traj_info_kwargs,
         wait_before_reset=False,
         batch_spec=batch_spec,
         parallel=parallel,
@@ -197,7 +194,6 @@ def build(config: Dict) -> OffPolicyRunner:
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
-        traj_info_kwargs=traj_info_kwargs,
         **config["eval_sampler"],
     )
 

@@ -40,9 +40,7 @@ def build(config: Dict) -> OnPolicyRunner:
         config["batch_T"],
         config["batch_B"],
     )
-    traj_info_kwargs = {
-        "discount": config["discount"],
-    }
+    TrajInfo.set_discount(config["discount"])
 
     EnvClass = build_cartpole
     if config["render_during_training"]:
@@ -61,7 +59,6 @@ def build(config: Dict) -> OnPolicyRunner:
         EnvClass=EnvClass,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
-        traj_info_kwargs=traj_info_kwargs,
         wait_before_reset=True,
         batch_spec=batch_spec,
         parallel=parallel,
