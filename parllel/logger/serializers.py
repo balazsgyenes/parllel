@@ -5,71 +5,47 @@ from pathlib import Path
 import re
 from typing import Any, Dict
 
-
-CONFIG_FILENAME = "config.json"
-MODEL_FILENAME = "model.pt"
 PATTERN_KEY = "object_resolve_pattern"
 
 
-def init_log_folder(path: PathLike) -> None:
-    """This is the only method responsible for creating a new folder.
-    If the folder already exists, it raises FileExistsError so as not to
-    overwrite previous data.
-    """
-    if path is None:
-        print("WARNING: No log_dir was specified, so nothing from this run "
-            "will be saved.")
-        return
-    path = Path(path)
-    path.mkdir(parents=True, exist_ok=False)
+class JSONConfigSerializer:
+    def dump(self, config: Dict[str, Any], path: PathLike) -> None:
+
+        # define a pattern to look for, when loading objects from the params.json again
+        regex_pattern = "^__callable__(.+)__from__(.+)$"
+        config[PATTERN_KEY] = regex_pattern
+
+        # convert the regex pattern to a string format specifier by stripping ^ and
+        # $ at beginning and end and converting (.+) -> {}.
+        format_specifier = regex_pattern[1:-1].replace("(.+)", "{}")
+
+        def encode_non_basic_types(obj: Any) -> str:
+            """Encodes any non-basic type (str, int, float, bool, None) as a str.
+            """
+            if isinstance(obj, Path):
+                return str(obj)
+            return format_specifier.format(obj.__name__, obj.__module__)
+
+        with open(path, "w") as f:
+            json.dump(
+                config,
+                f,
+                default=encode_non_basic_types,
+                indent=4,
+            )
+
+    def load(self, path: PathLike, resolve_objs: bool = True) -> Dict[str, Any]:
+        with open(path, "r") as config_file:
+            config: Dict = json.load(config_file)
+
+        if not resolve_objs:
+            pattern = config.pop(PATTERN_KEY)
+            config = resolve_non_basic_types(config, pattern)
+
+        return config
 
 
-def log_config(config: Dict, path: PathLike) -> None:
-
-    if path is None:
-        return
-
-    # define a pattern to look for, when loading objects from the params.json again
-    regex_pattern = "^__callable__(.+)__from__(.+)$"
-    config[PATTERN_KEY] = regex_pattern
-
-    # convert the regex pattern to a string format specifier by stripping ^ and
-    # $ at beginning and end and converting (.+) -> {}.
-    format_specifier = regex_pattern[1:-1].replace("(.+)", "{}")
-
-    def encode_non_basic_types(obj: Any) -> str:
-        """Encodes any non-basic type (str, int, float, bool, None) as a str.
-        """
-        if isinstance(obj, Path):
-            return str(obj)
-        return format_specifier.format(obj.__name__, obj.__module__)
-
-    with open(path, "w") as f:
-        json.dump(
-            config,
-            f,
-            default=encode_non_basic_types,
-            indent=4,
-        )
-
-
-def load_config(path: PathLike, skip_resolving: bool = False) -> Dict:
-    path = Path(path)
-
-    if path.is_dir():
-        path = path / CONFIG_FILENAME
-
-    with open(path, "r") as config_file:
-        config: Dict = json.load(config_file)
-
-    if not skip_resolving:
-        pattern = config.pop(PATTERN_KEY)
-        config = resolve_non_basic_types(config, pattern)
-
-    return config
-
-
-def resolve_non_basic_types(input: Dict, pattern: str) -> Dict:
+def resolve_non_basic_types(input: Dict[str, Any], pattern: str) -> Dict[str, Any]:
     """Resolves dict values of the form specified by pattern (e.g. __callable__<name>__from__<module>)
 
     Args:

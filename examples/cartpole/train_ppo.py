@@ -231,9 +231,11 @@ if __name__ == "__main__":
     run.finish()
 
     # TODO: minimal
-    # move writer types to another file
     # port remaining diagnostics to PPO from SB3
     # add support for recording videos of rollouts
+    # update other runners, algos, example scripts
+    # fix default logger
+    # fix module global by adding module level __getattr__
 
     # TODO: future
     # add separate wandb writer, making tensorboard optional

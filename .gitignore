@@ -7,5 +7,8 @@
 # log data folder
 log_data
 
+# wandb log folder
+wandb
+
 # cProfile statistics
 *.profile
