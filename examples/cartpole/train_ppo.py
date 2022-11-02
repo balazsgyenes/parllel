@@ -213,9 +213,8 @@ if __name__ == "__main__":
         save_code=True,  # optional
     )
 
-    # log_dir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}")
     logger.init(
-        # log_dir=log_dir,
+        # log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
         wandb=run,
         output_files={
@@ -223,6 +222,7 @@ if __name__ == "__main__":
         },
         config=config,
         model_save_path="model.pt",
+        # verbosity=logger.DEBUG,
     )
 
     with build(config) as runner:
@@ -234,8 +234,6 @@ if __name__ == "__main__":
     # port remaining diagnostics to PPO from SB3
     # add support for recording videos of rollouts
     # update other runners, algos, example scripts
-    # fix default logger
-    # fix module global by adding module level __getattr__
 
     # TODO: future
     # add separate wandb writer, making tensorboard optional
@@ -246,7 +244,7 @@ if __name__ == "__main__":
     # TODO: test
     # custom fields in traj_info for logging
     # do not init logging
-    # init wandb first
+    # init wandb second
     # verify that writing to wandb folder is equivalent to wandb.save(policy="live")
     # no log_dir
     # no model_save_path

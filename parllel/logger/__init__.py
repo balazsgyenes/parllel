@@ -21,19 +21,19 @@ from .serializers import JSONConfigSerializer
 from .logwriters import LogWriter, KeyValueWriter, MessageWriter, StdOutWriter
 
 
-# logger API
-_logger = None
-record = None
-record_mean = None
-dump = None
-save_model = None
-log = None
-debug = None
-info = None
-warn = None
-error = None
-set_verbosity = None
-close = None
+# TODO: bind the public API to class methods so that autocomplete works
+# # logger API
+# record = None
+# record_mean = None
+# dump = None
+# save_model = None
+# log = None
+# debug = None
+# info = None
+# warn = None
+# error = None
+# set_verbosity = None
+# close = None
 
 # logger verbosity levels
 DISABLED = 0
@@ -58,16 +58,13 @@ class Logger:
         use_wandb: bool = False,
     ):
         self.writers: Dict[str, LogWriter] = {}
-        for _format, path in output_files.items():
-            # TODO: how to set other parameters like max_length for stdout?
-            self.writers[_format] = LogWriter(path, name=_format)
+        if output_files is not None:
+            for _format, path in output_files.items():
+                # TODO: how to set other parameters like max_length for stdout?
+                self.writers[_format] = LogWriter(path, name=_format)
 
         if stdout:
             self.writers["stdout"] = StdOutWriter()
-
-        if not output_files:
-            # TODO: maybe using warnings module
-            print("WARNING: no output will be logged")
 
         self.verbosity = verbosity # TODO: each writer has its verbosity level
         self.model_save_path = model_save_path
@@ -225,49 +222,6 @@ class Logger:
             writer.close()
 
 
-class DefaultLogger(Logger):
-    # TODO: is this class necessary, or is the default logger just the logger
-    # with default arguments?
-    def __init__(self) -> None:
-        self.warned = False
-
-    def _warn_no_logger(self) -> None:
-        if not self.warned:
-            print("Logging is not enabled! Call `parllel.logger.init()`")
-            self.warned = True
-
-    def log(self, *args, **kwargs) -> None:
-        self._warn_no_logger()
-
-    record = log
-    record_mean = log
-    dump = log
-    debug = log
-    info = log
-    warn = log
-    error = log
-    set_verbosity = log
-    close = log
-
-
-def _set_logger(new_logger: Logger):
-    # TODO: is there a cleaner paradigm for global resources?
-    globals()["_logger"] = new_logger
-
-    # API calls need to point to bound methods of new logger object
-    globals()["record"] = _logger.record
-    globals()["record_mean"] = _logger.record_mean
-    globals()["dump"] = _logger.dump
-    globals()["save_model"] = _logger.save_model
-    globals()["log"] = _logger.log
-    globals()["debug"] = _logger.debug
-    globals()["info"] = _logger.info
-    globals()["warn"] = _logger.warn
-    globals()["error"] = _logger.error
-    globals()["set_verbosity"] = _logger.set_verbosity
-    globals()["close"] = _logger.close
-
-
 def init(
     log_dir: Optional[PathLike] = None,
     tensorboard: bool = False, # TODO: add passing tensorboard dir explicitly
@@ -279,8 +233,11 @@ def init(
     model_save_path: Optional[PathLike] = None,
     verbosity: int = INFO,
 ) -> None:
-    if not isinstance(_logger, DefaultLogger):
+
+    global _initialized
+    if _initialized:
         raise RuntimeError("Logging has already been initialized!")
+    _initialized = True
 
     # TODO: can the presence of a wandb run be automatically detected?
     # also want to prevent the user from initializing parllel logging
@@ -293,7 +250,8 @@ def init(
         # if log_dir set manually, create it
         log_dir = Path(log_dir)
         log_dir.mkdir(parents=True)
-    else: # add outputs must have absolute paths
+    else: # all outputs must have absolute paths
+        raise ValueError("Must specify either log_dir or use WandB")
         # TODO: add option to specify all paths absolutely
         assert not tensorboard, "Not implemented yet"
 
@@ -308,24 +266,31 @@ def init(
             path = log_dir / path
         output_files[name] = path
 
+    if not output_files:
+        # TODO: maybe using warnings module
+        print("WARNING: no output will be saved")
+
     # make model_save_path absolute
     if model_save_path is not None:
         model_save_path = Path(model_save_path)
         if not model_save_path.is_absolute():
             model_save_path = log_dir / model_save_path
+    else:
+        print("WARNING: the model will not be saved")
 
     # make Logger object and assign it to module globals
-    logger = Logger(
+    global _logger
+    _logger = Logger(
         output_files=output_files,
         stdout=stdout,
         verbosity=verbosity,
         model_save_path=model_save_path,
         use_wandb=(wandb is not None),
     )
-    _set_logger(logger)
 
     # make config_path absolute
     if config_path is None:
+        # default is log_dir/"config.json"
         config_path = Path("config.json")
     if not config_path.is_absolute():
         config_path = log_dir / config_path
@@ -336,5 +301,8 @@ def init(
         serializer.dump(config=config, path=config_path)
 
 
-# create default logger to alert user that logging has not been initialized
-_set_logger(DefaultLogger())
+_logger = Logger() # default instance of logger with only stdout
+_initialized = False
+
+def __getattr__(name: str) -> Any:
+    return getattr(_logger, name)
