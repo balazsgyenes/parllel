@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import json
 from os import PathLike
-from pathlib import Path
 import sys
 import warnings
-from typing import Any, Dict, List, Sequence, TextIO, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 # from matplotlib import pyplot as plt
@@ -108,28 +107,24 @@ class LogWriter:
 
     _writer_classes = {}
 
-    def __init_subclass__(cls, /, **kwargs) -> None:
-        name = kwargs.pop("name", None)
+    def __init_subclass__(cls, /, name: Optional[str] = None, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         # register subclass if defined with a name
         if name is not None:
             cls._writer_classes[name] = cls
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args, name: Optional[str] = None, **kwargs):
         # if instantiating a subclass directly, just create that class
         if cls != LogWriter:
             return super().__new__(cls)
         # otherwise look up name in dictionary of registered subclasses
-        try:
-            name = kwargs["name"]
-        except KeyError:
+        if name is None:
             raise ValueError("Missing required keyword-only argument 'name'")
-        try:
-            return super().__new__(cls._writer_classes[name])
-        except KeyError:
+        if name not in cls._writer_classes:
             raise RuntimeError(f"No writer registered under name {name}")
+        return super().__new__(cls._writer_classes[name])
 
-    def __init__(self, file: PathLike, **kwargs) -> None:
+    def __init__(self, filename: PathLike, name: Optional[str] = None) -> None:
         raise NotImplementedError
 
     def close(self) -> None:
@@ -183,21 +178,14 @@ class TxtFileWriter(KeyValueWriter, MessageWriter, LogWriter, name="txt"):
     """
 
     def __init__(self,
-        filename_or_file: Union[str, Path, TextIO],
+        filename: PathLike,
         max_length: int = 36,
-        **kwargs,
+        name: Optional[str] = None,
     ) -> None:
         self.max_length = max_length
-        # TODO: this can be made safer, since we know what we expect
-        if isinstance(filename_or_file, (str, Path)):
-            self.file = open(filename_or_file, "wt")
-            self.own_file = True
-        else:
-            assert hasattr(filename_or_file, "write"), f"Expected file or str, got {filename_or_file}"
-            self.file = filename_or_file
-            self.own_file = False
+        self.file = open(filename, "wt")
 
-    def write(self, key_values: Dict, step: int = 0) -> None:
+    def write(self, key_values: Dict[str, Any], step: int = 0) -> None:
         # Create strings for printing
         key2str = {}
         tag = None
@@ -271,13 +259,17 @@ class TxtFileWriter(KeyValueWriter, MessageWriter, LogWriter, name="txt"):
         """
         closes the file
         """
-        if self.own_file:
-            self.file.close()
+        self.file.close()
 
 
 class StdOutWriter(TxtFileWriter): # must be created explicitly
-    def __init__(self, max_length: int = 36, **kwargs):
-        super().__init__(sys.stdout, max_length, **kwargs)
+    def __init__(self, max_length: int = 36):
+        self.max_length = max_length
+        self.file = sys.stdout
+
+    def close(self) -> None:
+        # do not try to close sys.stdout
+        pass
 
 
 class JSONWriter(KeyValueWriter, LogWriter, name="json"):
@@ -287,7 +279,7 @@ class JSONWriter(KeyValueWriter, LogWriter, name="json"):
     :param filename: the file to write the log to
     """
 
-    def __init__(self, filename: PathLike, **kwargs):
+    def __init__(self, filename: PathLike, name: Optional[str] = None):
         self.file = open(filename, "wt")
 
     def write(self, key_values: Dict[str, Any], step: int = 0) -> None:
@@ -324,7 +316,7 @@ class CSVWriter(KeyValueWriter, LogWriter, name="csv"):
     :param filename: the file to write the log to
     """
 
-    def __init__(self, filename: PathLike, **kwargs):
+    def __init__(self, filename: PathLike, name: Optional[str] = None):
         self.file = open(filename, "w+t")
         self.keys = []
         self.separator = ","
@@ -382,7 +374,7 @@ class TensorBoardWriter(KeyValueWriter, LogWriter, name="tensorboard"):
     :param folder: the folder to write the log to
     """
 
-    def __init__(self, folder: PathLike, **kwargs):
+    def __init__(self, folder: PathLike, name: Optional[str] = None):
         assert SummaryWriter is not None, "tensorboard is not installed, you can use " "pip install tensorboard to do so"
         self.writer = SummaryWriter(log_dir=folder)
 
