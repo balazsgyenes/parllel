@@ -20,21 +20,6 @@ from parllel.handlers.agent import Agent
 from .serializers import JSONConfigSerializer
 from .logwriters import LogWriter, KeyValueWriter, MessageWriter, StdOutWriter
 
-
-# TODO: bind the public API to class methods so that autocomplete works
-# # logger API
-# record = None
-# record_mean = None
-# dump = None
-# save_model = None
-# log = None
-# debug = None
-# info = None
-# warn = None
-# error = None
-# set_verbosity = None
-# close = None
-
 # logger verbosity levels
 DISABLED = 0
 ERROR = 1
@@ -51,30 +36,111 @@ class Logger:
     :param verbosity: the logging level (can be DEBUG=4, INFO=3, WARN=2, ERROR=1, DISABLED=0)
     """
     def __init__(self,
-        output_files: Dict[str, Path] = None,
         stdout: bool = True,
         verbosity: int = INFO,
-        model_save_path: Path = None,
-        use_wandb: bool = False,
     ):
         self.writers: Dict[str, LogWriter] = {}
-        if output_files is not None:
-            for _format, path in output_files.items():
-                # TODO: how to set other parameters like max_length for stdout?
-                self.writers[_format] = LogWriter(path, name=_format)
 
         if stdout:
             self.writers["stdout"] = StdOutWriter()
 
-        self.verbosity = verbosity # TODO: each writer has its verbosity level
-        self.model_save_path = model_save_path
-        self.use_wandb = use_wandb
+        self.verbosity = verbosity
+        self.model_save_path = None
+        self.use_wandb = False
 
         self.values = defaultdict(float)  # values this iteration
         self.counts = defaultdict(int)
         self.excluded_writers = defaultdict(str)
+        self.initialized = False
+
+    def init(self,
+        log_dir: Optional[PathLike] = None,
+        tensorboard: bool = False, # TODO: add passing tensorboard dir explicitly
+        wandb: Optional[wandb.Run] = None,
+        stdout: bool = True,
+        output_files: Dict[str, PathLike] = None,
+        config: Dict[str, Any] = None,
+        config_path: Optional[PathLike] = None,
+        model_save_path: Optional[PathLike] = None,
+        verbosity: int = INFO,
+    ) -> None:
+
+        if self.initialized:
+            raise RuntimeError("Logging has already been initialized!")
+
+        self.close() # clean up resources
+        self.initialized = True
+
+        # TODO: if a wandb is detected but none was passed, should wandb be
+        # used by default?
+
+        # log_dir defaults to wandb folder if using wandb
+        if wandb is not None:
+            log_dir = Path(wandb.dir)
+        elif log_dir is not None:
+            # if log_dir set manually, create it
+            log_dir = Path(log_dir)
+            log_dir.mkdir(parents=True)
+        else: # all outputs must have absolute paths
+            raise ValueError("Must specify either log_dir or use WandB")
+            # TODO: add option to specify all paths absolutely
+
+        if output_files is None:
+            output_files = {}
+
+        # if requested, add tensorboard to output files
+        if tensorboard:
+            output_files["tensorboard"] = ""
+
+        # make relative paths absolute by prepending log_dir
+        for name, path in output_files.items():
+            path = Path(path)
+            if not path.is_absolute():
+                path = log_dir / path
+            output_files[name] = path
 
         # TODO: print info about where logs are saved
+
+        for _format, path in output_files.items():
+            self.writers[_format] = LogWriter(path, name=_format)
+
+        if not self.writers:
+            # TODO: maybe using warnings module
+            print("WARNING: no output will be saved")
+
+        if stdout:
+            # TODO: how to set other parameters like max_length for stdout?
+            self.writers["stdout"] = StdOutWriter()
+
+        # make config_path absolute
+        if config_path is None:
+            # default is log_dir/"config.json"
+            config_path = Path("config.json")
+        if not config_path.is_absolute():
+            config_path = log_dir / config_path
+        self.config_path = config_path
+
+        # if given, write config to file
+        if config is not None:
+            serializer = JSONConfigSerializer()
+            serializer.dump(config=config, path=config_path)
+        
+        # make model_save_path absolute
+        if model_save_path is not None:
+            model_save_path = Path(model_save_path)
+            if not model_save_path.is_absolute():
+                model_save_path = log_dir / model_save_path
+        else:
+            print("WARNING: the model will not be saved")
+        self.model_save_path = model_save_path
+
+        # TODO: each writer has its verbosity level
+        self.verbosity = verbosity
+        self.use_wandb = (wandb is not None)
+        
+        self.values.clear()
+        self.counts.clear()
+        self.excluded_writers.clear()
 
     def record(self,
         key: str,
@@ -144,7 +210,10 @@ class Logger:
             agent.save_model(self.model_save_path)
             if self.use_wandb:
                 # sync model with wandb server
-                wandb.save(str(self.model_save_path), base_path=self.model_save_path.parent)
+                wandb.save(
+                    str(self.model_save_path),
+                    base_path=self.model_save_path.parent,
+                )
 
     def log(self, *args, level: int = INFO) -> None:
         """
@@ -202,10 +271,8 @@ class Logger:
         :param args: log the arguments
         """
         self.log(*args, level=ERROR)
-        # TODO: throw runtime exception here
+        # TODO: throw runtime exception here?
 
-    # Configuration
-    # ----------------------------------------
     def set_verbosity(self, verbosity: int) -> None:
         """
         Set logging threshold on current logger.
@@ -220,89 +287,25 @@ class Logger:
         """
         for writer in self.writers.values():
             writer.close()
+        self.writers.clear()
 
 
-def init(
-    log_dir: Optional[PathLike] = None,
-    tensorboard: bool = False, # TODO: add passing tensorboard dir explicitly
-    wandb: Optional[wandb.Run] = None,
-    stdout: bool = True,
-    output_files: Dict[str, PathLike] = None,
-    config: Dict[str, Any] = None,
-    config_path: Optional[PathLike] = None,
-    model_save_path: Optional[PathLike] = None,
-    verbosity: int = INFO,
-) -> None:
-
-    global _initialized
-    if _initialized:
-        raise RuntimeError("Logging has already been initialized!")
-    _initialized = True
-
-    # TODO: can the presence of a wandb run be automatically detected?
-    # also want to prevent the user from initializing parllel logging
-    # before wandb logging
-
-    # log_dir defaults to wandb folder if using wandb
-    if wandb is not None:
-        log_dir = Path(wandb.dir)
-    elif log_dir is not None:
-        # if log_dir set manually, create it
-        log_dir = Path(log_dir)
-        log_dir.mkdir(parents=True)
-    else: # all outputs must have absolute paths
-        raise ValueError("Must specify either log_dir or use WandB")
-        # TODO: add option to specify all paths absolutely
-        assert not tensorboard, "Not implemented yet"
-
-    # if requested, add tensorboard to output files
-    if tensorboard:
-        output_files["tensorboard"] = ""
-
-    # make relative paths absolute by prepending log_dir
-    for name, path in output_files.items():
-        path = Path(path)
-        if not path.is_absolute():
-            path = log_dir / path
-        output_files[name] = path
-
-    if not output_files:
-        # TODO: maybe using warnings module
-        print("WARNING: no output will be saved")
-
-    # make model_save_path absolute
-    if model_save_path is not None:
-        model_save_path = Path(model_save_path)
-        if not model_save_path.is_absolute():
-            model_save_path = log_dir / model_save_path
-    else:
-        print("WARNING: the model will not be saved")
-
-    # make Logger object and assign it to module globals
-    global _logger
-    _logger = Logger(
-        output_files=output_files,
-        stdout=stdout,
-        verbosity=verbosity,
-        model_save_path=model_save_path,
-        use_wandb=(wandb is not None),
-    )
-
-    # make config_path absolute
-    if config_path is None:
-        # default is log_dir/"config.json"
-        config_path = Path("config.json")
-    if not config_path.is_absolute():
-        config_path = log_dir / config_path
-
-    # if given, write config to file
-    if config is not None:
-        serializer = JSONConfigSerializer()
-        serializer.dump(config=config, path=config_path)
+_logger = Logger(
+    stdout=True, # by default, Logger only outputs to stdout
+    verbosity=INFO,
+)
 
 
-_logger = Logger() # default instance of logger with only stdout
-_initialized = False
-
-def __getattr__(name: str) -> Any:
-    return getattr(_logger, name)
+# logger API
+init = _logger.init
+record = _logger.record
+record_mean = _logger.record_mean
+dump = _logger.dump
+save_model = _logger.save_model
+log = _logger.log
+debug = _logger.debug
+info = _logger.info
+warn = _logger.warn
+error = _logger.error
+set_verbosity = _logger.set_verbosity
+close = _logger.close

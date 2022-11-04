@@ -236,6 +236,7 @@ if __name__ == "__main__":
     # update other runners, algos, example scripts
 
     # TODO: future
+    # detect if wandb was initialized after parllel logging was initialized
     # add separate wandb writer, making tensorboard optional
     # add additional serializers for config files
         # investigate using pickle to serialize classes (but needs to be detectable on read)
