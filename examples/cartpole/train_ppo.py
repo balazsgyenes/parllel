@@ -233,7 +233,7 @@ if __name__ == "__main__":
     # TODO: minimal
     # port remaining diagnostics to PPO from SB3
     # add support for recording videos of rollouts
-    # update other runners, algos, example scripts
+    # update other example scripts
 
     # TODO: future
     # detect if wandb was initialized after parllel logging was initialized

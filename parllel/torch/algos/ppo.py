@@ -149,6 +149,7 @@ class PPO(Algorithm):
         
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
+            self.algo_log_info["learning_rate"] = self.optimizer.param_groups[0]["lr"]
 
         self.update_counter += self.epochs * self.minibatches
         self.algo_log_info["n_updates"] = self.update_counter
