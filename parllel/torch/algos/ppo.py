@@ -206,6 +206,15 @@ class PPO(Algorithm):
 
         loss = pi_loss + value_loss + entropy_loss
 
+        # Compute a low-variance estimate of the KL divergence to use for
+        # stopping further updates after a KL divergence limit is reached.
+        # see issue #417: https://github.com/DLR-RM/stable-baselines3/issues/417
+        # and discussion in PR #419: https://github.com/DLR-RM/stable-baselines3/pull/419
+        # and Schulman blog: http://joschu.net/blog/kl-approx.html
+        # TODO: implement early stopping on kl_div_limit
+        with torch.no_grad():
+            approx_kl_div = torch.mean(ratio - 1 - torch.log(ratio))
+
         perplexity = dist.mean_perplexity(dist_info, valid)
 
         self.algo_log_info["entropy"].append(entropy.item())
@@ -214,8 +223,8 @@ class PPO(Algorithm):
         self.algo_log_info["value_loss"].append(value_loss.item())
         self.algo_log_info["policy_gradient_loss"].append(pi_loss.item())
         self.algo_log_info["loss"].append(loss.item())
+        self.algo_log_info["approx_kl"].append(approx_kl_div.item())
         # TODO: add these diagnostics
-        # approx_kl
         # clip_fraction
         # explained_variance
         # policy_log_std
