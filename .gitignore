@@ -12,3 +12,6 @@ wandb
 
 # cProfile statistics
 *.profile
+
+# for videos of rollouts saved by gym's RecordVideo wrapper
+videos

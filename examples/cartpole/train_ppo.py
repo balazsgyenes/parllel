@@ -53,6 +53,7 @@ def build(config: Dict) -> OnPolicyRunner:
         wait_before_reset=False,
         batch_spec=batch_spec,
         parallel=parallel,
+        video_recorder_kwargs=config.get("video_recorder", None),
     )
 
     obs_space, action_space = cages[0].spaces
@@ -207,10 +208,11 @@ if __name__ == "__main__":
         anonymous="allow", # for this example, wandb should not be mandatory
         project="CartPole",
         group="PPO",
+        tags=["discrete", "state-based", "ppo"],
         config=config,
-        sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
-        monitor_gym=True,  # auto-upload the videos of agents playing the game
-        save_code=True,  # optional
+        sync_tensorboard=True,  # auto-upload any values logged to tensorboard
+        monitor_gym=True,  # auto-upload any videos recorded by gym's VideoRecorder
+        save_code=True,  # save script used to start training, git commit, and patch
     )
 
     logger.init(
@@ -219,11 +221,23 @@ if __name__ == "__main__":
         wandb=run,
         output_files={
             "txt": "log.txt",
+            # "csv": "progress.csv",
         },
         config=config,
         model_save_path="model.pt",
         # verbosity=logger.DEBUG,
     )
+
+    # # record videos of the policy/environment during training
+    # config["video_recorder"] = dict(
+    #     video_folder=f"videos/{run.id}",
+    #     step_trigger=lambda x: x % 2000 == 0, # record every 2000 steps/env
+    #     video_length=200,
+    # )
+    
+    # TODO: suppress warning about overwriting folder
+    # TODO: do not record decorrelation steps
+    # TODO: log videos without calling `log`, which causes tensorboard to go out of sync
 
     with build(config) as runner:
         runner.run()
@@ -234,6 +248,7 @@ if __name__ == "__main__":
     # port remaining diagnostics to PPO from SB3
     # add support for recording videos of rollouts
     # update other example scripts
+    # turn verbosity into an enum
 
     # TODO: future
     # detect if wandb was initialized after parllel logging was initialized
@@ -247,9 +262,10 @@ if __name__ == "__main__":
     # do not init logging
     # init wandb second
     # verify that writing to wandb folder is equivalent to wandb.save(policy="live")
+    # issues with pickling lambda for record trigger? (try also in spawn mode)
     # no log_dir
     # no model_save_path
     # no config
+    # wandb disabled
     # explicit config_save_path
-    # setting verbosity in a clean way
     # Why does sb3 use cloud pickle?
