@@ -1,3 +1,5 @@
+from typing import List, Optional, Tuple, Union
+
 import numpy as np
 import torch
 
@@ -6,12 +8,14 @@ from parllel.buffers import NamedArrayTupleClass
 from .distribution import Distribution
 
 
-MIN_LOG_STD = -20
-MAX_LOG_STD = 2
+MIN_LOG_STD = -20.
+MAX_LOG_STD = 2.
 EPS = 1e-8
 
 DistInfo = NamedArrayTupleClass("DistInfo", ["mean"])
 DistInfoStd = NamedArrayTupleClass("DistInfoStd", ["mean", "log_std"])
+
+OptionalFloatLike = Union[torch.Tensor, float, List[float], Tuple[float, ...], None]
 
 
 class Gaussian(Distribution):
@@ -28,26 +32,29 @@ class Gaussian(Distribution):
 
     def __init__(
             self,
-            dim,
-            std=None,
-            noise_clip=None,
-            min_log_std=MIN_LOG_STD,
-            max_log_std=MAX_LOG_STD,
+            dim: int,
+            std: OptionalFloatLike = None,
+            noise_clip: OptionalFloatLike = None,
+            min_log_std: OptionalFloatLike = MIN_LOG_STD,
+            max_log_std: OptionalFloatLike = MAX_LOG_STD,
             ):
         """Saves input arguments."""
         self._dim = dim
         self.set_std(std)
-        self.noise_clip = noise_clip
-        self.min_log_std = min_log_std
-        self.max_log_std = max_log_std
+        self.set_noise_clip(noise_clip)
+        self.set_min_log_std(min_log_std)
+        self.set_max_log_std(max_log_std)
         self.device = None
 
-    def to_device(self, device: torch.device):
+    def to_device(self, device: torch.device) -> None:
         self.device = device
         self.set_std(self.std)
+        self.set_noise_clip(self.noise_clip)
+        self.set_min_log_std(self.min_log_std)
+        self.set_max_log_std(self.max_log_std)
 
     @property
-    def dim(self):
+    def dim(self) -> int:
         return self._dim
 
     def kl(self, old_dist_info, new_dist_info):
@@ -161,21 +168,39 @@ class Gaussian(Distribution):
         # sample = dist.rsample()
         return sample
 
-    def set_noise_clip(self, noise_clip):
+    def set_noise_clip(self, noise_clip: OptionalFloatLike) -> None:
         """Input value or ``None`` to turn OFF."""
-        self.noise_clip = noise_clip  # Can be None.
+        noise_clip = clean_optionalfloatlike(noise_clip, self.dim, self.device)
+        self.noise_clip = noise_clip
 
-    def set_std(self, std):
+    def set_std(self, std: OptionalFloatLike) -> None:
         """
         Input value, which can be same shape as action space, or else broadcastable
         up to that shape, or ``None`` to turn OFF and use ``dist_info.log_std`` in
         other methods.
         """
-        if std is not None:
-            if not isinstance(std, torch.Tensor):
-                std = torch.tensor(std)
-            assert std.shape in ((self.dim,), (1,), ())
-            std = std.float()
-            if self.device is not None:
-                std = std.to(self.device)
+        std = clean_optionalfloatlike(std, self.dim, self.device)
         self.std = std
+
+    def set_min_log_std(self, min_log_std: OptionalFloatLike) -> None:
+        min_log_std = clean_optionalfloatlike(min_log_std, self.dim, self.device)
+        self.min_log_std = min_log_std
+
+    def set_max_log_std(self, max_log_std: OptionalFloatLike) -> None:
+        max_log_std = clean_optionalfloatlike(max_log_std, self.dim, self.device)
+        self.max_log_std = max_log_std
+
+
+def clean_optionalfloatlike(
+    value: OptionalFloatLike,
+    dim: int,
+    device: Optional[torch.device],
+) -> Optional[torch.Tensor]:
+    if value is not None:
+        if not isinstance(value, torch.Tensor):
+            value = torch.tensor(value)
+        assert value.shape in ((dim,), (1,), ())
+        value = value.float()
+        if device is not None:
+            value = value.to(device)
+    return value
