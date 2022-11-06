@@ -170,3 +170,26 @@ def update_state_dict(
         update_sd = {k: tau * state_dict[k] + (1 - tau) * v
             for k, v in model.state_dict().items()}
         model.load_state_dict(update_sd)
+
+
+def explained_variance(y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    """
+    Computes fraction of variance that ypred explains about y.
+    Returns 1 - Var[y-ypred] / Var[y]
+
+    interpretation:
+        ev=0  =>  might as well have predicted zero
+        ev=1  =>  perfect prediction
+        ev<0  =>  worse than just predicting zero
+
+    Copied from https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/common/utils.py
+
+    :param y_pred: the prediction
+    :param y_true: the expected value
+    :return: explained variance of ypred and y
+    """
+    assert y_true.ndim == y_pred.ndim == 1
+    var_y = y_true.var()
+    if torch.allclose(var_y, 0):
+        return torch.nan
+    return 1 - (y_true - y_pred).var() / var_y

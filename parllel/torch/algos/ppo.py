@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import torch
 import torch.optim
@@ -11,7 +11,8 @@ from parllel.buffers import Samples, buffer_asarray, NamedArrayTupleClass
 import parllel.logger as logger
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
-from parllel.torch.utils import buffer_to_device, torchify_buffer, valid_mean
+from parllel.torch.utils import (buffer_to_device, torchify_buffer, valid_mean,
+    explained_variance)
 from parllel.types import BatchSpec
 
 
@@ -218,19 +219,19 @@ class PPO(Algorithm):
 
         perplexity = dist.mean_perplexity(dist_info, valid)
 
+        self.algo_log_info["loss"].append(loss.item())
+        self.algo_log_info["policy_gradient_loss"].append(pi_loss.item())
+        self.algo_log_info["approx_kl"].append(approx_kl_div.item())
+        clip_fraction = ((ratio - 1).abs() > self.ratio_clip).float().mean().item()
+        self.algo_log_info["clip_fraction"].append(clip_fraction)
+        if hasattr(dist_info, "log_std"):
+            self.algo_log_info["policy_log_std"].append(dist_info.log_std.mean().item())
+        self.algo_log_info["entropy_loss"].append(entropy_loss.item())
         self.algo_log_info["entropy"].append(entropy.item())
         self.algo_log_info["perplexity"].append(perplexity.item())
-        self.algo_log_info["entropy_loss"].append(entropy_loss.item())
         self.algo_log_info["value_loss"].append(value_loss.item())
-        self.algo_log_info["policy_gradient_loss"].append(pi_loss.item())
-        self.algo_log_info["loss"].append(loss.item())
-        self.algo_log_info["approx_kl"].append(approx_kl_div.item())
-        # TODO: add these diagnostics
-        # clip_fraction
-        # explained_variance
-        # policy_log_std
-        # clip_range
-        # clip_range_vf
+        explained_var = explained_variance(value, return_)
+        self.algo_log_info["explained_variance"].append(explained_var)
 
         return loss
 

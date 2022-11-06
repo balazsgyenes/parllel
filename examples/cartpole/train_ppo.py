@@ -245,7 +245,6 @@ if __name__ == "__main__":
     run.finish()
 
     # TODO: minimal
-    # port remaining diagnostics to PPO from SB3
     # add support for recording videos of rollouts
     # update other example scripts
     # turn verbosity into an enum
