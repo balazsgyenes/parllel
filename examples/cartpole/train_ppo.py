@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Dict
 
 import torch
-import wandb
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
@@ -13,6 +12,7 @@ from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
 from parllel.configuration import add_default_config_fields
 import parllel.logger as logger
+from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
     add_obs_normalization, add_reward_clipping, add_reward_normalization,
     build_cages_and_env_buffers)
@@ -204,66 +204,17 @@ if __name__ == "__main__":
     config = add_default_ppo_config(config)
     config = add_default_config_fields(config)
 
-    run = wandb.init(
-        anonymous="allow", # for this example, wandb should not be mandatory
-        project="CartPole",
-        group="PPO",
-        tags=["discrete", "state-based", "ppo"],
-        config=config,
-        sync_tensorboard=True,  # auto-upload any values logged to tensorboard
-        monitor_gym=True,  # auto-upload any videos recorded by gym's VideoRecorder
-        save_code=True,  # save script used to start training, git commit, and patch
-    )
-
     logger.init(
-        # log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
-        wandb=run,
         output_files={
             "txt": "log.txt",
             # "csv": "progress.csv",
         },
         config=config,
         model_save_path="model.pt",
-        # verbosity=logger.DEBUG,
+        # verbosity=Verbosity.DEBUG,
     )
-
-    # # record videos of the policy/environment during training
-    # config["video_recorder"] = dict(
-    #     video_folder=f"videos/{run.id}",
-    #     step_trigger=lambda x: x % 2000 == 0, # record every 2000 steps/env
-    #     video_length=200,
-    # )
-    
-    # TODO: suppress warning about overwriting folder
-    # TODO: do not record decorrelation steps
-    # TODO: log videos without calling `log`, which causes tensorboard to go out of sync
 
     with build(config) as runner:
         runner.run()
-
-    run.finish()
-
-    # TODO: minimal
-    # add support for recording videos of rollouts
-    # update other example scripts
-
-    # TODO: future
-    # detect if wandb was initialized after parllel logging was initialized
-    # add separate wandb writer, making tensorboard optional
-    # add additional serializers for config files
-        # investigate using pickle to serialize classes (but needs to be detectable on read)
-        # ensure no collisions with wandb's config.yaml file
-
-    # TODO: test
-    # custom fields in traj_info for logging
-    # do not init logging
-    # init wandb second
-    # verify that writing to wandb folder is equivalent to wandb.save(policy="live")
-    # issues with pickling lambda for record trigger? (try also in spawn mode)
-    # no log_dir
-    # no model_save_path
-    # no config
-    # wandb disabled
-    # explicit config_save_path
-    # Why does sb3 use cloud pickle?
