@@ -49,8 +49,7 @@ class PPO(Algorithm):
             epochs: int,
             ratio_clip: float,
             value_clipping_mode: str,
-            value_delta_clip: float,
-            value_ratio_clip: float,
+            value_clip: Optional[float] = None,
             ):
         """Saves input settings."""
         self.batch_spec = batch_spec
@@ -63,9 +62,8 @@ class PPO(Algorithm):
         self.minibatches = minibatches
         self.epochs = epochs
         self.ratio_clip = ratio_clip
-        self.value_delta_clip = value_delta_clip
-        self.value_ratio_clip = value_ratio_clip
         self.value_clipping_mode = value_clipping_mode
+        self.value_clip = value_clip
 
         self.update_counter = 0
         self.rng = np.random.default_rng()
@@ -182,18 +180,18 @@ class PPO(Algorithm):
         if self.value_clipping_mode == "ratio":
             # Clipping the value per time step in respect to the ratio between old and new values
             value_ratio = value / old_values
-            clipped_values = torch.where(value_ratio > 1. + self.value_ratio_clip, old_values * (1. + self.value_ratio_clip), value)
-            clipped_values = torch.where(value_ratio < 1. - self.value_ratio_clip, old_values * (1. - self.value_ratio_clip), clipped_values)
+            clipped_values = torch.where(value_ratio > 1. + self.value_clip, old_values * (1. + self.value_clip), value)
+            clipped_values = torch.where(value_ratio < 1. - self.value_clip, old_values * (1. - self.value_clip), clipped_values)
             clipped_value_error = 0.5 * (clipped_values - return_) ** 2
             standard_value_error = 0.5 * (value - return_) ** 2
             value_error = torch.max(clipped_value_error, standard_value_error)
         elif self.value_clipping_mode == "delta":
-            # Clipping the value per time step with its original (old) value in the boundaries of value_delta_clip
-            clipped_values = torch.min(torch.max(value, old_values - self.value_delta_clip), old_values + self.value_delta_clip)
+            # Clipping the value per time step with its original (old) value in the boundaries of value_clip
+            clipped_values = torch.min(torch.max(value, old_values - self.value_clip), old_values + self.value_clip)
             value_error = 0.5 * (clipped_values - return_) ** 2
         elif self.value_clipping_mode == "delta_max":
-            # Clipping the value per time step with its original (old) value in the boundaries of value_delta_clip
-            clipped_values = torch.min(torch.max(value, old_values - self.value_delta_clip), old_values + self.value_delta_clip)
+            # Clipping the value per time step with its original (old) value in the boundaries of value_clip
+            clipped_values = torch.min(torch.max(value, old_values - self.value_clip), old_values + self.value_clip)
             clipped_value_error = 0.5 * (clipped_values - return_) ** 2
             standard_value_error = 0.5 * (value - return_) ** 2
             value_error = torch.max(clipped_value_error, standard_value_error)
@@ -264,8 +262,6 @@ def add_default_ppo_config(config: Dict) -> Dict:
         epochs = 4,
         ratio_clip = 0.1,
         value_clipping_mode = "none",
-        value_delta_clip = 0.1,
-        value_ratio_clip = 0.1,
     )
 
     config["algo"] = defaults | config.get("algo", {})
