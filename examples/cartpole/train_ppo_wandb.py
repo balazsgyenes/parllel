@@ -85,7 +85,6 @@ if __name__ == "__main__":
     # TODO: minimal
     # add support for recording videos of rollouts
     # update other example scripts
-    # turn verbosity into an enum
 
     # TODO: future
     # detect if wandb was initialized after parllel logging was initialized

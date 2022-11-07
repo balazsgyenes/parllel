@@ -229,7 +229,7 @@ class PPO(Algorithm):
         self.algo_log_info["perplexity"].append(perplexity.item())
         self.algo_log_info["value_loss"].append(value_loss.item())
         explained_var = explained_variance(value, return_)
-        self.algo_log_info["explained_variance"].append(explained_var)
+        self.algo_log_info["explained_variance"].append(explained_var.item())
 
         return loss
 

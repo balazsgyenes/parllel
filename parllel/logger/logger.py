@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from enum import Enum
+from enum import IntEnum
 from os import PathLike
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -21,7 +21,8 @@ from parllel.handlers.agent import Agent
 from .serializers import JSONConfigSerializer
 from .logwriters import LogWriter, KeyValueWriter, MessageWriter, StdOutWriter
 
-class Verbosity(Enum):
+
+class Verbosity(IntEnum):
     DISABLED = 0
     ERROR = 1
     WARN = 2

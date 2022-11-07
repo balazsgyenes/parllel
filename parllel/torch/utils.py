@@ -204,6 +204,6 @@ def explained_variance(y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tens
     """
     assert y_true.ndim == y_pred.ndim == 1
     var_y = y_true.var()
-    if torch.allclose(var_y, 0):
+    if torch.allclose(var_y, torch.zeros_like(var_y)):
         return torch.nan
     return 1 - (y_true - y_pred).var() / var_y
