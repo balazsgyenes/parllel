@@ -66,11 +66,7 @@ class PPO(Algorithm):
         self.value_clip = value_clip
 
         self.update_counter = 0
-        self.rng = np.random.default_rng()
         self.algo_log_info = defaultdict(list)
-
-    def seed(self, seed: int):
-        self.rng = np.random.default_rng(seed)
 
     def optimize_agent(self,
         elapsed_steps: int,
@@ -125,15 +121,7 @@ class PPO(Algorithm):
         batch_size = B if recurrent else T * B
         minibatch_size = batch_size // self.minibatches
         for _ in range(self.epochs):
-            for idxs in minibatch_indices(batch_size, minibatch_size, self.rng):
-                if recurrent:
-                    T_idxs = slice(None) # take entire trajectory
-                    B_idxs = idxs # use shuffled indices for B dimension
-                    minibatch_rnn_state = init_rnn_state[B_idxs]
-                else:
-                    B_idxs = idxs // T # index modulo T gives batch dimension
-                    T_idxs = idxs % T # and remaining gives time step
-                    minibatch_rnn_state = init_rnn_state
+            for batch in dataloader:
                     
                 self.optimizer.zero_grad()
                 # NOTE: if not recurrent, leading T and B dims are combined
@@ -234,24 +222,6 @@ class PPO(Algorithm):
         return loss
 
 
-def minibatch_indices(data_length: int, minibatch_size: int, rng: np.random.Generator = None):
-    """Yields minibatches of indexes, to use as a for-loop iterator, with
-    option to shuffle.
-    """
-    if rng is not None:
-        # shuffle 
-        indexes = np.arange(data_length)
-        rng.shuffle(indexes)
-    # split the data into equally-sized pieces with size `minibatch_size`
-    for start in range(0, data_length - minibatch_size + 1, minibatch_size):
-        # create slice for the nth minibatch
-        batch = slice(start, start + minibatch_size)
-        if rng is not None:
-            # if shuffling, 
-            batch = indexes[batch]
-        yield batch
-
-
 def add_default_ppo_config(config: Dict) -> Dict:
     defaults = dict(
         learning_rate_scheduler = None,
@@ -266,3 +236,5 @@ def add_default_ppo_config(config: Dict) -> Dict:
 
     config["algo"] = defaults | config.get("algo", {})
     return config
+
+# TODO: add helper function to create the proper DataLoader
