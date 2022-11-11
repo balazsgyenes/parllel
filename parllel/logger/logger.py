@@ -56,7 +56,7 @@ class Logger:
     def init(self,
         log_dir: Optional[PathLike] = None,
         tensorboard: bool = False, # TODO: add passing tensorboard dir explicitly
-        wandb: Optional[wandb.Run] = None,
+        wandb_run: Optional["wandb.Run"] = None,
         stdout: bool = True,
         stdout_max_length: Optional[int] = None,
         output_files: Dict[str, PathLike] = None,
@@ -70,8 +70,8 @@ class Logger:
             specified at absolute paths ignore this.
         :param tensorboard: save outputs additionally to a tensorboard file
             stored in the log_dir?
-        :param wandb: WandB run. If given, the WandB log folder overrides the
-            log_dir.
+        :param wandb_run: WandB run. If given, the WandB log folder overrides
+            the log_dir.
         :param stdout: output additionally to standard output?
         :param stdout_max_length: maximum width of the tabular standard output
         :param output_files: a Dict of files to write key-value pairs to, where
@@ -95,13 +95,17 @@ class Logger:
         # TODO: if a wandb is detected but none was passed, should wandb be
         # used by default?
 
-        # log_dir defaults to wandb folder if using wandb
-        if wandb is not None:
-            log_dir = Path(wandb.dir)
+        # determine log_dir by checking options in order of preference
+        if wandb_run is not None and not wandb_run.disabled:
+            # wandb takes priority if given and not disabled
+            log_dir = Path(wandb_run.dir)
         elif log_dir is not None:
             # if log_dir set manually, create it
             log_dir = Path(log_dir)
             log_dir.mkdir(parents=True)
+        elif wandb_run is not None:
+            # if wandb is disabled, use its log_dir instead of raising error
+            log_dir = Path(wandb_run.dir)
         else: # all outputs must have absolute paths
             raise ValueError("Must specify either log_dir or use WandB")
             # TODO: add option to specify all paths absolutely

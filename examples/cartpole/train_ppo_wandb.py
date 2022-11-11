@@ -44,7 +44,7 @@ if __name__ == "__main__":
     config = add_default_config_fields(config)
 
     run = wandb.init(
-        anonymous="allow", # for this example, wandb should not be mandatory
+        anonymous="must", # for this example, send to wandb dummy account
         project="CartPole",
         group="PPO",
         tags=["discrete", "state-based", "ppo"],
@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
     logger.init(
         tensorboard=True,
-        wandb=run,
+        wandb_run=run,
         output_files={
             "txt": "log.txt",
             # "csv": "progress.csv",
