@@ -148,6 +148,7 @@ class Logger:
         else: # all outputs must have absolute paths
             raise ValueError("Must specify either log_dir or use WandB")
             # TODO: add option to specify all paths absolutely
+        self.log_dir = log_dir
 
         if output_files is None:
             output_files = {}
@@ -192,11 +193,26 @@ class Logger:
             warnings.warn("No config information will be saved to disk!")
         
         # make model_save_path absolute
+        # if using wandb, set up live syncing of model
         # TODO: add other model saving schemes (e.g. all, best, etc.)
         if model_save_path is not None:
             model_save_path = Path(model_save_path)
+            model_base_path = None
             if not model_save_path.is_absolute():
                 model_save_path = log_dir / model_save_path
+                # on web UI, model will be at original relative path
+                model_base_path = str(log_dir)
+            self.model_base_path = model_base_path
+
+            if use_wandb:
+                wandb.save(
+                    str(model_save_path),
+                    base_path=model_base_path,
+                )
+
+            # create directory if necessary
+            model_save_path.parent.mkdir(parents=True, exist_ok=True)
+
         else:
             warnings.warn("No trained models will be saved to disk!")
         self.model_save_path = model_save_path
@@ -302,12 +318,15 @@ class Logger:
     def save_model(self, agent: Agent):
         if self.model_save_path is not None:
             agent.save_model(self.model_save_path)
-            if self.use_wandb:
-                # sync model with wandb server
-                wandb.save(
-                    str(self.model_save_path),
-                    base_path=self.model_save_path.parent,
-                )
+
+            # # sync model immediately with wandb server
+            # # TODO: do we need to save immediately, or let wandb sync slowly?
+            # if self.use_wandb:
+            #     wandb.save(
+            #         str(self.model_save_path),
+            #         base_path=self.model_base_path,
+            #         policy="now",
+            #     )
 
     def log(self, *args, level: Verbosity = Verbosity.INFO) -> None:
         """
