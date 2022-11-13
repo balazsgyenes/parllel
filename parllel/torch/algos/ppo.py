@@ -1,27 +1,27 @@
 from collections import defaultdict
+from functools import partial
 from typing import Dict, List, Optional, Union
 
 import torch
 import torch.optim
-import numpy as np
 
 from parllel.algorithm import Algorithm
 from parllel.arrays import Array
-from parllel.buffers import Samples, buffer_asarray, NamedArrayTupleClass
+from parllel.buffers import Samples, NamedArrayTupleClass
 import parllel.logger as logger
+from parllel.replays import BatchedDataLoader
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
-from parllel.torch.utils import (buffer_to_device, torchify_buffer, valid_mean,
+from parllel.torch.utils import (buffer_to_device, valid_mean,
     explained_variance)
 from parllel.types import BatchSpec
 
 
-PredictInputs = NamedArrayTupleClass("PredictInputs",
-    ["observation", "agent_info"])
 
-
-LossInputs = NamedArrayTupleClass("LossInputs",
-    ["agent_inputs", "action", "return_", "advantage", "valid", "old_dist_info", "old_values"])
+SamplesForOptimize = NamedArrayTupleClass("SamplesForOptimize",
+    ["observation", "agent_info", "action", "return_", "advantage", "valid",
+    "old_dist_info", "old_values", "init_rnn_state"],
+)
 
 
 class PPO(Algorithm):
@@ -40,12 +40,12 @@ class PPO(Algorithm):
             self,
             batch_spec: BatchSpec,
             agent: TorchAgent,
+            dataloader: BatchedDataLoader[SamplesForOptimize[torch.Tensor]],
             optimizer: torch.optim.Optimizer,
             learning_rate_scheduler: torch.optim.lr_scheduler._LRScheduler,
             value_loss_coeff: float,
             entropy_loss_coeff: float,
             clip_grad_norm: float,
-            minibatches: int,
             epochs: int,
             ratio_clip: float,
             value_clipping_mode: str,
@@ -54,12 +54,12 @@ class PPO(Algorithm):
         """Saves input settings."""
         self.batch_spec = batch_spec
         self.agent = agent
+        self.dataloader = dataloader
         self.optimizer = optimizer
         self.lr_scheduler = learning_rate_scheduler
         self.value_loss_coeff = value_loss_coeff
         self.entropy_loss_coeff = entropy_loss_coeff
         self.clip_grad_norm = clip_grad_norm
-        self.minibatches = minibatches
         self.epochs = epochs
         self.ratio_clip = ratio_clip
         self.value_clipping_mode = value_clipping_mode
@@ -67,6 +67,8 @@ class PPO(Algorithm):
 
         self.update_counter = 0
         self.algo_log_info = defaultdict(list)
+        self.to_device_func = partial(buffer_to_device,
+            device=self.agent.device)
 
     def optimize_agent(self,
         elapsed_steps: int,
@@ -81,51 +83,16 @@ class PPO(Algorithm):
 
         self.agent.train_mode(elapsed_steps)
 
-        samples = buffer_asarray(samples)
-        samples = torchify_buffer(samples)
+        # Move all samples to device once and iterate through them there.
+        self.dataloader.apply_func(self.to_device_func)
 
-        recurrent = self.agent.recurrent
-
-        if recurrent:
-            valid = samples.env.valid
-            init_rnn_state = samples.agent.initial_rnn_state
-        else:
-            valid = None
-            init_rnn_state = None
-
-        # pack everything into NamedArrayTuples to enabling slicing
-        agent_inputs = PredictInputs(
-            observation=samples.env.observation,
-            agent_info=samples.agent.agent_info,
-        )
-        loss_inputs = LossInputs(
-            agent_inputs=agent_inputs,
-            action=samples.agent.action,
-            return_=samples.env.return_,
-            advantage=samples.env.advantage,
-            valid=valid,
-            old_dist_info=samples.agent.agent_info.dist_info,
-            old_values=samples.agent.agent_info.value
-        )
-        # Move everything to device once, index there.
-        # init_rnn_state is handled separately because it has no leading T dim
-        loss_inputs, init_rnn_state = buffer_to_device(
-            (loss_inputs, init_rnn_state), device=self.agent.device)
-
-        self.agent.train_mode(elapsed_steps)
         self.algo_log_info.clear()
 
-        T, B = self.batch_spec
-        
-        # If recurrent, use whole trajectories, only shuffle B; else shuffle all.
-        batch_size = B if recurrent else T * B
-        minibatch_size = batch_size // self.minibatches
         for _ in range(self.epochs):
-            for batch in dataloader:
+            for batch in self.dataloader:
                     
                 self.optimizer.zero_grad()
-                # NOTE: if not recurrent, leading T and B dims are combined
-                loss = self.loss(*loss_inputs[T_idxs, B_idxs], minibatch_rnn_state)
+                loss = self.loss(*batch)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.agent.model.parameters(),
@@ -143,7 +110,7 @@ class PPO(Algorithm):
 
         return self.algo_log_info
 
-    def loss(self, agent_inputs, action, return_, advantage, valid, old_dist_info,
+    def loss(self, observation, agent_info, action, return_, advantage, valid, old_dist_info,
              old_values, init_rnn_state):
         """
         Compute the training loss: policy_loss + value_loss + entropy_loss
@@ -153,7 +120,7 @@ class PPO(Algorithm):
         the ``agent.distribution`` to compute likelihoods and entropies.  Valid
         for feedforward or recurrent agents.
         """
-        agent_prediction: AgentPrediction = self.agent.predict(*agent_inputs, init_rnn_state)
+        agent_prediction: AgentPrediction = self.agent.predict(observation, agent_info, init_rnn_state)
         dist_info, value = agent_prediction.dist_info, agent_prediction.value
         dist = self.agent.distribution
         ratio = dist.likelihood_ratio(action, old_dist_info=old_dist_info,
@@ -228,7 +195,6 @@ def add_default_ppo_config(config: Dict) -> Dict:
         value_loss_coeff = 1.,
         entropy_loss_coeff = 0.01,
         clip_grad_norm = 1.,
-        minibatches = 4,
         epochs = 4,
         ratio_clip = 0.1,
         value_clipping_mode = "none",
