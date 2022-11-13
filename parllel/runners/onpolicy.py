@@ -26,8 +26,8 @@ class OnPolicyRunner(Runner):
         self.n_steps = n_steps
         self.batch_spec = batch_spec
 
-        self.n_iterations = int(n_steps // batch_spec.size)
-        self.log_interval_iters = int(log_interval_steps // batch_spec.size)
+        self.n_iterations = max(1, int(n_steps // batch_spec.size))
+        self.log_interval_iters = max(1, int(log_interval_steps // batch_spec.size))
 
     def run(self) -> None:
         logger.info("Starting training...")
