@@ -69,6 +69,18 @@ if __name__ == "__main__":
         # verbosity=Verbosity.DEBUG,
     )
 
+    # # record videos of the policy/environment during training
+    # config["video_recorder"] = dict(
+    #     video_folder=f"videos/{run.id}",
+    #     step_trigger=lambda x: x % 2000 == 0, # record every 2000 steps/env
+    #     video_length=200,
+    # )
+    
+    # TODO: suppress warning about overwriting folder
+    # TODO: do not record decorrelation steps
+    # TODO: log videos without calling `log`, which causes tensorboard to go out of sync
+    # TODO: test pickling lambda for record trigger (try also in spawn mode)
+
     with build(config) as runner:
         runner.run()
 

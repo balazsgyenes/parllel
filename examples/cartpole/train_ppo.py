@@ -55,6 +55,7 @@ def build(config: Dict) -> OnPolicyRunner:
         wait_before_reset=False,
         batch_spec=batch_spec,
         parallel=parallel,
+        video_recorder_kwargs=config.get("video_recorder", None),
     )
 
     obs_space, action_space = cages[0].spaces
