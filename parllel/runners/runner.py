@@ -1,5 +1,4 @@
 from abc import ABC
-from ctypes import Union
 from dataclasses import asdict
 import time
 from typing import Any, Dict, List
@@ -12,6 +11,9 @@ import parllel.logger as logger
 
 class Runner(ABC):
     def __init__(self) -> None:
+        # check that parllel.logger.init was called if WandB run exists
+        logger.check_init()
+
         self.start_time = time.perf_counter()
         self.last_elapsed_steps = 0 # for fps calculation
 

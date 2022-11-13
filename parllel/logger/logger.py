@@ -7,12 +7,15 @@ from enum import IntEnum
 from os import PathLike
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+import warnings
 
 import numpy as np
 
 try:
     import wandb
-    has_wandb = True
+    # catch if wandb is a local import, e.g. if a wandb folder exists in the
+    # current directory
+    has_wandb = wandb.__file__ is not None
 except ImportError:
     has_wandb = False
 
@@ -28,6 +31,14 @@ class Verbosity(IntEnum):
     WARN = 2
     INFO = 3
     DEBUG = 4
+
+
+# for now, all warnings from this module should be converted to errors
+warnings.filterwarnings("error", module=__name__)
+# except these ones, which should remain warnings
+warnings.filterwarnings("default", message="No logger output will be saved to disk!", module=__name__)
+warnings.filterwarnings("default", message="No trained models will be saved to disk!", module=__name__)
+warnings.filterwarnings("default", message="No config information will be saved to disk!", module=__name__)
 
 
 class Logger:
@@ -89,21 +100,49 @@ class Logger:
             # TODO: allow reinitialization
             raise RuntimeError("Logging has already been initialized!")
 
-        self.close() # clean up resources
-        self.initialized = True
+        self.close() # clean default writers created by __init__
 
         # TODO: if a wandb is detected but none was passed, should wandb be
         # used by default?
+        use_wandb = self.use_wandb = (has_wandb and wandb_run is not None)
+        self.missing_wandb = False
+        if use_wandb:
+            # check if user did not call wandb.init with sync_tensorboard=True
+            wandb_sync_tensorboard = len(wandb.patched['tensorboard']) > 0
+            if not wandb_sync_tensorboard:
+                warnings.warn(
+                    "No data will be logged to WandB because WandB is not set "
+                    "to copy data logged to Tensorboard. Please call "
+                    "wandb.init with `sync_tensorboard=True`."
+                )
+
+            # check if user forgot to pass tensorboard=True
+            if wandb_sync_tensorboard and not tensorboard:
+                # TODO: just log to tensorboard even if not requested?
+                warnings.warn(
+                    "No data will be logged to WandB because parllel was not "
+                    "requested to log to Tensorboard. Please call "
+                    "parllel.logger.init with `tensorboard=True`."
+                )
+
+            # TODO: if no config was passed, take config from wandb
+        elif has_wandb and wandb.run is not None:
+            self.missing_wandb = True
+            warnings.warn(
+                "No data will be logged to WandB because the run was not "
+                "passed to parllel logger. Please call parllel.logger.init "
+                "with `wandb_run=wandb.run`."
+            )
 
         # determine log_dir by checking options in order of preference
-        if wandb_run is not None and not wandb_run.disabled:
+        if use_wandb and not wandb_run.disabled:
             # wandb takes priority if given and not disabled
             log_dir = Path(wandb_run.dir)
         elif log_dir is not None:
             # if log_dir set manually, create it
             log_dir = Path(log_dir)
             log_dir.mkdir(parents=True)
-        elif wandb_run is not None:
+        elif use_wandb:
             # if wandb is disabled, use its log_dir instead of raising error
             log_dir = Path(wandb_run.dir)
         else: # all outputs must have absolute paths
@@ -131,8 +170,7 @@ class Logger:
             self.writers[_format] = LogWriter(path, name=_format)
 
         if not self.writers:
-            # TODO: maybe using warnings module
-            print("WARNING: no output will be saved")
+            warnings.warn("No logger output will be saved to disk!")
 
         if stdout:
             if stdout_max_length is None:
@@ -150,6 +188,8 @@ class Logger:
         if config is not None:
             serializer = JSONConfigSerializer()
             serializer.dump(config=config, path=config_path)
+        else:
+            warnings.warn("No config information will be saved to disk!")
         
         # make model_save_path absolute
         # TODO: add other model saving schemes (e.g. all, best, etc.)
@@ -158,16 +198,41 @@ class Logger:
             if not model_save_path.is_absolute():
                 model_save_path = log_dir / model_save_path
         else:
-            print("WARNING: the model will not be saved")
+            warnings.warn("No trained models will be saved to disk!")
         self.model_save_path = model_save_path
 
         # TODO: give each writer its own verbosity level
         self.verbosity = verbosity
-        self.use_wandb = (wandb is not None)
         
         self.values.clear()
         self.counts.clear()
         self.excluded_writers.clear()
+
+        self.initialized = True
+
+    def check_init(self) -> None:
+        if self.initialized:
+            # check if user initialized wandb after initializing parllel
+            if (
+                has_wandb and wandb.run is not None # wandb run exists
+                and not self.use_wandb # everything called properly
+                and not self.missing_wandb # warning was already issued    
+            ):
+                warnings.warn(
+                    "No data will be logged to WandB because wandb.init was "
+                    "called after parllel.logger.init. Please call wandb.init "
+                    "first and pass the result to parllel.logger.init with "
+                    "`wandb_run=wandb.run`."
+                )
+        else:
+            # check if user initialized wandb without initializing parllel
+            if has_wandb and wandb.run is not None:
+                # TODO: should we just initialize parllel logging with defaults?
+                warnings.warn(
+                    "Even though a WandB run exists, no data will be logged "
+                    "at all because parllel logging has not been initialized. "
+                    "Please call parllel.logger.init."
+                )
 
     def record(self,
         key: str,
@@ -197,6 +262,8 @@ class Logger:
         :param key: save to log this key
         :param value: save to log this value
         :param do_not_write_to: outputs to be excluded
+
+        TODO: also log std deviation using RunningMeanStd class
         """
         if isinstance(value, list):
             value = np.array(value)

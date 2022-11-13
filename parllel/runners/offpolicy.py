@@ -19,6 +19,7 @@ class OffPolicyRunner(Runner):
         n_steps: int,
         log_interval_steps: int,
     ) -> None:
+        super().__init__()
 
         self.sampler = sampler
         self.agent = agent

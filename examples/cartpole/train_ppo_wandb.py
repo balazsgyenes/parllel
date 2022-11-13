@@ -1,4 +1,6 @@
+from datetime import datetime
 import multiprocessing as mp
+from pathlib import Path
 
 import torch
 import wandb
@@ -55,6 +57,7 @@ if __name__ == "__main__":
     )
 
     logger.init(
+        # log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
         wandb_run=run,
         output_files={
@@ -76,6 +79,7 @@ if __name__ == "__main__":
     # TODO: suppress warning about overwriting folder
     # TODO: do not record decorrelation steps
     # TODO: log videos without calling `log`, which causes tensorboard to go out of sync
+    # TODO: test pickling lambda for record trigger (try also in spawn mode)
 
     with build(config) as runner:
         runner.run()
@@ -83,25 +87,8 @@ if __name__ == "__main__":
     run.finish()
 
     # TODO: minimal
-    # add support for recording videos of rollouts
     # update other example scripts
-
-    # TODO: future
-    # detect if wandb was initialized after parllel logging was initialized
-    # add separate wandb writer, making tensorboard optional
-    # add additional serializers for config files
-        # investigate using pickle to serialize classes (but needs to be detectable on read)
-        # ensure no collisions with wandb's config.yaml file
 
     # TODO: test
     # custom fields in traj_info for logging
-    # do not init logging
-    # init wandb second
     # verify that writing to wandb folder is equivalent to wandb.save(policy="live")
-    # issues with pickling lambda for record trigger? (try also in spawn mode)
-    # no log_dir
-    # no model_save_path
-    # no config
-    # wandb disabled
-    # explicit config_save_path
-    # Why does sb3 use cloud pickle?

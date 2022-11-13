@@ -10,6 +10,7 @@ _logger = Logger(
 
 # logger API
 init = _logger.init
+check_init = _logger.check_init
 record = _logger.record
 record_mean = _logger.record_mean
 dump = _logger.dump
