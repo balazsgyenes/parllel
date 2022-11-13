@@ -10,6 +10,7 @@ class ShowPolicy(Runner):
         sampler: EvalSampler,
         agent: Agent,
     ) -> None:
+        super().__init__()
 
         self.sampler = sampler
         self.agent = agent
@@ -20,6 +21,6 @@ class ShowPolicy(Runner):
         eval_trajs = self.sampler.collect_batch(elapsed_steps=0)
 
         self.log_completed_trajectories(eval_trajs)
-        self.log_progress(elapsed_steps=0, itr=0)
+        self.log_progress(elapsed_steps=0, iteration=0)
 
         logger.info("Finished.")

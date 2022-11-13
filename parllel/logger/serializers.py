@@ -38,7 +38,7 @@ class JSONConfigSerializer:
         with open(path, "r") as config_file:
             config: Dict = json.load(config_file)
 
-        if not resolve_objs:
+        if resolve_objs:
             pattern = config.pop(PATTERN_KEY)
             config = resolve_non_basic_types(config, pattern)
 

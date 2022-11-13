@@ -40,11 +40,11 @@ class Gaussian(Distribution):
             ):
         """Saves input arguments."""
         self._dim = dim
+        self.device = None
         self.set_std(std)
         self.set_noise_clip(noise_clip)
         self.set_min_log_std(min_log_std)
         self.set_max_log_std(max_log_std)
-        self.device = None
 
     def to_device(self, device: torch.device) -> None:
         self.device = device

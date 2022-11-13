@@ -11,7 +11,7 @@ from parllel.buffers import AgentSamples, EnvSamples, buffer_method, Samples
 from parllel.buffers.void import VoidBuffer
 from parllel.cages import Cage, TrajInfo
 from parllel.configuration import merge_dicts
-from parllel.logging import MODEL_FILENAME, load_config
+from parllel.logger import JSONConfigSerializer
 from parllel.runners import ShowPolicy
 from parllel.samplers import EvalSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
@@ -107,7 +107,7 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
     )
     agent = TorchHandler(agent=agent)
 
-    agent.load_model(model_checkpoint_path)
+    agent.load_model(model_checkpoint_path, config["device"])
 
     sampler = EvalSampler(
         max_traj_length=config["max_steps"],
@@ -137,7 +137,12 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
 
 if __name__ == "__main__":
 
-    log_dir = Path("log_data/cartpole-multiagent-independentppo/2022-08-16_17-16")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("log_dir", type=Path,
+        help="path to the log directory for the run to show",
+    )
+    args = parser.parse_args()
 
     eval_config = dict(
         discount = 1.0,
@@ -147,17 +152,19 @@ if __name__ == "__main__":
             headless = False,
             subprocess = False,
             reward_type = "dense",
-        )
+        ),
+        # None uses the device the model was trained on
+        device = None if torch.cuda.is_available() else "cpu",
     )
 
-    config = load_config(log_dir)
+    config = JSONConfigSerializer().load(args.log_dir / "config.json")
 
     config = merge_dicts(config, eval_config)
 
     if config["max_steps"] is None:
         config["max_steps"] = np.iinfo(int).max
 
-    model_checkpoint_path = log_dir / MODEL_FILENAME
+    model_checkpoint_path = args.log_dir / "model.pt"
 
     with build(config, model_checkpoint_path) as runner:
         runner.run()

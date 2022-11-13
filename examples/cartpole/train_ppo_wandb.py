@@ -85,10 +85,3 @@ if __name__ == "__main__":
         runner.run()
 
     run.finish()
-
-    # TODO: minimal
-    # update other example scripts
-
-    # TODO: test
-    # custom fields in traj_info for logging
-    # verify that writing to wandb folder is equivalent to wandb.save(policy="live")

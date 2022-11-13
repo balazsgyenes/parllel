@@ -37,7 +37,7 @@ class OffPolicyRunner(Runner):
         progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
 
-        self.evaluate_agent(elapsed_steps=0)
+        self.evaluate_agent(elapsed_steps=0, itr=0)
         
         for itr in range(self.n_iterations):
             elapsed_steps = itr * batch_size
@@ -48,7 +48,7 @@ class OffPolicyRunner(Runner):
             self.log_algo_info(algo_info)
 
             if (itr + 1) % self.log_interval_iters == 0:
-                self.evaluate_agent(elapsed_steps=elapsed_steps)
+                self.evaluate_agent(elapsed_steps=elapsed_steps, itr=itr)
 
             progress_bar.update(batch_size)
 

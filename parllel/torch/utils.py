@@ -202,7 +202,7 @@ def explained_variance(y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tens
     :param y_true: the expected value
     :return: explained variance of ypred and y
     """
-    assert y_true.ndim == y_pred.ndim == 1
+    assert y_true.ndim == y_pred.ndim
     var_y = y_true.var()
     if torch.allclose(var_y, torch.zeros_like(var_y)):
         return torch.nan

@@ -11,8 +11,9 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples, NamedArrayTupleClass
 from parllel.cages import TrajInfo
-from parllel.configuration import add_default_config_fields, add_metadata
-from parllel.logging import init_log_folder, log_config
+from parllel.configuration import add_default_config_fields
+import parllel.logger as logger
+from parllel.logger import Verbosity
 from parllel.patterns import (add_reward_clipping, add_reward_normalization,
     build_cages_and_env_buffers, build_eval_sampler)
 from parllel.replays.replay import ReplayBuffer
@@ -31,9 +32,6 @@ from models.sac_q_and_pi import QMlpModel, PiMlpModel
 
 @contextmanager
 def build(config: Dict) -> OffPolicyRunner:
-
-    init_log_folder(config["log_dir"])
-    log_config(config, config["log_dir"])
 
     parallel = config["parallel"]
     batch_spec = BatchSpec(
@@ -204,7 +202,6 @@ def build(config: Dict) -> OffPolicyRunner:
         algorithm=algorithm,
         batch_spec=batch_spec,
         eval_sampler=eval_sampler,
-        log_dir=config["log_dir"],
         **config["runner"],
     )
 
@@ -231,8 +228,6 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        # log_dir = Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
-        log_dir = None,
         parallel = True,
         batch_T = 128,
         batch_B = 16,
@@ -275,14 +270,22 @@ if __name__ == "__main__":
             n_steps = 100 * 16 * 128,
             log_interval_steps = 5 * 16 * 128,
         ),
-        meta = dict(
-            name = "[Example 3] Continuous CartPole with SAC",
-        ),
     )
 
     config = add_default_sac_config(config)
-    config = add_metadata(config, build)
     config = add_default_config_fields(config)
+
+    logger.init(
+        log_dir=Path(f"log_data/cartpole-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        tensorboard=True,
+        output_files={
+            "txt": "log.txt",
+            # "csv": "progress.csv",
+        },
+        config=config,
+        model_save_path="model.pt",
+        # verbosity=Verbosity.DEBUG,
+    )
 
     with build(config) as runner:
         runner.run()

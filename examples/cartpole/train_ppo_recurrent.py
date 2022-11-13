@@ -10,8 +10,9 @@ from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
-from parllel.configuration import add_default_config_fields, add_metadata
-from parllel.logging import init_log_folder, log_config
+from parllel.configuration import add_default_config_fields
+import parllel.logger as logger
+from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
     add_obs_normalization, add_reward_clipping, add_reward_normalization,
     add_valid, build_cages_and_env_buffers, add_initial_rnn_state)
@@ -31,9 +32,6 @@ from hera_gym.wrappers import add_human_render_wrapper, add_subprocess_wrapper
 
 @contextmanager
 def build(config: Dict) -> OnPolicyRunner:
-
-    init_log_folder(config["log_dir"])
-    log_config(config, config["log_dir"])
 
     parallel = config["parallel"]
     batch_spec = BatchSpec(
@@ -174,7 +172,6 @@ def build(config: Dict) -> OnPolicyRunner:
         agent=agent,
         algorithm=algorithm,
         batch_spec=batch_spec,
-        log_dir=config["log_dir"],
         **config["runner"],
     )
 
@@ -194,8 +191,6 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        # log_dir = Path(f"log_data/cartpole-ppo-recurrent/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
-        log_dir = None,
         parallel = True,
         batch_T = 128,
         batch_B = 16,
@@ -222,14 +217,22 @@ if __name__ == "__main__":
             n_steps = 100 * 16 * 128,
             log_interval_steps = 10 * 16 * 128,
         ),
-        meta = dict(
-            name = "[Example 2] CartPole with Recurrent PPO",
-        ),
     )
 
     config = add_default_ppo_config(config)
-    config = add_metadata(config, build)
     config = add_default_config_fields(config)
+
+    logger.init(
+        log_dir=Path(f"log_data/cartpole-ppo-recurrent/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        tensorboard=True,
+        output_files={
+            "txt": "log.txt",
+            # "csv": "progress.csv",
+        },
+        config=config,
+        model_save_path="model.pt",
+        # verbosity=Verbosity.DEBUG,
+    )
 
     with build(config) as runner:
         runner.run()

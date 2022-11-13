@@ -1,4 +1,5 @@
 from .logger import Logger, Verbosity
+from .serializers import JSONConfigSerializer
 
 
 # create singleton Logger instance
@@ -22,3 +23,21 @@ warn = _logger.warn
 error = _logger.error
 set_verbosity = _logger.set_verbosity
 close = _logger.close
+
+
+__all__ = [
+    "init",
+    "check_init",
+    "record",
+    "record_mean",
+    "dump",
+    "save_model",
+    "log",
+    "debug",
+    "info",
+    "warn",
+    "error",
+    "set_verbosity",
+    "close",
+    JSONConfigSerializer,
+]

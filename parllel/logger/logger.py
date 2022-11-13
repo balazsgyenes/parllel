@@ -141,6 +141,7 @@ class Logger:
         elif log_dir is not None:
             # if log_dir set manually, create it
             log_dir = Path(log_dir)
+            # error if specified log_dir already exists
             log_dir.mkdir(parents=True)
         elif use_wandb:
             # if wandb is disabled, use its log_dir instead of raising error

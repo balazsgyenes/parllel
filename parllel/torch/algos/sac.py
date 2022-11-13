@@ -68,9 +68,10 @@ class SAC(Algorithm):
         self.replay_buffer.append_samples(samples)
         
         if elapsed_steps < self.learning_starts:
-            return
+            return {}
         
         self.agent.train_mode(elapsed_steps)
+        self.algo_log_info.clear()
         
         for _ in range(self.updates_per_optimize):
 
@@ -120,10 +121,8 @@ class SAC(Algorithm):
         self.optimizers["q"].step()
 
         self.algo_log_info["critic_loss"].append(q_loss.item())
-        self.algo_log_info["q1_grad_norm"].append(
-            torch.tensor(q1_grad_norm).item())
-        self.algo_log_info["q2_grad_norm"].append(
-            torch.tensor(q2_grad_norm).item())
+        self.algo_log_info["q1_grad_norm"].append(q1_grad_norm.item())
+        self.algo_log_info["q2_grad_norm"].append(q2_grad_norm.item())
 
         # freeze Q models while optimizing policy model
         self.agent.freeze_q_models(True)
@@ -148,8 +147,7 @@ class SAC(Algorithm):
         self.agent.freeze_q_models(False)
 
         self.algo_log_info["actor_loss"].append(pi_loss.item())
-        self.algo_log_info["q1_grad_norm"].append(
-            torch.tensor(pi_grad_norm).item())
+        self.algo_log_info["q1_grad_norm"].append(pi_grad_norm.item())
 
 def add_default_sac_config(config: Dict) -> Dict:
     defaults = dict(
