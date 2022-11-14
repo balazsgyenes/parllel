@@ -1,9 +1,9 @@
-from typing import Dict, Optional, Union, Tuple
+from typing import Dict, List, Optional, Union, Tuple
 
 import numpy as np
 import torch
 
-from parllel.buffers import NamedTuple
+from parllel.buffers import Buffer, NamedTuple
 
 
 def select_at_indexes(indexes, tensor):
@@ -40,8 +40,11 @@ def from_onehot(onehot, dim=-1, dtype=None):
     return indexes
 
 
-def valid_mean(tensor: torch.Tensor, valid: Optional[torch.Tensor] = None,
-        dim: Optional[Tuple[int, ...]] = None):
+def valid_mean(
+    tensor: torch.Tensor,
+    valid: Optional[torch.Tensor] = None,
+    dim: Optional[Tuple[int, ...]] = None,
+) -> torch.Tensor:
     """Mean of ``tensor``, accounting for optional mask ``valid``, optionally
     along a dimension. Valid mask is "broadcast" across trailing dimensions of
     tensor, if tensor has more dimensions than valid.
@@ -59,7 +62,10 @@ def valid_mean(tensor: torch.Tensor, valid: Optional[torch.Tensor] = None,
     return masked_tensor.sum(dim=dim) / masked_tensor.count_nonzero(dim=dim)
 
 
-def infer_leading_dims(tensor, dim):
+def infer_leading_dims(
+    tensor: torch.Tensor,
+    dim: int,
+) -> Tuple[int, int, int, Tuple[int, ...]]:
     """Looks for up to two leading dimensions in ``tensor``, before
     the data dimensions, of which there are assumed to be ``dim`` number.
     For use at beginning of model's ``forward()`` method, which should 
@@ -81,7 +87,12 @@ def infer_leading_dims(tensor, dim):
     return lead_dim, T, B, shape
 
 
-def restore_leading_dims(tensors, lead_dim, T=1, B=1):
+def restore_leading_dims(
+    tensors: Union[torch.Tensor, Tuple[torch.Tensor, ...], List[torch.Tensor]],
+    lead_dim: int,
+    T: int = 1,
+    B: int = 1,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
     """Reshapes ``tensors`` (one or `tuple`, `list`) to to have ``lead_dim``
     leading dimensions, which will become [], [B], or [T,B].  Assumes input
     tensors already have a leading Batch dimension, which might need to be
@@ -99,7 +110,7 @@ def restore_leading_dims(tensors, lead_dim, T=1, B=1):
     return tensors if is_seq else tensors[0]
 
 
-def torchify_buffer(buffer):
+def torchify_buffer(buffer: Buffer[np.ndarray]) -> Buffer[torch.Tensor]:
     """Convert contents of ``buffer`` from numpy arrays to torch tensors.
     ``buffer`` can be an arbitrary structure of tuples, namedtuples,
     namedarraytuples, NamedTuples, and NamedArrayTuples, and a new, matching
@@ -117,7 +128,7 @@ def torchify_buffer(buffer):
     return torch.from_numpy(np.asarray(buffer))
 
 
-def numpify_buffer(buffer):
+def numpify_buffer(buffer: Buffer[torch.Tensor]) -> Buffer[np.ndarray]:
     """Convert contents of ``buffer`` from torch tensors to numpy arrays.
     ``buffer`` can be an arbitrary structure of tuples, namedtuples,
     namedarraytuples, NamedTuples, and NamedArrayTuples, and a new, matching
@@ -135,7 +146,10 @@ def numpify_buffer(buffer):
     return buffer
 
 
-def buffer_to_device(buffer, device=None):
+def buffer_to_device(
+    buffer: Buffer[torch.Tensor],
+    device: Optional[torch.device] = None,
+) -> Buffer[torch.Tensor]:
     """Send contents of ``buffer`` to specified device (contents must be
     torch tensors.). ``buffer`` can be an arbitrary structure of tuples,
     namedtuples, namedarraytuples, NamedTuples and NamedArrayTuples, and a
@@ -170,3 +184,26 @@ def update_state_dict(
         update_sd = {k: tau * state_dict[k] + (1 - tau) * v
             for k, v in model.state_dict().items()}
         model.load_state_dict(update_sd)
+
+
+def explained_variance(y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    """
+    Computes fraction of variance that ypred explains about y.
+    Returns 1 - Var[y-ypred] / Var[y]
+
+    interpretation:
+        ev=0  =>  might as well have predicted zero
+        ev=1  =>  perfect prediction
+        ev<0  =>  worse than just predicting zero
+
+    Copied from https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/common/utils.py
+
+    :param y_pred: the prediction
+    :param y_true: the expected value
+    :return: explained variance of ypred and y
+    """
+    assert y_true.ndim == y_pred.ndim
+    var_y = y_true.var()
+    if torch.allclose(var_y, torch.zeros_like(var_y)):
+        return torch.nan
+    return 1 - (y_true - y_pred).var() / var_y

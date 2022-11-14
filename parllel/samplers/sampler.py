@@ -7,6 +7,7 @@ from numpy import random
 from parllel.buffers import Samples
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
+import parllel.logger as logger
 from parllel.types import BatchSpec
 
 
@@ -28,7 +29,7 @@ class Sampler(ABC):
         try:
             # try writing beyond the apparent bounds of the observation buffer
             observation = sample_buffer.env.observation
-            observation[observation.last + 1] = 0
+            observation[self.batch_spec.T] = 0
         except IndexError:
             raise TypeError("sample_buffer.env.observation must be a "
                 "RotatingArray")
@@ -53,11 +54,12 @@ class Sampler(ABC):
         of the observation buffer, assuming that batch collection begins by
         rotating the batch buffer.
         """
+        logger.debug("Resetting all environments.")
         observation = self.sample_buffer.env.observation
         for b, env in enumerate(self.envs):
             # save reset observation to the end of buffer, since it will be 
             # rotated to the beginning
-            env.reset_async(out_obs=observation[observation.last + 1, b])
+            env.reset_async(out_obs=observation[self.batch_spec.T, b])
 
         # wait for envs to finish reset
         for b, env in enumerate(self.envs):
@@ -65,6 +67,7 @@ class Sampler(ABC):
 
     def reset_agent(self) -> None:
         """Reset RNN state of agent, if it has one"""
+        logger.debug("Resetting agent.")
         self.agent.reset()
 
     def seed(self, seed) -> None:
@@ -72,6 +75,8 @@ class Sampler(ABC):
 
     def decorrelate_environments(self) -> None:
         """Randomly step environments so they are not all synced up."""
+        logger.info("Decorrelating environments with up to "
+            f"{self.max_steps_decorrelate} random steps each.")
         # get references to buffer elements
         action = self.sample_buffer.agent.action
         observation, reward, done, env_info = (

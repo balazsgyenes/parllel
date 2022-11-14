@@ -2,7 +2,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from parllel.buffers import Samples, buffer_asarray
+from parllel.buffers import Samples
 from parllel.buffers.utils import buffer_rotate
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
@@ -99,7 +99,7 @@ class BasicSampler(Sampler):
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
             self.agent.value(
-                observation[observation.last + 1],
+                observation[self.batch_spec.T],
                 out_value=sample_buffer.agent.bootstrap_value,
             )
 

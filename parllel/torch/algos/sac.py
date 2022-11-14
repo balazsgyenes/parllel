@@ -1,10 +1,12 @@
-from typing import Dict, Union
+from collections import defaultdict
+from typing import Dict, List, Union
 
 import torch
 
 from parllel.algorithm import Algorithm
 from parllel.arrays import Array
 from parllel.buffers import Samples
+import parllel.logger as logger
 from parllel.replays.replay import ReplayBuffer
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.types.batch_spec import BatchSpec
@@ -25,7 +27,7 @@ class SAC(Algorithm):
         replay_ratio: int,  # data_consumption / data_generation
         target_update_tau: float,  # tau=1 for hard update.
         target_update_interval: int,  # 1000 for hard update, 1 for soft.
-        ent_coeff: Union[str, float], # "auto" for adaptive alpha, float for any fixed value
+        ent_coeff: float,
         clip_grad_norm: float,
     ):
         """Save input arguments."""
@@ -43,16 +45,20 @@ class SAC(Algorithm):
 
         self.updates_per_optimize = int(self.replay_ratio * self.batch_spec.size /
             self.batch_size)
-        print(f"From sampler batch size {self.batch_spec.size}, training "
+        logger.debug(f"From sampler batch size {self.batch_spec.size}, training "
             f"batch size {self.batch_size}, and replay ratio "
             f"{self.replay_ratio}, computed {self.updates_per_optimize} "
             f"updates per iteration.")
         self.update_counter = 0
+        self.algo_log_info = defaultdict(list)
 
         self._alpha = torch.tensor([ent_coeff]).to(agent.device)
         self._log_alpha = torch.log(self._alpha).to(agent.device)
 
-    def optimize_agent(self, elapsed_steps: int, samples: Samples[Array]):
+    def optimize_agent(self,
+        elapsed_steps: int,
+        samples: Samples[Array],
+    ) -> Dict[str, Union[int, List[float]]]:
         """
         Extracts the needed fields from input samples and stores them in the 
         replay buffer.  Then samples from the replay buffer to train the agent
@@ -62,9 +68,10 @@ class SAC(Algorithm):
         self.replay_buffer.append_samples(samples)
         
         if elapsed_steps < self.learning_starts:
-            return
+            return {}
         
         self.agent.train_mode(elapsed_steps)
+        self.algo_log_info.clear()
         
         for _ in range(self.updates_per_optimize):
 
@@ -74,7 +81,11 @@ class SAC(Algorithm):
             if self.update_counter % self.target_update_interval == 0:
                 self.agent.update_target(self.target_update_tau)
 
-    def train_once(self, elapsed_steps: int):
+            self.algo_log_info["n_updates"] = self.update_counter
+
+        return self.algo_log_info
+
+    def train_once(self, elapsed_steps: int) -> None:
         """
         Computes losses for twin Q-values against the min of twin target Q-values
         and an entropy term.  Computes reparameterized policy loss, and loss for
@@ -109,6 +120,10 @@ class SAC(Algorithm):
             self.clip_grad_norm)
         self.optimizers["q"].step()
 
+        self.algo_log_info["critic_loss"].append(q_loss.item())
+        self.algo_log_info["q1_grad_norm"].append(q1_grad_norm.item())
+        self.algo_log_info["q2_grad_norm"].append(q2_grad_norm.item())
+
         # freeze Q models while optimizing policy model
         self.agent.freeze_q_models(True)
 
@@ -124,13 +139,15 @@ class SAC(Algorithm):
         # update Pi model parameters according to pi loss
         self.optimizers["pi"].zero_grad()
         pi_loss.backward()
-        pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.agent.model["pi"].parameters(),
-            self.clip_grad_norm)
+        pi_grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.agent.model["pi"].parameters(), self.clip_grad_norm)
         self.optimizers["pi"].step()
 
         # unfreeze Q models for next training iteration
         self.agent.freeze_q_models(False)
 
+        self.algo_log_info["actor_loss"].append(pi_loss.item())
+        self.algo_log_info["q1_grad_norm"].append(pi_grad_norm.item())
 
 def add_default_sac_config(config: Dict) -> Dict:
     defaults = dict(

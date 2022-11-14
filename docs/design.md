@@ -39,17 +39,18 @@ rlpyt is a great piece of software, but there are several pain points when it co
         - Add seeding module that maintains a SeedSequence and spawns a new seed sequence each time an entity requests a new seed. Seeds are saved by name so they can be reloaded. Seeds are logged to a json file.
         - If a seed is requested twice for the same name, an error is thrown
     - To deal with parameters reused by multiple entities (e.g. discount, batch spec), maybe implement search method to avoid having to define a "canonical" position for these parameters (e.g. discount belongs in the algorithm parameters).
-    - **!!** Logging
+    - Logging
+        - Add support for recording a grid of videos of rollouts
         - Log random seeds to enable repeatable runs
-            - Enable setting seed to repeat a previous run
-        - User-configurable logging of diagnostic data (e.g. rewards, traj length, etc.) during training to analyze results
-            - Data is saved to tensorboard, csv file, and log file
-            - `log_array` logs mean, max, min, std_dev, and median of values in the array
-            - `log_value` logs a single value as given (e.g. observation mean and std_dev)
-        - Logging of notifications and warnings
-            - Data is saved to log file and standard output
-    - Add rest of program state (e.g. optimizer state, transform states, etc.) to checkpoints
-    - Enable resuming run from checkpoint
+        - Enable loading random seeds from log to repeat a previous run
+        - Log mean and std_dev of obs normalization, std_dev of reward normalization
+        - Add rest of program state (e.g. optimizer state, transform states, etc.) to checkpoints
+        - Enable resuming run from checkpoint
+        - Add independent WandB log writer so that tensorboard becomes optional
+        - Add additional serializers for config files
+            - Maybe use pickle to serialize types in config (but needs to be detectable on read)
+            - Maybe use cloudpickle like SB3 does
+            - If serializing to yaml, ensure no collisions with wandb's config.yaml file
     - **!!** Allocators
         - Add allocators module with user-configurable and default logic for what Array type should be used for what buffer element
         - Set parallel attribute in allocator module and then get default CageCls everywhere else
