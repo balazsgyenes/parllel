@@ -5,7 +5,7 @@ from collections import OrderedDict
 from inspect import Signature, Parameter
 from itertools import repeat
 import string
-from typing import Any, Dict, Iterable, NoReturn, Tuple, Union
+from typing import Any, Dict, Iterable, NoReturn, Tuple, TypeVar, Union
 
 from .buffer import Buffer
 
@@ -163,14 +163,15 @@ class NamedArrayTupleClass(NamedTupleClass):
         pass
 
 
+T_Elem = TypeVar("T_Elem")
 class NamedArrayTuple(NamedTuple, Buffer):
-    def __new__(cls, typename, fields: Tuple[str], values: Iterable[Any]):
+    def __new__(cls, typename, fields: Tuple[str], values: Iterable[T_Elem]):
         result = super().__new__(cls, typename, fields, values)
         result.__dict__["_index_history"] = []
         result.__dict__["_buffer_id"] = id(result)
         return result
 
-    def __getitem__(self, loc: Any) -> NamedArrayTuple:
+    def __getitem__(self, loc: Any) -> NamedArrayTuple[T_Elem]:
         """Return a new object of the same typename and fields containing the
         selected index or slice from each value."""
         try:
@@ -192,7 +193,7 @@ class NamedArrayTuple(NamedTuple, Buffer):
                     raise IndexError(f"Occured in '{self._typename}' at field "
                                     f"'{self._fields[i]}'.") from e
 
-    def __setitem__(self, loc: Any, value: Any) -> None:
+    def __setitem__(self, loc: Any, value: T_Elem) -> None:
         """
         If input value is the same named[array]tuple type, iterate through its
         fields and assign values into selected index or slice of corresponding
@@ -223,7 +224,7 @@ class NamedArrayTuple(NamedTuple, Buffer):
         """Checks presence of field name (unlike tuple; like dict)."""
         return key in self._fields
 
-    def get(self, index: str) -> Any:
+    def get(self, index: str) -> T_Elem:
         """Retrieve value as if indexing into regular tuple."""
         return tuple.__getitem__(self, index)
 

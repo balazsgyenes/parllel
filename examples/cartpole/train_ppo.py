@@ -20,7 +20,8 @@ from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
-from parllel.torch.algos.ppo import PPO, add_default_ppo_config, build_dataloader_buffer
+from parllel.torch.algos.ppo import (PPO, add_default_ppo_config,
+    build_dataloader_buffer)
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose

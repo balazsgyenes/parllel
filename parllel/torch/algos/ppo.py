@@ -17,7 +17,6 @@ from parllel.torch.utils import (buffer_to_device, valid_mean,
 from parllel.types import BatchSpec
 
 
-
 SamplesForOptimize = NamedArrayTupleClass("SamplesForOptimize",
     ["observation", "agent_info", "action", "return_", "advantage", "valid",
     "old_dist_info", "old_values", "init_rnn_state"],
@@ -89,7 +88,6 @@ class PPO(Algorithm):
 
         for _ in range(self.epochs):
             for batch in self.dataloader.batches():
-                    
                 self.optimizer.zero_grad()
                 loss = self.loss(batch)
                 loss.backward()
