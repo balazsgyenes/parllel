@@ -9,7 +9,6 @@ import torch
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
-from parllel.buffers import buffer_asarray, NamedArrayTupleClass
 from parllel.cages import TrajInfo
 from parllel.configuration import add_default_config_fields
 import parllel.logger as logger
@@ -21,10 +20,9 @@ from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
-from parllel.torch.algos.ppo import PPO, add_default_ppo_config
+from parllel.torch.algos.ppo import PPO, add_default_ppo_config, build_dataloader_buffer
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
-from parllel.torch.utils import torchify_buffer
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
@@ -139,37 +137,10 @@ def build(config: Dict) -> OnPolicyRunner:
         batch_transform=Compose(batch_transforms),
     )
 
-    recurrent = False
-
-    TandBSamples = NamedArrayTupleClass("TandBSamples",
-        ["observation", "agent_info", "action", "return_", "advantage", "valid",
-        "old_dist_info", "old_values"],
-    )
-
-    BSamples = NamedArrayTupleClass("BSamples", ["init_rnn_state"])
-
-    dataloader_buffer = TandBSamples(
-        observation=batch_buffer.env.observation,
-        agent_info=batch_buffer.agent.agent_info,
-        action=batch_buffer.agent.action,
-        return_=batch_buffer.env.return_,
-        advantage=batch_buffer.env.advantage,
-        valid=batch_buffer.env.valid if recurrent else None,
-        old_dist_info=batch_buffer.agent.agent_info.dist_info,
-        old_values=batch_buffer.agent.agent_info.value,
-    )
-    dataloader_buffer = buffer_asarray(dataloader_buffer)
-    dataloader_buffer = torchify_buffer(dataloader_buffer)
-
-    B_only_buffer = BSamples(
-        init_rnn_state=batch_buffer.agent.initial_rnn_state
-    ) if recurrent else None
-    B_only_buffer = buffer_asarray(B_only_buffer)
-    B_only_buffer = torchify_buffer(B_only_buffer)
+    dataloader_buffer = build_dataloader_buffer(batch_buffer, recurrent=False)
 
     dataloader = BatchedDataLoader(
         buffer=dataloader_buffer,
-        timeless_buffer=B_only_buffer,
         sampler_batch_spec=batch_spec,
         # TODO: every time we abstract, the config becomes flatter and more smeared out
         n_batches=config["minibatches"],
