@@ -29,7 +29,7 @@ class Sampler(ABC):
         try:
             # try writing beyond the apparent bounds of the observation buffer
             observation = sample_buffer.env.observation
-            observation[observation.last + 1] = 0
+            observation[self.batch_spec.T] = 0
         except IndexError:
             raise TypeError("sample_buffer.env.observation must be a "
                 "RotatingArray")
@@ -59,7 +59,7 @@ class Sampler(ABC):
         for b, env in enumerate(self.envs):
             # save reset observation to the end of buffer, since it will be 
             # rotated to the beginning
-            env.reset_async(out_obs=observation[observation.last + 1, b])
+            env.reset_async(out_obs=observation[self.batch_spec.T, b])
 
         # wait for envs to finish reset
         for b, env in enumerate(self.envs):

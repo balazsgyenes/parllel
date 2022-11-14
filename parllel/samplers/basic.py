@@ -99,7 +99,7 @@ class BasicSampler(Sampler):
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
             self.agent.value(
-                observation[observation.last + 1],
+                observation[self.batch_spec.T],
                 out_value=sample_buffer.agent.bootstrap_value,
             )
 
