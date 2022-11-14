@@ -3,6 +3,7 @@ from typing import Callable, Generic, Iterator, List, Optional, TypeVar
 import numpy as np
 
 from parllel.buffers import Indices, NamedArrayTuple
+import parllel.logger as logger
 from parllel.types import BatchSpec
 
 
@@ -24,7 +25,7 @@ class BatchedDataLoader(Generic[BufferType]):
         batch_only_fields: Optional[List[str]] = None,
         recurrent: bool = False,
         shuffle: bool = True,
-        # TODO: drop_last: bool = False,
+        drop_last: bool = True,
     ) -> None:
         self.buffer = self.source_buffer = buffer
         self.batch_only_fields = batch_only_fields
@@ -32,10 +33,20 @@ class BatchedDataLoader(Generic[BufferType]):
         self.sampler_batch_spec = sampler_batch_spec
         self.recurrent = recurrent
         self.shuffle  = shuffle
+        self.drop_last = drop_last
 
         # If recurrent, use whole trajectories, only shuffle B; else shuffle all.
         self.size = sampler_batch_spec.B if recurrent else sampler_batch_spec.size
         self.batch_size = self.size // n_batches
+
+        if self.size % n_batches != 0:
+            logger.warn(
+                f"{self.size} {'trajectories' if self.recurrent else 'samples'} "
+                f"cannot be split evenly into {n_batches} batches. The final "
+                f"batch will be {'dropped' if drop_last else 'truncated'}. "
+                "To avoid this, modify n_batches when creating the "
+                "BatchedDataLoader. "
+            )
 
         self.seed(None)
 
@@ -54,12 +65,12 @@ class BatchedDataLoader(Generic[BufferType]):
         
         buffer = self.buffer
         if self.batch_only_fields:
-            B_only_elements = {field: getattr(buffer, field) for field in self.batch_only_fields}
+            batch_only_elems = {field: getattr(buffer, field) for field in self.batch_only_fields}
             buffer = buffer._replace(**{field: None for field in self.batch_only_fields})
         item = buffer[location]
         if self.batch_only_fields:
-            B_only_elements = {field: element[location[1:]] for field, element in B_only_elements.items()}
-            item = item._replace(**B_only_elements)
+            batch_only_elems = {field: element[location[1:]] for field, element in batch_only_elems.items()}
+            item = item._replace(**batch_only_elems)
         return item
 
     def apply_func(self, func: Callable) -> None:
@@ -73,11 +84,15 @@ class BatchedDataLoader(Generic[BufferType]):
         if self.shuffle:
             self.rng.shuffle(all_indices)
         # split the data into equally-sized pieces of `batch_size`
-        for start in range(0, self.size - self.batch_size + 1, self.batch_size):
-            # buffer = self.buffer
+        if self.drop_last:
+            starts = range(0, self.size - self.batch_size + 1, self.batch_size)
+        else:
+            starts = range(0, self.size, self.batch_size)
+        for start in starts:
             # create slice for the nth batch
-            # index the shuffled list of all indices to get a batch of shuffled indices
-            batch_indices = all_indices[start : start + self.batch_size]
+            # get the next batch of indices from the (shuffled) list of indices
+            # if not dropping last, need to truncate final batch
+            batch_indices = all_indices[start : min(self.size, start + self.batch_size)]
             if self.recurrent:
                 # take entire trajectories, indexing only B dimension
                 yield self[:, batch_indices]

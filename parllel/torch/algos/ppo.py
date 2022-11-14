@@ -129,7 +129,10 @@ class PPO(Algorithm):
         surrogate = torch.min(surr_1, surr_2)
         pi_loss = - valid_mean(surrogate, batch.valid)
 
-        if self.value_clipping_mode == "ratio":
+        if self.value_clipping_mode == "none":
+            # No clipping
+            value_error = 0.5 * (value - batch.return_) ** 2
+        elif self.value_clipping_mode == "ratio":
             # Clipping the value per time step in respect to the ratio between old and new values
             value_ratio = value / batch.old_values
             clipped_values = torch.where(value_ratio > 1. + self.value_clip, batch.old_values * (1. + self.value_clip), value)
@@ -148,8 +151,7 @@ class PPO(Algorithm):
             standard_value_error = 0.5 * (value - batch.return_) ** 2
             value_error = torch.max(clipped_value_error, standard_value_error)
         else:
-            # No clipping
-            value_error = 0.5 * (value - batch.return_) ** 2
+            raise ValueError(f"Invalid value clipping mode '{self.value_clipping_mode}'")
         
         value_loss = self.value_loss_coeff * valid_mean(value_error, batch.valid)
 
