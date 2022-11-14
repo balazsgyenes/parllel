@@ -1,4 +1,5 @@
 from parllel.handlers.agent import Agent
+import parllel.logger as logger
 from parllel.samplers import EvalSampler
 
 from .runner import Runner
@@ -9,17 +10,17 @@ class ShowPolicy(Runner):
         sampler: EvalSampler,
         agent: Agent,
     ) -> None:
-
-        super().__init__(
-            log_dir=None,
-        )
+        super().__init__()
 
         self.sampler = sampler
         self.agent = agent
 
     def run(self) -> None:
-        
+        logger.info("Showing policy...")
+
         eval_trajs = self.sampler.collect_batch(elapsed_steps=0)
 
-        # does not log, but at least prints to stdout
-        self.log_progress(elapsed_steps=0, trajectories=eval_trajs)
+        self.log_completed_trajectories(eval_trajs)
+        self.log_progress(elapsed_steps=0, iteration=0)
+
+        logger.info("Finished.")

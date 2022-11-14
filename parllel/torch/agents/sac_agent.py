@@ -7,6 +7,7 @@ import torch
 
 from parllel.buffers import Buffer, NamedArrayTupleClass
 from parllel.handlers import AgentStep
+import parllel.logger as logger
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian, DistInfoStd
 from parllel.torch.utils import buffer_to_device, update_state_dict
@@ -121,7 +122,7 @@ class SacAgent(TorchAgent):
         self.model["q1"].eval()
         self.model["q2"].eval()
         if elapsed_steps == 0:
-            print(f"Agent at {elapsed_steps} steps, sample std: {self.pretrain_std}")
+            logger.debug(f"Agent at {elapsed_steps} steps, sample std: {self.pretrain_std}")
         std = None if elapsed_steps >= self.learning_starts else self.pretrain_std
         self.distribution.set_std(std)  # If None: std from policy dist_info.
 

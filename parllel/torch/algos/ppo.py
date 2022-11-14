@@ -1,4 +1,5 @@
-from typing import Dict
+from collections import defaultdict
+from typing import Dict, List, Optional, Union
 
 import torch
 import torch.optim
@@ -7,9 +8,11 @@ import numpy as np
 from parllel.algorithm import Algorithm
 from parllel.arrays import Array
 from parllel.buffers import Samples, buffer_asarray, NamedArrayTupleClass
+import parllel.logger as logger
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
-from parllel.torch.utils import buffer_to_device, torchify_buffer, valid_mean
+from parllel.torch.utils import (buffer_to_device, torchify_buffer, valid_mean,
+    explained_variance)
 from parllel.types import BatchSpec
 
 
@@ -46,8 +49,7 @@ class PPO(Algorithm):
             epochs: int,
             ratio_clip: float,
             value_clipping_mode: str,
-            value_delta_clip: float,
-            value_ratio_clip: float,
+            value_clip: Optional[float] = None,
             ):
         """Saves input settings."""
         self.batch_spec = batch_spec
@@ -60,16 +62,20 @@ class PPO(Algorithm):
         self.minibatches = minibatches
         self.epochs = epochs
         self.ratio_clip = ratio_clip
-        self.value_delta_clip = value_delta_clip
-        self.value_ratio_clip = value_ratio_clip
         self.value_clipping_mode = value_clipping_mode
+        self.value_clip = value_clip
 
+        self.update_counter = 0
         self.rng = np.random.default_rng()
+        self.algo_log_info = defaultdict(list)
 
     def seed(self, seed: int):
         self.rng = np.random.default_rng(seed)
 
-    def optimize_agent(self, elapsed_steps: int, samples: Samples[Array]):
+    def optimize_agent(self,
+        elapsed_steps: int,
+        samples: Samples[Array],
+    ) -> Dict[str, Union[int, List[float]]]:
         """
         Train the agent, for multiple epochs over minibatches taken from the
         input samples.  Organizes agent inputs from the training data, and
@@ -111,6 +117,7 @@ class PPO(Algorithm):
             (loss_inputs, init_rnn_state), device=self.agent.device)
 
         self.agent.train_mode(elapsed_steps)
+        self.algo_log_info.clear()
 
         T, B = self.batch_spec
         
@@ -130,15 +137,23 @@ class PPO(Algorithm):
                     
                 self.optimizer.zero_grad()
                 # NOTE: if not recurrent, leading T and B dims are combined
-                loss, entropy, perplexity = self.loss(
-                    *loss_inputs[T_idxs, B_idxs], minibatch_rnn_state)
+                loss = self.loss(*loss_inputs[T_idxs, B_idxs], minibatch_rnn_state)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
-                    self.agent.model.parameters(), self.clip_grad_norm)
+                    self.agent.model.parameters(),
+                    self.clip_grad_norm,
+                )
+                self.algo_log_info["grad_norm"].append(grad_norm.item())
                 self.optimizer.step()
         
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
+            self.algo_log_info["learning_rate"] = self.optimizer.param_groups[0]["lr"]
+
+        self.update_counter += self.epochs * self.minibatches
+        self.algo_log_info["n_updates"] = self.update_counter
+
+        return self.algo_log_info
 
     def loss(self, agent_inputs, action, return_, advantage, valid, old_dist_info,
              old_values, init_rnn_state):
@@ -165,18 +180,18 @@ class PPO(Algorithm):
         if self.value_clipping_mode == "ratio":
             # Clipping the value per time step in respect to the ratio between old and new values
             value_ratio = value / old_values
-            clipped_values = torch.where(value_ratio > 1. + self.value_ratio_clip, old_values * (1. + self.value_ratio_clip), value)
-            clipped_values = torch.where(value_ratio < 1. - self.value_ratio_clip, old_values * (1. - self.value_ratio_clip), clipped_values)
+            clipped_values = torch.where(value_ratio > 1. + self.value_clip, old_values * (1. + self.value_clip), value)
+            clipped_values = torch.where(value_ratio < 1. - self.value_clip, old_values * (1. - self.value_clip), clipped_values)
             clipped_value_error = 0.5 * (clipped_values - return_) ** 2
             standard_value_error = 0.5 * (value - return_) ** 2
             value_error = torch.max(clipped_value_error, standard_value_error)
         elif self.value_clipping_mode == "delta":
-            # Clipping the value per time step with its original (old) value in the boundaries of value_delta_clip
-            clipped_values = torch.min(torch.max(value, old_values - self.value_delta_clip), old_values + self.value_delta_clip)
+            # Clipping the value per time step with its original (old) value in the boundaries of value_clip
+            clipped_values = torch.min(torch.max(value, old_values - self.value_clip), old_values + self.value_clip)
             value_error = 0.5 * (clipped_values - return_) ** 2
         elif self.value_clipping_mode == "delta_max":
-            # Clipping the value per time step with its original (old) value in the boundaries of value_delta_clip
-            clipped_values = torch.min(torch.max(value, old_values - self.value_delta_clip), old_values + self.value_delta_clip)
+            # Clipping the value per time step with its original (old) value in the boundaries of value_clip
+            clipped_values = torch.min(torch.max(value, old_values - self.value_clip), old_values + self.value_clip)
             clipped_value_error = 0.5 * (clipped_values - return_) ** 2
             standard_value_error = 0.5 * (value - return_) ** 2
             value_error = torch.max(clipped_value_error, standard_value_error)
@@ -191,8 +206,32 @@ class PPO(Algorithm):
 
         loss = pi_loss + value_loss + entropy_loss
 
+        # Compute a low-variance estimate of the KL divergence to use for
+        # stopping further updates after a KL divergence limit is reached.
+        # see issue #417: https://github.com/DLR-RM/stable-baselines3/issues/417
+        # and discussion in PR #419: https://github.com/DLR-RM/stable-baselines3/pull/419
+        # and Schulman blog: http://joschu.net/blog/kl-approx.html
+        # TODO: implement early stopping on kl_div_limit
+        with torch.no_grad():
+            approx_kl_div = torch.mean(ratio - 1 - torch.log(ratio))
+
         perplexity = dist.mean_perplexity(dist_info, valid)
-        return loss, entropy, perplexity
+
+        self.algo_log_info["loss"].append(loss.item())
+        self.algo_log_info["policy_gradient_loss"].append(pi_loss.item())
+        self.algo_log_info["approx_kl"].append(approx_kl_div.item())
+        clip_fraction = ((ratio - 1).abs() > self.ratio_clip).float().mean().item()
+        self.algo_log_info["clip_fraction"].append(clip_fraction)
+        if hasattr(dist_info, "log_std"):
+            self.algo_log_info["policy_log_std"].append(dist_info.log_std.mean().item())
+        self.algo_log_info["entropy_loss"].append(entropy_loss.item())
+        self.algo_log_info["entropy"].append(entropy.item())
+        self.algo_log_info["perplexity"].append(perplexity.item())
+        self.algo_log_info["value_loss"].append(value_loss.item())
+        explained_var = explained_variance(value, return_)
+        self.algo_log_info["explained_variance"].append(explained_var.item())
+
+        return loss
 
 
 def minibatch_indices(data_length: int, minibatch_size: int, rng: np.random.Generator = None):
@@ -223,8 +262,6 @@ def add_default_ppo_config(config: Dict) -> Dict:
         epochs = 4,
         ratio_clip = 0.1,
         value_clipping_mode = "none",
-        value_delta_clip = 0.1,
-        value_ratio_clip = 0.1,
     )
 
     config["algo"] = defaults | config.get("algo", {})

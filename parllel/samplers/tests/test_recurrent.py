@@ -5,7 +5,7 @@ import numpy as np
 from parllel.arrays import (Array, RotatingArray, buffer_from_example,
     buffer_from_dict_example)
 from parllel.buffers import (AgentSamples, EnvSamples, NamedArrayTuple,
-    NamedArrayTupleClass, Samples, buffer_method)
+    NamedArrayTupleClass, Samples, buffer_method, buffer_asarray)
 from parllel.cages import Cage, MultiAgentTrajInfo, TrajInfo
 
 from parllel.buffers.tests.utils import buffer_equal
@@ -41,7 +41,6 @@ def envs(action_space, observation_space, batch_spec, multireward, episode_lengt
             wait_before_reset=True,
         ),
         TrajInfoClass=MultiAgentTrajInfo if multireward else TrajInfo,
-        traj_info_kwargs={},
         wait_before_reset=True,
     ) for length in episode_lengths]
 
@@ -131,9 +130,9 @@ def samples(request, batch_spec, envs, agent, batch_buffer,
 
     sampler = SamplerClass(
         batch_spec=batch_spec,
-        envs = envs,
-        agent = agent,
-        batch_buffer = batch_buffer,
+        envs=envs,
+        agent=agent,
+        sample_buffer=batch_buffer,
         max_steps_decorrelate=max_decorrelation_steps,
         get_bootstrap_value=get_bootstrap,
     )
@@ -142,6 +141,7 @@ def samples(request, batch_spec, envs, agent, batch_buffer,
     elapsed_steps = 0
     for _ in range(N_BATCHES):
         batch, completed_trajs = sampler.collect_batch(elapsed_steps)
+        batch = buffer_asarray(batch)
         batches.append(buffer_method(batch, "copy"))
         all_completed_trajs.append(completed_trajs)
         elapsed_steps += np.prod(tuple(batch_spec))

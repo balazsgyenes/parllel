@@ -19,7 +19,6 @@ def build_cages_and_env_buffers(
     EnvClass: Callable,
     env_kwargs: Dict,
     TrajInfoClass: Callable,
-    traj_info_kwargs: Dict,
     wait_before_reset: bool,
     batch_spec: BatchSpec,
     parallel: bool,
@@ -38,7 +37,6 @@ def build_cages_and_env_buffers(
         EnvClass = EnvClass,
         env_kwargs = env_kwargs,
         TrajInfoClass = TrajInfoClass,
-        traj_info_kwargs = traj_info_kwargs,
         wait_before_reset = wait_before_reset,
     )
 
@@ -293,7 +291,6 @@ def build_eval_sampler(
     EnvClass: Callable,
     env_kwargs: Dict,
     TrajInfoClass: Callable,
-    traj_info_kwargs: Dict,
     n_eval_envs: int,
     max_traj_length: int,
     min_trajectories: int,
@@ -320,7 +317,6 @@ def build_eval_sampler(
         EnvClass = EnvClass,
         env_kwargs = env_kwargs,
         TrajInfoClass = TrajInfoClass,
-        traj_info_kwargs = traj_info_kwargs,
         wait_before_reset = False,
     )
     if issubclass(CageCls, ProcessCage):

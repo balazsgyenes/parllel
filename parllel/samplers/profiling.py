@@ -7,6 +7,7 @@ import numpy as np
 
 from parllel.buffers import Samples
 from parllel.cages import Cage
+import parllel.logger as logger
 from parllel.types import BatchSpec
 
 from .sampler import Sampler
@@ -75,7 +76,7 @@ class ProfilingSampler(Sampler):
                 end = time.perf_counter()
                 durations[t] = (end - start)
 
-            print(f"Average step duration {durations.mean()*1000/batch_B:.4f} "
+            logger.info(f"Average step duration {durations.mean()*1000/batch_B:.4f} "
                     f"+/- {durations.std()*1000/batch_B:.4f} (ms) "
                     f"[{batch_B/durations.mean():.2f} FPS]")
 

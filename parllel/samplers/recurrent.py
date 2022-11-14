@@ -139,7 +139,7 @@ class RecurrentSampler(Sampler):
             # if environment is already done, this value is invalid, but then
             # it will be ignored anyway
             self.agent.value(
-                observation[observation.last + 1],
+                observation[self.batch_spec.T],
                 out_value=sample_buffer.agent.bootstrap_value,
             )
 
@@ -147,7 +147,7 @@ class RecurrentSampler(Sampler):
             if env.already_done:
                 self.agent.reset_one(env_index=b)
                 # overwrite next first observation with reset observation
-                env.reset_async(out_obs=observation[observation.last + 1, b])
+                env.reset_async(out_obs=observation[self.batch_spec.T, b])
                 env.await_step()
 
         # collect all completed trajectories from envs
