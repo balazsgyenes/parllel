@@ -1,27 +1,26 @@
 from collections import defaultdict
+from functools import partial
 from typing import Dict, List, Optional, Union
 
 import torch
 import torch.optim
-import numpy as np
 
 from parllel.algorithm import Algorithm
 from parllel.arrays import Array
-from parllel.buffers import Samples, buffer_asarray, NamedArrayTupleClass
+from parllel.buffers import Samples, NamedArrayTupleClass
 import parllel.logger as logger
+from parllel.replays import BatchedDataLoader
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
-from parllel.torch.utils import (buffer_to_device, torchify_buffer, valid_mean,
+from parllel.torch.utils import (buffer_to_device, valid_mean,
     explained_variance)
 from parllel.types import BatchSpec
 
 
-PredictInputs = NamedArrayTupleClass("PredictInputs",
-    ["observation", "agent_info"])
-
-
-LossInputs = NamedArrayTupleClass("LossInputs",
-    ["agent_inputs", "action", "return_", "advantage", "valid", "old_dist_info", "old_values"])
+SamplesForLoss = NamedArrayTupleClass("SamplesForLoss",
+    ["observation", "agent_info", "action", "return_", "advantage", "valid",
+    "old_dist_info", "old_values", "init_rnn_state"],
+)
 
 
 class PPO(Algorithm):
@@ -37,40 +36,38 @@ class PPO(Algorithm):
     """
 
     def __init__(
-            self,
-            batch_spec: BatchSpec,
-            agent: TorchAgent,
-            optimizer: torch.optim.Optimizer,
-            learning_rate_scheduler: torch.optim.lr_scheduler._LRScheduler,
-            value_loss_coeff: float,
-            entropy_loss_coeff: float,
-            clip_grad_norm: float,
-            minibatches: int,
-            epochs: int,
-            ratio_clip: float,
-            value_clipping_mode: str,
-            value_clip: Optional[float] = None,
-            ):
+        self,
+        batch_spec: BatchSpec,
+        agent: TorchAgent,
+        dataloader: BatchedDataLoader[SamplesForLoss[torch.Tensor]],
+        optimizer: torch.optim.Optimizer,
+        learning_rate_scheduler: torch.optim.lr_scheduler._LRScheduler,
+        value_loss_coeff: float,
+        entropy_loss_coeff: float,
+        clip_grad_norm: float,
+        epochs: int,
+        ratio_clip: float,
+        value_clipping_mode: str,
+        value_clip: Optional[float] = None,
+    ) -> None:
         """Saves input settings."""
         self.batch_spec = batch_spec
         self.agent = agent
+        self.dataloader = dataloader
         self.optimizer = optimizer
         self.lr_scheduler = learning_rate_scheduler
         self.value_loss_coeff = value_loss_coeff
         self.entropy_loss_coeff = entropy_loss_coeff
         self.clip_grad_norm = clip_grad_norm
-        self.minibatches = minibatches
         self.epochs = epochs
         self.ratio_clip = ratio_clip
         self.value_clipping_mode = value_clipping_mode
         self.value_clip = value_clip
 
         self.update_counter = 0
-        self.rng = np.random.default_rng()
         self.algo_log_info = defaultdict(list)
-
-    def seed(self, seed: int):
-        self.rng = np.random.default_rng(seed)
+        self.to_device_func = partial(buffer_to_device,
+            device=self.agent.device)
 
     def optimize_agent(self,
         elapsed_steps: int,
@@ -82,62 +79,17 @@ class PPO(Algorithm):
         moves them to device (e.g. GPU) up front, so that minibatches are
         formed within device, without further data transfer.
         """
-
         self.agent.train_mode(elapsed_steps)
 
-        samples = buffer_asarray(samples)
-        samples = torchify_buffer(samples)
+        # Move all samples to device once and iterate through them there.
+        self.dataloader.apply_func(self.to_device_func)
 
-        recurrent = self.agent.recurrent
-
-        if recurrent:
-            valid = samples.env.valid
-            init_rnn_state = samples.agent.initial_rnn_state
-        else:
-            valid = None
-            init_rnn_state = None
-
-        # pack everything into NamedArrayTuples to enabling slicing
-        agent_inputs = PredictInputs(
-            observation=samples.env.observation,
-            agent_info=samples.agent.agent_info,
-        )
-        loss_inputs = LossInputs(
-            agent_inputs=agent_inputs,
-            action=samples.agent.action,
-            return_=samples.env.return_,
-            advantage=samples.env.advantage,
-            valid=valid,
-            old_dist_info=samples.agent.agent_info.dist_info,
-            old_values=samples.agent.agent_info.value
-        )
-        # Move everything to device once, index there.
-        # init_rnn_state is handled separately because it has no leading T dim
-        loss_inputs, init_rnn_state = buffer_to_device(
-            (loss_inputs, init_rnn_state), device=self.agent.device)
-
-        self.agent.train_mode(elapsed_steps)
         self.algo_log_info.clear()
 
-        T, B = self.batch_spec
-        
-        # If recurrent, use whole trajectories, only shuffle B; else shuffle all.
-        batch_size = B if recurrent else T * B
-        minibatch_size = batch_size // self.minibatches
         for _ in range(self.epochs):
-            for idxs in minibatch_indices(batch_size, minibatch_size, self.rng):
-                if recurrent:
-                    T_idxs = slice(None) # take entire trajectory
-                    B_idxs = idxs # use shuffled indices for B dimension
-                    minibatch_rnn_state = init_rnn_state[B_idxs]
-                else:
-                    B_idxs = idxs // T # index modulo T gives batch dimension
-                    T_idxs = idxs % T # and remaining gives time step
-                    minibatch_rnn_state = init_rnn_state
-                    
+            for batch in self.dataloader.batches():
                 self.optimizer.zero_grad()
-                # NOTE: if not recurrent, leading T and B dims are combined
-                loss = self.loss(*loss_inputs[T_idxs, B_idxs], minibatch_rnn_state)
+                loss = self.loss(batch)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.agent.model.parameters(),
@@ -145,18 +97,17 @@ class PPO(Algorithm):
                 )
                 self.algo_log_info["grad_norm"].append(grad_norm.item())
                 self.optimizer.step()
+                self.update_counter += 1
         
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
             self.algo_log_info["learning_rate"] = self.optimizer.param_groups[0]["lr"]
 
-        self.update_counter += self.epochs * self.minibatches
         self.algo_log_info["n_updates"] = self.update_counter
 
         return self.algo_log_info
 
-    def loss(self, agent_inputs, action, return_, advantage, valid, old_dist_info,
-             old_values, init_rnn_state):
+    def loss(self, batch: SamplesForLoss) -> torch.Tensor:
         """
         Compute the training loss: policy_loss + value_loss + entropy_loss
         Policy loss: min(likelhood-ratio * advantage, clip(likelihood_ratio, 1-eps, 1+eps) * advantage)
@@ -165,43 +116,46 @@ class PPO(Algorithm):
         the ``agent.distribution`` to compute likelihoods and entropies.  Valid
         for feedforward or recurrent agents.
         """
-        agent_prediction: AgentPrediction = self.agent.predict(*agent_inputs, init_rnn_state)
+        agent_prediction: AgentPrediction = self.agent.predict(
+            batch.observation, batch.agent_info, batch.init_rnn_state)
         dist_info, value = agent_prediction.dist_info, agent_prediction.value
         dist = self.agent.distribution
-        ratio = dist.likelihood_ratio(action, old_dist_info=old_dist_info,
+        ratio = dist.likelihood_ratio(batch.action, old_dist_info=batch.old_dist_info,
             new_dist_info=dist_info)
-        surr_1 = ratio * advantage
+        surr_1 = ratio * batch.advantage
         clipped_ratio = torch.clamp(ratio, 1. - self.ratio_clip,
             1. + self.ratio_clip)
-        surr_2 = clipped_ratio * advantage
+        surr_2 = clipped_ratio * batch.advantage
         surrogate = torch.min(surr_1, surr_2)
-        pi_loss = - valid_mean(surrogate, valid)
+        pi_loss = - valid_mean(surrogate, batch.valid)
 
-        if self.value_clipping_mode == "ratio":
+        if self.value_clipping_mode == "none":
+            # No clipping
+            value_error = 0.5 * (value - batch.return_) ** 2
+        elif self.value_clipping_mode == "ratio":
             # Clipping the value per time step in respect to the ratio between old and new values
-            value_ratio = value / old_values
-            clipped_values = torch.where(value_ratio > 1. + self.value_clip, old_values * (1. + self.value_clip), value)
-            clipped_values = torch.where(value_ratio < 1. - self.value_clip, old_values * (1. - self.value_clip), clipped_values)
-            clipped_value_error = 0.5 * (clipped_values - return_) ** 2
-            standard_value_error = 0.5 * (value - return_) ** 2
+            value_ratio = value / batch.old_values
+            clipped_values = torch.where(value_ratio > 1. + self.value_clip, batch.old_values * (1. + self.value_clip), value)
+            clipped_values = torch.where(value_ratio < 1. - self.value_clip, batch.old_values * (1. - self.value_clip), clipped_values)
+            clipped_value_error = 0.5 * (clipped_values - batch.return_) ** 2
+            standard_value_error = 0.5 * (value - batch.return_) ** 2
             value_error = torch.max(clipped_value_error, standard_value_error)
         elif self.value_clipping_mode == "delta":
             # Clipping the value per time step with its original (old) value in the boundaries of value_clip
-            clipped_values = torch.min(torch.max(value, old_values - self.value_clip), old_values + self.value_clip)
-            value_error = 0.5 * (clipped_values - return_) ** 2
+            clipped_values = torch.min(torch.max(value, batch.old_values - self.value_clip), batch.old_values + self.value_clip)
+            value_error = 0.5 * (clipped_values - batch.return_) ** 2
         elif self.value_clipping_mode == "delta_max":
             # Clipping the value per time step with its original (old) value in the boundaries of value_clip
-            clipped_values = torch.min(torch.max(value, old_values - self.value_clip), old_values + self.value_clip)
-            clipped_value_error = 0.5 * (clipped_values - return_) ** 2
-            standard_value_error = 0.5 * (value - return_) ** 2
+            clipped_values = torch.min(torch.max(value, batch.old_values - self.value_clip), batch.old_values + self.value_clip)
+            clipped_value_error = 0.5 * (clipped_values - batch.return_) ** 2
+            standard_value_error = 0.5 * (value - batch.return_) ** 2
             value_error = torch.max(clipped_value_error, standard_value_error)
         else:
-            # No clipping
-            value_error = 0.5 * (value - return_) ** 2
+            raise ValueError(f"Invalid value clipping mode '{self.value_clipping_mode}'")
         
-        value_loss = self.value_loss_coeff * valid_mean(value_error, valid)
+        value_loss = self.value_loss_coeff * valid_mean(value_error, batch.valid)
 
-        entropy = dist.mean_entropy(dist_info, valid)
+        entropy = dist.mean_entropy(dist_info, batch.valid)
         entropy_loss = - self.entropy_loss_coeff * entropy
 
         loss = pi_loss + value_loss + entropy_loss
@@ -215,7 +169,7 @@ class PPO(Algorithm):
         with torch.no_grad():
             approx_kl_div = torch.mean(ratio - 1 - torch.log(ratio))
 
-        perplexity = dist.mean_perplexity(dist_info, valid)
+        perplexity = dist.mean_perplexity(dist_info, batch.valid)
 
         self.algo_log_info["loss"].append(loss.item())
         self.algo_log_info["policy_gradient_loss"].append(pi_loss.item())
@@ -228,28 +182,10 @@ class PPO(Algorithm):
         self.algo_log_info["entropy"].append(entropy.item())
         self.algo_log_info["perplexity"].append(perplexity.item())
         self.algo_log_info["value_loss"].append(value_loss.item())
-        explained_var = explained_variance(value, return_)
+        explained_var = explained_variance(value, batch.return_)
         self.algo_log_info["explained_variance"].append(explained_var.item())
 
         return loss
-
-
-def minibatch_indices(data_length: int, minibatch_size: int, rng: np.random.Generator = None):
-    """Yields minibatches of indexes, to use as a for-loop iterator, with
-    option to shuffle.
-    """
-    if rng is not None:
-        # shuffle 
-        indexes = np.arange(data_length)
-        rng.shuffle(indexes)
-    # split the data into equally-sized pieces with size `minibatch_size`
-    for start in range(0, data_length - minibatch_size + 1, minibatch_size):
-        # create slice for the nth minibatch
-        batch = slice(start, start + minibatch_size)
-        if rng is not None:
-            # if shuffling, 
-            batch = indexes[batch]
-        yield batch
 
 
 def add_default_ppo_config(config: Dict) -> Dict:
@@ -258,11 +194,35 @@ def add_default_ppo_config(config: Dict) -> Dict:
         value_loss_coeff = 1.,
         entropy_loss_coeff = 0.01,
         clip_grad_norm = 1.,
-        minibatches = 4,
         epochs = 4,
         ratio_clip = 0.1,
         value_clipping_mode = "none",
     )
-
     config["algo"] = defaults | config.get("algo", {})
+
+    config["minibatches"] = config.get("minibatches", 4)
+
     return config
+
+
+def build_dataloader_buffer(
+    sample_buffer: Samples,
+    recurrent: bool = False,
+) -> SamplesForLoss:
+    from parllel.buffers import buffer_asarray
+    from parllel.torch.utils import torchify_buffer
+
+    dataloader_buffer = SamplesForLoss(
+        observation=sample_buffer.env.observation,
+        agent_info=sample_buffer.agent.agent_info,
+        action=sample_buffer.agent.action,
+        return_=sample_buffer.env.return_,
+        advantage=sample_buffer.env.advantage,
+        valid=sample_buffer.env.valid if recurrent else None,
+        old_dist_info=sample_buffer.agent.agent_info.dist_info,
+        old_values=sample_buffer.agent.agent_info.value,
+        init_rnn_state=sample_buffer.agent.initial_rnn_state if recurrent else None,
+    )
+    dataloader_buffer = buffer_asarray(dataloader_buffer)
+    dataloader_buffer = torchify_buffer(dataloader_buffer)
+    return dataloader_buffer
