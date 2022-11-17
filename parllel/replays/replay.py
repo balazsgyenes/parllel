@@ -27,7 +27,7 @@ class ReplayBuffer(Generic[BufferType]):
         self.buffer = buffer
         self.batch_spec = sampler_batch_spec
         self.leading_dim = leading_dim
-        self.n_samples = n_samples
+        self._n_samples = n_samples
         self.newest_n_samples_invalid = newest_n_samples_invalid
         self.oldest_n_samples_invalid = oldest_n_samples_invalid
 
@@ -42,6 +42,10 @@ class ReplayBuffer(Generic[BufferType]):
         # TODO: replace with seeding module
         self._rng = random.default_rng(seed)
 
+    @property
+    def n_samples(self) -> int:
+        return self._n_samples
+
     def __len__(self) -> int:
         return self.size
 
@@ -55,12 +59,12 @@ class ReplayBuffer(Generic[BufferType]):
                 - self.oldest_n_samples_invalid
                 - self.newest_n_samples_invalid
             )
-            T_idxs = self._rng.integers(0, L, size=(self.n_samples,))
+            T_idxs = self._rng.integers(0, L, size=(self._n_samples,))
             T_idxs = (T_idxs + offset) % self.leading_dim
         else:
-            T_idxs = self._rng.integers(0, self._cursor, size=(self.n_samples,))
+            T_idxs = self._rng.integers(0, self._cursor, size=(self._n_samples,))
 
-        B_idxs = self._rng.integers(0, self.batch_spec.B, size=(self.n_samples,))
+        B_idxs = self._rng.integers(0, self.batch_spec.B, size=(self._n_samples,))
 
         return self.buffer[T_idxs, B_idxs]
 

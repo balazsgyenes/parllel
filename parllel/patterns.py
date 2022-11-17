@@ -55,7 +55,7 @@ def build_cages_and_env_buffers(
     batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward")
     batch_done = buffer_from_dict_example(done, tuple(batch_spec), RotatingArrayCls, name="done", padding=1)
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
-    batch_buffer_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
+    batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
     """In discrete problems, integer actions are used as array indices during
     optimization. Pytorch requires indices to be 64-bit integers, so we do not
@@ -74,7 +74,7 @@ def build_cages_and_env_buffers(
 
     logger.debug("Environments instantiated.")
 
-    return cages, batch_action, batch_buffer_env
+    return cages, batch_action, batch_env
 
 
 def add_initial_rnn_state(batch_buffer: Samples, agent: Agent) -> Samples:

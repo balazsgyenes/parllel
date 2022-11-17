@@ -5,12 +5,16 @@ import torch
 
 from parllel.algorithm import Algorithm
 from parllel.arrays import Array
-from parllel.buffers import Samples
+from parllel.buffers import NamedArrayTupleClass, Samples
 import parllel.logger as logger
 from parllel.replays.replay import ReplayBuffer
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.types.batch_spec import BatchSpec
-from parllel.torch.utils import buffer_to_device, torchify_buffer, valid_mean
+from parllel.torch.utils import buffer_to_device, valid_mean
+
+
+SamplesForLoss = NamedArrayTupleClass("SamplesForLoss",
+    ["observation", "action", "reward", "done", "next_observation"])
 
 
 class SAC(Algorithm):
@@ -21,7 +25,6 @@ class SAC(Algorithm):
         agent: SacAgent,
         replay_buffer: ReplayBuffer,
         optimizers: Dict[str, torch.optim.Optimizer],
-        batch_size: int,
         discount: float,
         learning_starts: int,
         replay_ratio: int,  # data_consumption / data_generation
@@ -35,7 +38,6 @@ class SAC(Algorithm):
         self.agent = agent
         self.replay_buffer = replay_buffer
         self.optimizers = optimizers
-        self.batch_size = batch_size
         self.discount = discount
         self.learning_starts = learning_starts
         self.replay_ratio = replay_ratio
@@ -43,10 +45,11 @@ class SAC(Algorithm):
         self.target_update_interval = target_update_interval
         self.clip_grad_norm = clip_grad_norm
 
+        batch_size = self.replay_buffer.n_samples
         self.updates_per_optimize = int(self.replay_ratio * self.batch_spec.size /
-            self.batch_size)
+            batch_size)
         logger.debug(f"From sampler batch size {self.batch_spec.size}, training "
-            f"batch size {self.batch_size}, and replay ratio "
+            f"batch size {batch_size}, and replay ratio "
             f"{self.replay_ratio}, computed {self.updates_per_optimize} "
             f"updates per iteration.")
         self.update_counter = 0
@@ -65,8 +68,8 @@ class SAC(Algorithm):
         by gradient updates (with the number of updates determined by replay
         ratio, sampler batch size, and training batch size).
         """
-        self.replay_buffer.append_samples(samples)
-        
+        self.replay_buffer.rotate()
+
         if elapsed_steps < self.learning_starts:
             return {}
         
@@ -75,7 +78,12 @@ class SAC(Algorithm):
         
         for _ in range(self.updates_per_optimize):
 
-            self.train_once(elapsed_steps)            
+            # get a random batch of samples from the replay buffer and move them
+            # to the GPU
+            samples = self.replay_buffer.sample_batch()
+            samples = buffer_to_device(samples, self.agent.device)
+
+            self.train_once(samples)            
 
             self.update_counter += 1
             if self.update_counter % self.target_update_interval == 0:
@@ -85,7 +93,7 @@ class SAC(Algorithm):
 
         return self.algo_log_info
 
-    def train_once(self, elapsed_steps: int) -> None:
+    def train_once(self, samples: SamplesForLoss) -> None:
         """
         Computes losses for twin Q-values against the min of twin target Q-values
         and an entropy term.  Computes reparameterized policy loss, and loss for
@@ -93,12 +101,6 @@ class SAC(Algorithm):
         
         Input samples have leading batch dimension [B,..] (but not time).
         """
-        # get a random batch of samples from the replay buffer and move them
-        # to the GPU
-        samples = self.replay_buffer.sample_batch(self.batch_size)
-        samples = torchify_buffer(samples)
-        samples = buffer_to_device(samples, self.agent.device)
-
         # compute target Q according to formula
         # r + gamma * (1 - d) * (min Q_targ(s', a') - alpha * log pi(s', a'))
         # where a' ~ pi(.|s')
@@ -149,17 +151,19 @@ class SAC(Algorithm):
         self.algo_log_info["actor_loss"].append(pi_loss.item())
         self.algo_log_info["q1_grad_norm"].append(pi_grad_norm.item())
 
+
 def add_default_sac_config(config: Dict) -> Dict:
     defaults = dict(
-        batch_size= 256,
-        discount = 0.99,
-        learning_starts = 0,
-        replay_ratio = 256,
-        target_update_tau = 0.005,
-        target_update_interval = 1,
-        ent_coeff = 1e-5,
-        clip_grad_norm = 1e9,
+        learning_starts=0,
+        replay_ratio=256,
+        target_update_tau=0.005,
+        target_update_interval=1,
+        ent_coeff=1e-5,
+        clip_grad_norm=1e9,
     )
-
     config["algo"] = defaults | config.get("algo", {})
+
+    config["batch_size"] = config.get("batch_size", 256)
+    config["discount"] = config.get("discount", 0.99)
+
     return config

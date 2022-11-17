@@ -31,6 +31,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Can we avoid defining a rigid interface to the Handler/Agent/Model? How can a user add another argument to the agent/model, and what is the use case for this? (e.g. agent_ids for multi-agent case)
 - What object(s) are responsible for array allocation for the batch buffer. This batch buffer is basically global state, so it falls under the responsibility of the build function, but Transform types currently allocate their own additional Arrays.
 - With complete control of the pipe and pickler, we should be able to make buffer registration a lot more seamless. Can we implement pytorch's approach, where arrays are automatically copied into shared memory (and registered) the first time they are moved between processes?
+- Should objects strictly only receive constructor arguments that they need during execution? This sounds like good abstraction, but in practice it means we get a pattern function for every type to handle the "front-end" value processing. e.g. SAC receives replay ratio, sampler batch spec and replay ratio batch size and calculates its own updates_per_optimize. In theory, SAC should just receive updates_per_optimize as an argument, but then this value would have to be calculated by a pattern function.
 
 ## TODOs and Ideas
 
@@ -124,3 +125,4 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Lazy indexing of numpy arrays within `Array`. This operation is only on the critical path when there are many envs and the main process must send each of them a slice. For the `SynchronizedProcessCage` this is no longer a problem, because all environments begin stepping as soon as `step_async` is called on the first env, while the parent process continues slicing and verifying that the slices are as expected.
 - Performance loss of maintaining separate array for `previous_action` under `agent_info`.
 - Performance gain of only saving `initial_rnn_state` to batch buffer
+- Performance of indexing cuda tensor with numpy array vs. cpu tensor vs. cuda tensor
