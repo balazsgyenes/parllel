@@ -27,7 +27,7 @@ def shape():
 def dtype(request):
     return request.param
 
-@pytest.fixture(params=[1, 2], ids=["padding=1", "padding=2"], scope="module")
+@pytest.fixture(params=[1, 0], ids=["padding=1", "padding=0"], scope="module")
 def padding(request):
     return request.param
 
