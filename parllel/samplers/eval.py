@@ -27,12 +27,13 @@ class EvalSampler(Sampler):
                     " environments immediately. Set wait_before_reset=False")
         
         super().__init__(
-            batch_spec=BatchSpec(max_traj_length, len(envs)),
+            batch_spec=BatchSpec(1, len(envs)),
             envs=envs,
             agent=agent,
             sample_buffer=step_buffer,
         )
 
+        self.max_traj_length = max_traj_length
         self.min_trajectories = min_trajectories
         self.obs_transform = obs_transform
 
@@ -68,7 +69,7 @@ class EvalSampler(Sampler):
         n_completed_trajs = 0
 
         # main sampling loop
-        for _ in range(self.batch_spec.T):
+        for _ in range(self.max_traj_length):
 
             # apply any transforms to the observation before the agent steps
             if self.obs_transform is not None:

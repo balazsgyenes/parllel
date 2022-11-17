@@ -175,7 +175,7 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        parallel = True,
+        parallel = False,
         batch_T = 128,
         batch_B = 16,
         discount = 0.99,

@@ -20,7 +20,7 @@ class ShowPolicy(Runner):
 
         eval_trajs = self.sampler.collect_batch(elapsed_steps=0)
 
-        self.log_completed_trajectories(eval_trajs)
+        self.record_completed_trajectories(eval_trajs)
         self.log_progress(elapsed_steps=0, iteration=0)
 
         logger.info("Finished.")

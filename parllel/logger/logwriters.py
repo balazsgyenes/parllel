@@ -188,7 +188,6 @@ class TxtFileWriter(KeyValueWriter, MessageWriter, LogWriter, name="txt"):
     def write(self, key_values: Dict[str, Any], step: int = 0) -> None:
         # Create strings for printing
         key2str = {}
-        tag = None
         for key, value in key_values.items():
 
             if isinstance(value, (Video, Figure, Image, HParam)):
@@ -200,12 +199,13 @@ class TxtFileWriter(KeyValueWriter, MessageWriter, LogWriter, name="txt"):
             else:
                 value_str = str(value)
 
+            tag = None
             if key.find("/") > 0:  # Find tag and add it to the dict
-                tag = key[: key.find("/") + 1]
+                tag, key = key.split("/", maxsplit=1)
+                tag = tag + "/"
                 key2str[(tag, self._truncate(tag))] = ""
-            # Remove tag from key
-            if tag is not None and tag in key:
-                key = str("   " + key[len(tag) :])
+                # Remove tag from key
+                key = "   " + key
 
             truncated_key = self._truncate(key)
             if (tag, truncated_key) in key2str:
@@ -214,14 +214,14 @@ class TxtFileWriter(KeyValueWriter, MessageWriter, LogWriter, name="txt"):
                 )
             key2str[(tag, truncated_key)] = self._truncate(value_str)
 
-        # Find max widths
         if len(key2str) == 0:
             warnings.warn("Tried to write empty key-value dict")
             return
-        else:
-            tagless_keys = map(lambda x: x[1], key2str.keys())
-            key_width = max(map(len, tagless_keys))
-            val_width = max(map(len, key2str.values()))
+
+        # Find max widths
+        tagless_keys = map(lambda x: x[1], key2str.keys())
+        key_width = max(map(len, tagless_keys))
+        val_width = max(map(len, key2str.values()))
 
         # Write out the data
         dashes = "-" * (key_width + val_width + 7)

@@ -45,7 +45,7 @@ class OffPolicyRunner(Runner):
             batch_samples, _ = self.sampler.collect_batch(elapsed_steps)
 
             algo_info = self.algorithm.optimize_agent(elapsed_steps, batch_samples)
-            self.log_algo_info(algo_info)
+            self.record_algo_info(algo_info)
 
             if (itr + 1) % self.log_interval_iters == 0:
                 self.evaluate_agent(elapsed_steps=elapsed_steps, itr=itr)
@@ -59,5 +59,5 @@ class OffPolicyRunner(Runner):
     def evaluate_agent(self, elapsed_steps: int, itr: int) -> None:
         logger.debug("Evaluating agent.")
         eval_trajs = self.eval_sampler.collect_batch(elapsed_steps)
-        self.log_completed_trajectories(eval_trajs)
+        self.record_completed_trajectories(eval_trajs)
         self.log_progress(elapsed_steps, itr)
