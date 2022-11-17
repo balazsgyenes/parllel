@@ -16,12 +16,14 @@ from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value, add_reward_clipping,
     add_reward_normalization, add_valid, build_cages_and_env_buffers,
     add_initial_rnn_state)
+from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
 from parllel.samplers import RecurrentSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.agents.ensemble import AgentProfile
 from parllel.torch.agents.independent import IndependentPgAgents
-from parllel.torch.algos.ppo import PPO, add_default_ppo_config
+from parllel.torch.algos.ppo import (PPO, add_default_ppo_config,
+    build_dataloader_buffer)
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
@@ -164,6 +166,16 @@ def build(config: Dict) -> OnPolicyRunner:
         batch_transform=Compose(batch_transforms),
     )
 
+    dataloader_buffer = build_dataloader_buffer(batch_buffer, recurrent=True)
+
+    dataloader = BatchedDataLoader(
+        buffer=dataloader_buffer,
+        sampler_batch_spec=batch_spec,
+        n_batches=config["minibatches"],
+        batch_only_fields=["init_rnn_state"],
+        recurrent=True,
+    )
+
     optimizer = torch.optim.Adam(
         agent.model.parameters(),
         lr=config["learning_rate"],
@@ -174,6 +186,7 @@ def build(config: Dict) -> OnPolicyRunner:
     algorithm = PPO(
         batch_spec=batch_spec,
         agent=agent,
+        dataloader=dataloader,
         optimizer=optimizer,
         **config["algo"],
     )
