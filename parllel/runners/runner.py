@@ -35,7 +35,7 @@ class Runner(ABC):
         # TODO: technically, the agent should be added to this base class
         logger.save_model(agent=self.agent)
 
-    def log_completed_trajectories(self, trajectories: List[TrajInfo]) -> None:
+    def record_completed_trajectories(self, trajectories: List[TrajInfo]) -> None:
 
         # ((key1, value1), (key2, value2), ...), ((key1, value1), (key2, value2), ...), ...
         trajectories = (asdict(traj).items() for traj in trajectories)
@@ -50,7 +50,7 @@ class Runner(ABC):
             values = np.array(values)
             logger.record_mean("trajectory/" + key, values)
 
-    def log_algo_info(self, info: Dict[str, Any]) -> None:
+    def record_algo_info(self, info: Dict[str, Any]) -> None:
         for key, value in info.items():
             if isinstance(value, list):
                 logger.record_mean("algo/" + key, value)

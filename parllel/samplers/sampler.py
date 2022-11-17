@@ -27,12 +27,14 @@ class Sampler(ABC):
         self.agent = agent
         
         try:
-            # try writing beyond the apparent bounds of the observation buffer
-            observation = sample_buffer.env.observation
-            observation[self.batch_spec.T] = 0
+            # try writing beyond the expected bounds of the observation buffer
+            sample_buffer.env.observation[self.batch_spec.T] = 0
         except IndexError:
-            raise TypeError("sample_buffer.env.observation must be a "
-                "RotatingArray")
+            raise ValueError(
+                "Size mismatch: sample_buffer.env.observation must be a "
+                "RotatingArray with leading dimension of at least "
+                f"{self.batch_spec.T}."
+            )
         self.sample_buffer = sample_buffer
 
         if max_steps_decorrelate is None:
