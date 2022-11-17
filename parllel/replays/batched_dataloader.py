@@ -11,12 +11,12 @@ BufferType = TypeVar("BufferType")
 
 
 class BatchedDataLoader(Generic[BufferType]):
-    """Iterates through a batch of samples in n_batches chunks.
-
-    There are two benefits to defining a new namedarraytuple for data loading.
-    First, the original sample buffer cannot (in general) by sliced, because
-    the `agent.initial_rnn_state` field has no time dimension. Second, sending
-    the entire sample buffer to the GPU is relatively wasteful.
+    """Iterates through a buffer of samples in a fixed number of batches.
+    Fields that cannot be indexed according to time (e.g.
+    `agent.initial_rnn_state`) are only indexed according to batch dimension.
+    This data structure provides a convenient way to structure samples how the
+    algo expects them, abstracting the shuffling and sampling operations. Using
+    the `apply_func` method, the all samples can be moved to the GPU at once.
     """
     def __init__(self,
         buffer: NamedArrayTuple,

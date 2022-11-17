@@ -17,7 +17,7 @@ from parllel.torch.utils import (buffer_to_device, valid_mean,
 from parllel.types import BatchSpec
 
 
-SamplesForOptimize = NamedArrayTupleClass("SamplesForOptimize",
+SamplesForLoss = NamedArrayTupleClass("SamplesForLoss",
     ["observation", "agent_info", "action", "return_", "advantage", "valid",
     "old_dist_info", "old_values", "init_rnn_state"],
 )
@@ -39,7 +39,7 @@ class PPO(Algorithm):
         self,
         batch_spec: BatchSpec,
         agent: TorchAgent,
-        dataloader: BatchedDataLoader[SamplesForOptimize[torch.Tensor]],
+        dataloader: BatchedDataLoader[SamplesForLoss[torch.Tensor]],
         optimizer: torch.optim.Optimizer,
         learning_rate_scheduler: torch.optim.lr_scheduler._LRScheduler,
         value_loss_coeff: float,
@@ -107,7 +107,7 @@ class PPO(Algorithm):
 
         return self.algo_log_info
 
-    def loss(self, batch: SamplesForOptimize) -> torch.Tensor:
+    def loss(self, batch: SamplesForLoss) -> torch.Tensor:
         """
         Compute the training loss: policy_loss + value_loss + entropy_loss
         Policy loss: min(likelhood-ratio * advantage, clip(likelihood_ratio, 1-eps, 1+eps) * advantage)
@@ -208,11 +208,11 @@ def add_default_ppo_config(config: Dict) -> Dict:
 def build_dataloader_buffer(
     sample_buffer: Samples,
     recurrent: bool = False,
-) -> SamplesForOptimize:
+) -> SamplesForLoss:
     from parllel.buffers import buffer_asarray
     from parllel.torch.utils import torchify_buffer
 
-    dataloader_buffer = SamplesForOptimize(
+    dataloader_buffer = SamplesForLoss(
         observation=sample_buffer.env.observation,
         agent_info=sample_buffer.agent.agent_info,
         action=sample_buffer.agent.action,
