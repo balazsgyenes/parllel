@@ -10,7 +10,7 @@ import parllel.logger as logger
 from parllel.replays.replay import ReplayBuffer
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.types.batch_spec import BatchSpec
-from parllel.torch.utils import buffer_to_device, valid_mean
+from parllel.torch.utils import buffer_to_device, valid_mean, torchify_buffer
 
 
 SamplesForLoss = NamedArrayTupleClass("SamplesForLoss",
@@ -81,6 +81,8 @@ class SAC(Algorithm):
             # get a random batch of samples from the replay buffer and move them
             # to the GPU
             samples = self.replay_buffer.sample_batch()
+            # TODO: can we ensure compatibility for tensor buffers and Array buffers?
+            samples = torchify_buffer(samples)
             samples = buffer_to_device(samples, self.agent.device)
 
             self.train_once(samples)            

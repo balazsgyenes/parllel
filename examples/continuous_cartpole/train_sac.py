@@ -190,14 +190,19 @@ def build(config: Dict) -> OffPolicyRunner:
 
     batch_obs = batch_buffer.env.observation
     replay_buffer = SamplesForLoss(
-        observation=batch_buffer.env.observation,
-        action=batch_buffer.agent.action,
-        reward=batch_buffer.env.reward,
-        done=batch_buffer.env.done,
+        observation=batch_obs[:],
+        action=batch_buffer.agent.action[:],
+        reward=batch_buffer.env.reward[:],
+        done=batch_buffer.env.done[:],
         # TODO: replace with batch_obs.next
         next_observation=batch_obs[1 : config["replay_length"]],
     )
-    replay_buffer = torchify_buffer(replay_buffer)
+    """
+    TODO: in the case without FrameStacks, this can still be a buffer of torch
+    tensors. However, to do this we need a view of the LargeArray that shows
+    all of the array.
+    """
+    # replay_buffer = torchify_buffer(replay_buffer)
 
     replay_buffer = ReplayBuffer(
         buffer=replay_buffer,

@@ -131,7 +131,7 @@ class RotatingArray(Array):
         value[last]         ->  value[first - 1]    = value[-1]
         value[last - 1]     ->  value[first - 2]    = value[-2]
         """
-        if not self._index_history:
+        if self._padding and not self._index_history:
             # only rotate if called on the base array.
             # rotating subarrays is not possible anyway
             final_values = slice(-(self._padding * 2), None)

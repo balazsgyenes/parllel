@@ -73,6 +73,9 @@ class Array(Buffer):
 
         return self._apparent_shape
 
+    def reset(self) -> None:
+        pass
+
     def __getitem__(self, location: Indices) -> Array:
         # new Array object initialized through a (shallow) copy. Attributes
         # that differ between self and result are modified next. This allows

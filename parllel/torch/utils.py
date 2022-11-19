@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Union, Tuple
 import numpy as np
 import torch
 
+from parllel.arrays import Array
 from parllel.buffers import Buffer, NamedTuple
 
 
@@ -111,7 +112,8 @@ def restore_leading_dims(
     return tensors if is_seq else tensors[0]
 
 
-def torchify_buffer(buffer: Buffer[np.ndarray]) -> Buffer[torch.Tensor]:
+def torchify_buffer(buffer: Buffer[Union[np.ndarray, Array]],
+) -> Buffer[torch.Tensor]:
     """Convert contents of ``buffer`` from numpy arrays to torch tensors.
     ``buffer`` can be an arbitrary structure of tuples, namedtuples,
     namedarraytuples, NamedTuples, and NamedArrayTuples, and a new, matching

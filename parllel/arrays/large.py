@@ -25,29 +25,27 @@ class LargeArray(RotatingArray):
                 "The leading dimension of the array must divide evenly into "
                 "the apparent leading dimension."
             )
+        self.full_size = shape[0] # full leading dimension without padding
         self.apparent_size = apparent_size
-        # self.large = (shape[0] > apparent_size)
         self.offset = 0
+        self.shift = self.offset + padding
 
         super().__init__(shape, dtype, padding)
-
+        
     def _resolve_indexing_history(self) -> None:
         array = self._base_array
-        shift = self.offset + self._padding
 
         if self._index_history:
-            # shift only the first indices, leave the rest (if thereare more)
-            # TODO: modify this method so it also takes the apparent shape
-            # right now, it won't account for the hidden region
+            # shift only the first indices, leave the rest (if there are more)
             index_history = [shift_indices(
                 self._index_history[0],
-                shift,
+                self.shift,
                 self.apparent_size,
             )] + self._index_history[1:]
         else:
             # even if the array was never indexed, only this slice of the array
             # should be returned by __array__
-            index_history = [slice(shift, shift + self.apparent_size)]
+            index_history = [slice(self.shift, self.shift + self.apparent_size)]
 
         # if index history has only 1 element, this has no effect
         array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
@@ -59,6 +57,11 @@ class LargeArray(RotatingArray):
         self._current_array = array
         self._apparent_shape = array.shape
     
+    def reset(self) -> None:
+        # if apparent size is not smaller, sets offset to 0
+        self.offset = self.full_size - self.apparent_size
+        self.shift = self.offset + self._padding
+
     def __setitem__(self, location: Indices, value: Any) -> None:
         if self._current_array is None:
             self._resolve_indexing_history()
@@ -72,19 +75,19 @@ class LargeArray(RotatingArray):
                 location = self._index_history[-1]
                 # indices must be shifted if they were the first indices
                 if len(self._index_history) == 1:
-                    location = shift_indices(location, self.offset + self._padding, self.apparent_size)
+                    location = shift_indices(location, self.shift, self.apparent_size)
                 destination = self._previous_array
             else:
                 destination = self._current_array
         else:
-            location = shift_indices(location, self.offset + self._padding, self.apparent_size)
+            location = shift_indices(location, self.shift, self.apparent_size)
             destination = self._base_array
         destination[location] = value
     
     def rotate(self) -> None:
 
-        self.offset = (self.offset + self.apparent_size) % (
-            self._base_shape[0] - 2 * self.padding)
+        self.offset = (self.offset + self.apparent_size) % self.full_size
+        self.shift = self.offset + self._padding
 
         super().rotate()
 
