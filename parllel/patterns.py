@@ -251,8 +251,9 @@ def add_reward_normalization(
 
     # allocate new Array for past discounted returns
     # TODO: add smarter allocation rules here
+    # TODO: this is currently a LargeArray sometimes
     RotatingArrayCls = type(env_samples.done)
-    batch_past_return = RotatingArrayCls(shape=reward.shape, dtype=reward.dtype)
+    batch_past_return = RotatingArrayCls(shape=reward.shape, dtype=reward.dtype, padding=1)
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(
