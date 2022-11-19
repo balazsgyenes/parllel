@@ -162,6 +162,36 @@ def build(config: Dict) -> OffPolicyRunner:
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 
+    # TODO: for now, the replay buffer must be built before the Sampler is
+    # instantiated, otherwise the LargeArrays get reset. Fix this or make this
+    # requirement explicit
+    batch_obs = batch_buffer.env.observation
+    replay_buffer = SamplesForLoss(
+        # TODO: make a function that returns a view of the entire LargeArray
+        observation=batch_obs[:config["replay_length"]],
+        action=batch_buffer.agent.action[:config["replay_length"]],
+        reward=batch_buffer.env.reward[:config["replay_length"]],
+        done=batch_buffer.env.done[:config["replay_length"]],
+        # TODO: replace with batch_obs.next
+        next_observation=batch_obs[1 : config["replay_length"] + 1],
+    )
+    """
+    TODO: in the case without FrameStacks, this can still be a buffer of torch
+    tensors. However, to do this we need a view of the LargeArray that shows
+    all of the array.
+    """
+    # replay_buffer = torchify_buffer(replay_buffer)
+
+    replay_buffer = ReplayBuffer(
+        buffer=replay_buffer,
+        sampler_batch_spec=batch_spec,
+        leading_dim=config["replay_length"],
+        n_samples=config["batch_size"],
+        # TODO: verify that even most recent samples are valid now that buffer
+        # is LargeArrays
+        newest_n_samples_invalid=0,
+    )
+
     # add several helpful transforms
     batch_transforms = []
 
@@ -186,32 +216,6 @@ def build(config: Dict) -> OffPolicyRunner:
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=False,
         batch_transform=Compose(batch_transforms),
-    )
-
-    batch_obs = batch_buffer.env.observation
-    replay_buffer = SamplesForLoss(
-        observation=batch_obs[:],
-        action=batch_buffer.agent.action[:],
-        reward=batch_buffer.env.reward[:],
-        done=batch_buffer.env.done[:],
-        # TODO: replace with batch_obs.next
-        next_observation=batch_obs[1 : config["replay_length"]],
-    )
-    """
-    TODO: in the case without FrameStacks, this can still be a buffer of torch
-    tensors. However, to do this we need a view of the LargeArray that shows
-    all of the array.
-    """
-    # replay_buffer = torchify_buffer(replay_buffer)
-
-    replay_buffer = ReplayBuffer(
-        buffer=replay_buffer,
-        sampler_batch_spec=batch_spec,
-        leading_dim=config["replay_length"],
-        n_samples=config["batch_size"],
-        newest_n_samples_invalid=1, # next_observation not set yet
-        # actually, all samples have a next_observation already, but it is not
-        # copied into the replay buffer because of conversion to ndarray
     )
 
     optimizers = {
