@@ -88,6 +88,8 @@ class LargeArray(RotatingArray):
 
         self.offset = (self.offset + self.apparent_size) % self.full_size
         self.shift = self.offset + self._padding
+        self._current_array = None
+        self._apparent_shape = None
 
         super().rotate()
 

@@ -199,6 +199,7 @@ def build(config: Dict) -> OffPolicyRunner:
         batch_buffer,
         batch_transforms,
         discount=config["discount"],
+        initial_count=1000,
     )
 
     batch_buffer, batch_transforms = add_reward_clipping(
@@ -287,7 +288,7 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        parallel=True,
+        parallel=False,
         batch_T=128,
         batch_B=16,
         discount=0.99,

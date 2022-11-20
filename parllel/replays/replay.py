@@ -54,15 +54,16 @@ class ReplayBuffer(Generic[BufferType]):
             # valid region of buffer wraps around
             # sample integers from 0 to L, and then offset them while wrapping around
             offset = self._cursor + self.oldest_n_samples_invalid
-            L = (
+            valid_length = (
                 self.leading_dim
                 - self.oldest_n_samples_invalid
                 - self.newest_n_samples_invalid
             )
-            T_idxs = self._rng.integers(0, L, size=(self._n_samples,))
+            T_idxs = self._rng.integers(0, valid_length, size=(self._n_samples,))
             T_idxs = (T_idxs + offset) % self.leading_dim
         else:
-            T_idxs = self._rng.integers(0, self._cursor, size=(self._n_samples,))
+            valid_length = self._cursor - self.newest_n_samples_invalid
+            T_idxs = self._rng.integers(0, valid_length, size=(self._n_samples,))
 
         B_idxs = self._rng.integers(0, self.batch_spec.B, size=(self._n_samples,))
 
