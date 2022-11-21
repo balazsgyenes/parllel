@@ -52,7 +52,6 @@ if __name__ == "__main__":
         tags=["discrete", "state-based", "ppo"],
         config=config,
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
-        monitor_gym=True,  # auto-upload any videos recorded by gym's VideoRecorder
         save_code=True,  # save script used to start training, git commit, and patch
     )
 
