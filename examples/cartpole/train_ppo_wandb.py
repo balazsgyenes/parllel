@@ -56,7 +56,8 @@ if __name__ == "__main__":
     )
 
     logger.init(
-        # log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        # this log_dir is used if wandb is disabled
+        log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
         wandb_run=run,
         output_files={
