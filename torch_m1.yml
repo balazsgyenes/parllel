@@ -1,6 +1,6 @@
 name: parllel
+channels:
+- pytorch
 dependencies:
-- pip
-- pip:
-  - python=3.9
-  - torch
+- python=3.9
+- pytorch=1.12
