@@ -59,7 +59,6 @@ class OffPolicyRunner(Runner):
         self.evaluate_agent(elapsed_steps, self.n_iterations)
 
         progress_bar.close()
-        progress_bar = None
         logger.info("Finished training.")
         
     def evaluate_agent(self, elapsed_steps: int, iteration: int) -> None:

@@ -59,5 +59,4 @@ class OnPolicyRunner(Runner):
         self.log_progress(elapsed_steps, self.n_iterations)
 
         progress_bar.close()
-        progress_bar = None
         logger.info("Finished training.")
