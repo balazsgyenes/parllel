@@ -1,5 +1,5 @@
-numpy
-nptyping==1.4.4
-numba
-gym
-tqdm
+numpy~=1.22.0
+nptyping<2.0
+numba~=0.56.3
+gym~=0.21.0
+tqdm~=4.64.0
