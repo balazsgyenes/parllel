@@ -233,11 +233,8 @@ if __name__ == "__main__":
         batch_B = 16,
         discount = 0.99,
         learning_rate = 0.001,
-        gae_lambda = 0.95,
         reward_clip_min = -5,
         reward_clip_max = 5,
-        obs_norm_initial_count = 10000,
-        normalize_advantage = True,
         max_steps_decorrelate = 50,
         env = dict(
             max_episode_steps = 1000,

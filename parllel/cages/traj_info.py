@@ -1,7 +1,7 @@
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import astuple, dataclass, field, fields
 from functools import partial
-from typing import Any, ClassVar, Dict, Union
+from typing import Any, ClassVar, Dict, Iterator, Tuple, Union
 
 import numpy as np
 
@@ -52,3 +52,19 @@ class MultiAgentTrajInfo(TrajInfo):
             self.NonzeroRewards[agent_name] += agent_reward != 0
             self.DiscountedReturn[agent_name] += self._current_discount * agent_reward
         self._current_discount *= self._discount
+
+
+def zip_trajectories(*trajs: Tuple[TrajInfo]) -> Iterator[Tuple[Any, ...]]:
+    """A generator that yields key, value1, value2, value3, ... for all
+    dataclass objects passed as arguments. All objects must be instances of
+    the same dataclass.
+    """
+    if not trajs:
+        return
+
+    # Since they are all the same type, all TrajInfos will have the same fields
+    # in the same order.
+    field_names = (field.name for field in fields(trajs[0]))
+
+    # All tuples guaranteed to have corresponding values in the same order.
+    yield from zip(field_names, *(astuple(traj) for traj in trajs))

@@ -52,12 +52,12 @@ if __name__ == "__main__":
         tags=["discrete", "state-based", "ppo"],
         config=config,
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
-        monitor_gym=True,  # auto-upload any videos recorded by gym's VideoRecorder
         save_code=True,  # save script used to start training, git commit, and patch
     )
 
     logger.init(
-        # log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        # this log_dir is used if wandb is disabled
+        log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
         wandb_run=run,
         output_files={

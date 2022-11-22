@@ -1,11 +1,10 @@
 from abc import ABC
-from dataclasses import asdict
 import time
 from typing import Any, Dict, List
 
 import numpy as np
 
-from parllel.cages import TrajInfo
+from parllel.cages import TrajInfo, zip_trajectories
 import parllel.logger as logger
 
 
@@ -39,15 +38,7 @@ class Runner(ABC):
         logger.save_model(agent=self.agent)
 
     def record_completed_trajectories(self, trajectories: List[TrajInfo]) -> None:
-
-        # ((key1, value1), (key2, value2), ...), ((key1, value1), (key2, value2), ...), ...
-        trajectories = (asdict(traj).items() for traj in trajectories)
-
-        # zip* -> ((key1, value1), (key1, value1), ...), ((key2, value2), (key2, value2), ...), ...
-        for keys_and_values in zip(*trajectories):
-            # (key1, value1), (key1, value1), ... -> (key1, key1, ...), (value1, value1, ...)
-            keys, values = zip(*keys_and_values)
-            key = keys[0]
+        for key, *values in zip_trajectories(*trajectories):
             if key[0] == "_":
                 continue # do not log these "private" variables
             values = np.array(values)
