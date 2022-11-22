@@ -58,11 +58,23 @@ class Logger:
         self.verbosity = verbosity
         self.model_save_path = None
         self.use_wandb = False
+        self._log_dir = None
 
         self.values = defaultdict(float)  # values this iteration
         self.counts = defaultdict(int)
         self.excluded_writers = defaultdict(str)
         self.initialized = False
+
+    @property
+    def log_dir(self) -> Path:
+        return self._log_dir
+
+    @log_dir.setter
+    def log_dir(self, log_dir: Path) -> None:
+        # after setting member variable, also set value in logger API
+        self._log_dir = log_dir
+        import parllel.logger as logger
+        logger.log_dir = log_dir
 
     def init(self,
         log_dir: Optional[PathLike] = None,

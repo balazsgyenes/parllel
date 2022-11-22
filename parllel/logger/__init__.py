@@ -1,3 +1,6 @@
+from pathlib import Path
+from typing import Optional
+
 from .logger import Logger, Verbosity
 from .serializers import JSONConfigSerializer
 
@@ -23,6 +26,7 @@ warn = _logger.warn
 error = _logger.error
 set_verbosity = _logger.set_verbosity
 close = _logger.close
+log_dir: Optional[Path] = None # updated by logger in log_dir.setter
 
 
 __all__ = [
@@ -39,5 +43,6 @@ __all__ = [
     "error",
     "set_verbosity",
     "close",
+    "log_dir",
     JSONConfigSerializer,
 ]
