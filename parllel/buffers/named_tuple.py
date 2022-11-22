@@ -247,7 +247,7 @@ def NamedArrayTupleClass_like(example: Union[NamedArrayTupleClass,
             f"NamedArrayTuple[Class]. Instead, got {type(example)}.")
 
 
-def dict_to_namedtuple(value: Dict, name: str):
+def dict_to_namedtuple(value: Dict, name: str) -> NamedTuple:
     if isinstance(value, dict):
         values = tuple(dict_to_namedtuple(v, name = "_".join([name, k]))
                        for k, v in value.items())
@@ -256,7 +256,7 @@ def dict_to_namedtuple(value: Dict, name: str):
     return value
 
 
-def namedtuple_to_dict(value):
+def namedtuple_to_dict(value: Union[NamedTuple, Any]) -> Dict[str, Any]:
     if isinstance(value, NamedTuple):
         return {k: namedtuple_to_dict(v) for k, v in zip(value._fields, value)}
     return value

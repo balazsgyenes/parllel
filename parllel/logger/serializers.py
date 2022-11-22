@@ -1,3 +1,4 @@
+from enum import Enum
 import importlib
 import json
 from os import PathLike
@@ -24,6 +25,8 @@ class JSONConfigSerializer:
             """
             if isinstance(obj, Path):
                 return str(obj)
+            if isinstance(obj, Enum):
+                return str(obj) # TODO: convert into form that can be recovered
             return format_specifier.format(obj.__name__, obj.__module__)
 
         with open(path, "w") as f:
