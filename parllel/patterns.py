@@ -8,6 +8,7 @@ from parllel.buffers import (AgentSamples, EnvSamples, Samples,
     NamedArrayTupleClass, NamedTuple, buffer_map)
 from parllel.cages import Cage, ProcessCage
 from parllel.handlers import Agent
+import parllel.logger as logger
 from parllel.samplers import EvalSampler
 from parllel.transforms import (Transform, Compose, ClipRewards,
     EstimateAdvantage, NormalizeAdvantage, NormalizeObservations,
@@ -66,8 +67,12 @@ def build_cages_and_env_buffers(
     if CageCls is ProcessCage:
         cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
     
+    logger.debug(f"Instantiating {batch_spec.B} environments...")
+
     # create cages to manage environments
     cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
+
+    logger.debug("Environments instantiated.")
 
     return cages, batch_action, batch_buffer_env
 
