@@ -19,12 +19,21 @@ class RecurrentSampler(Sampler):
         agent: Handler,
         sample_buffer: Samples,
         max_steps_decorrelate: Optional[int] = None,
+        get_initial_rnn_state: bool = True,
         get_bootstrap_value: bool = False,
         obs_transform: Optional[Transform] = None,
         batch_transform: Optional[Transform] = None,
     ) -> None:
         """Generates samples for training recurrent agents.
         """
+        super().__init__(
+            batch_spec=batch_spec,
+            envs=envs,
+            agent=agent,
+            sample_buffer=sample_buffer,
+            max_steps_decorrelate=max_steps_decorrelate,
+        )
+
         for cage in envs:
             if cage.reset_automatically:
                 raise ValueError(
@@ -33,11 +42,6 @@ class RecurrentSampler(Sampler):
                     "`reset_automatically=False`."
                 )
 
-        # verify that initial_rnn_state field exists
-        if not hasattr(sample_buffer.agent, "initial_rnn_state"):
-            raise ValueError("RecurrentSampler expects a buffer field at "
-                "sample_buffer.agent.initial_rnn_state. Please allocate this.")
-        
         # verify that valid field exists
         if not hasattr(sample_buffer.env, "valid"):
             raise ValueError("RecurrentSampler expects a buffer field at "
@@ -51,13 +55,12 @@ class RecurrentSampler(Sampler):
             raise TypeError("sample_buffer.env.valid must be a "
                 "RotatingArray")
 
-        super().__init__(
-            batch_spec=batch_spec,
-            envs=envs,
-            agent=agent,
-            sample_buffer=sample_buffer,
-            max_steps_decorrelate=max_steps_decorrelate,
-        )
+        # verify that initial_rnn_state field exists
+        if get_initial_rnn_state and not hasattr(sample_buffer.agent,
+            "initial_rnn_state"):
+            raise ValueError("RecurrentSampler expects a buffer field at "
+                "sample_buffer.agent.initial_rnn_state. Please allocate this.")
+        self.get_initial_rnn_state = get_initial_rnn_state
 
         if get_bootstrap_value and not hasattr(self.sample_buffer.agent,
                 "bootstrap_value"):
@@ -93,13 +96,16 @@ class RecurrentSampler(Sampler):
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
         
-        self.agent.initial_rnn_state(
-            out_rnn_state=sample_buffer.agent.initial_rnn_state
-        )
+        if self.get_initial_rnn_state:
+            self.agent.initial_rnn_state(
+                out_rnn_state=sample_buffer.agent.initial_rnn_state
+            )
         
         # first time step is always valid, rest are invalid by default
         valid[0] = True
         valid[1:] = False
+        # other fields do not need to be cleared to 0, because they are either
+        # overwritten by fresh data or remain invalid
 
         # main sampling loop
         envs_to_step = list(enumerate(self.envs))
