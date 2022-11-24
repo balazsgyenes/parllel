@@ -1,4 +1,3 @@
-name: parllel
 channels:
 - pytorch
 dependencies:
