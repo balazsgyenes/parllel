@@ -60,3 +60,5 @@ class OnPolicyRunner(Runner):
 
         progress_bar.close()
         logger.info("Finished training.")
+        if logger.log_dir is not None:
+            logger.info(f"Log files saved to {logger.log_dir}")
