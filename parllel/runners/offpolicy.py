@@ -60,7 +60,9 @@ class OffPolicyRunner(Runner):
 
         progress_bar.close()
         logger.info("Finished training.")
-        
+        if logger.log_dir is not None:
+            logger.info(f"Log files saved to {logger.log_dir}")
+
     def evaluate_agent(self, elapsed_steps: int, iteration: int) -> None:
         logger.debug("Evaluating agent.")
         eval_trajs = self.eval_sampler.collect_batch(elapsed_steps)
