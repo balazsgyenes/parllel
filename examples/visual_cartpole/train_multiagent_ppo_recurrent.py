@@ -184,7 +184,6 @@ def build(config: Dict) -> OnPolicyRunner:
     
     # create algorithm
     algorithm = PPO(
-        batch_spec=batch_spec,
         agent=agent,
         dataloader=dataloader,
         optimizer=optimizer,
