@@ -2,9 +2,10 @@ from collections import defaultdict
 from functools import partial
 from typing import Dict, List, Optional, Union
 
-import torch
-import torch.optim
 import numpy as np
+import torch
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
 
 from parllel.algorithm import Algorithm
 from parllel.arrays import Array
@@ -15,7 +16,6 @@ from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
 from parllel.torch.utils import (buffer_to_device, valid_mean,
     explained_variance)
-from parllel.types import BatchSpec
 
 
 SamplesForLoss = NamedArrayTupleClass("SamplesForLoss",
@@ -38,14 +38,13 @@ class PPO(Algorithm):
 
     def __init__(
         self,
-        batch_spec: BatchSpec,
         agent: TorchAgent,
         dataloader: BatchedDataLoader[SamplesForLoss[torch.Tensor]],
-        optimizer: torch.optim.Optimizer,
-        learning_rate_scheduler: torch.optim.lr_scheduler._LRScheduler,
+        optimizer: Optimizer,
+        learning_rate_scheduler: Optional[_LRScheduler],
         value_loss_coeff: float,
         entropy_loss_coeff: float,
-        clip_grad_norm: float,
+        clip_grad_norm: Optional[float],
         epochs: int,
         ratio_clip: float,
         value_clipping_mode: str,
@@ -53,7 +52,6 @@ class PPO(Algorithm):
         kl_divergence_limit: float = np.inf,
     ) -> None:
         """Saves input settings."""
-        self.batch_spec = batch_spec
         self.agent = agent
         self.dataloader = dataloader
         self.optimizer = optimizer
@@ -98,11 +96,12 @@ class PPO(Algorithm):
                 if self.early_stopping:
                     break
                 loss.backward()
-                grad_norm = torch.nn.utils.clip_grad_norm_(
-                    self.agent.model.parameters(),
-                    self.clip_grad_norm,
-                )
-                self.algo_log_info["grad_norm"].append(grad_norm.item())
+                if self.clip_grad_norm is not None:
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
+                        self.agent.model.parameters(),
+                        self.clip_grad_norm,
+                    )
+                    self.algo_log_info["grad_norm"].append(grad_norm.item())
                 self.optimizer.step()
                 self.update_counter += 1
 
@@ -214,6 +213,7 @@ def add_default_ppo_config(config: Dict) -> Dict:
     config["algo"] = defaults | config.get("algo", {})
 
     config["minibatches"] = config.get("minibatches", 4)
+    config["learning_rate"] = config.get("learning_rate", 0.001)
 
     return config
 
