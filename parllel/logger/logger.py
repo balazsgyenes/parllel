@@ -56,7 +56,7 @@ class Logger:
             self.writers["stdout"] = StdOutWriter()
 
         self.verbosity = verbosity
-        self.model_save_path = None
+        self._model_save_path = None
         self.use_wandb = False
         self._log_dir = None
 
@@ -75,6 +75,16 @@ class Logger:
         self._log_dir = log_dir
         import parllel.logger as logger
         logger.log_dir = log_dir
+
+    @property
+    def model_save_path(self) -> Path:
+        return self._model_save_path
+
+    @model_save_path.setter
+    def model_save_path(self, model_save_path: Path) -> None:
+        self._model_save_path = model_save_path
+        import parllel.logger as logger
+        logger.model_save_path = model_save_path
 
     def init(self,
         log_dir: Optional[PathLike] = None,
