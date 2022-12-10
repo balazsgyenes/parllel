@@ -6,7 +6,7 @@ import torch
 
 from parllel.buffers import Buffer, buffer_map, buffer_method, dict_to_namedtuple
 from parllel.handlers.agent import AgentStep
-from parllel.torch.distributions.categorical import Categorical, DistInfo
+from parllel.torch.distributions.gaussian import Gaussian, DistInfoStd
 from parllel.torch.utils import buffer_to_device, torchify_buffer
 
 from .agent import TorchAgent
@@ -15,12 +15,13 @@ from .pg import AgentInfo, AgentPrediction
 
 @dataclass(frozen=True)
 class ModelOutputs:
-    pi: Buffer
+    mean: Buffer
+    log_std: Buffer
     value: Buffer = None
     next_rnn_state: Buffer = None
 
 
-class CategoricalPgAgent(TorchAgent):
+class GaussianPgAgent(TorchAgent):
     """Agent for policy gradient algorithm using categorical action
     distribution for discrete action spaces. Same as `GaussianPgAgent` except
     with `Categorical` distribution, and has a different interface to the model
@@ -34,7 +35,7 @@ class CategoricalPgAgent(TorchAgent):
     """
     def __init__(self,
             model: torch.nn.Module,
-            distribution: Categorical,
+            distribution: Gaussian,
             observation_space: gym.Space,
             action_space: gym.Space,
             n_states: Optional[int] = None,
@@ -63,8 +64,7 @@ class CategoricalPgAgent(TorchAgent):
             example_action = self.action_space.sample()
             example_action = dict_to_namedtuple(example_action, "action")
             example_action = torchify_buffer(example_action)
-            example_act_onehot = self.distribution.to_onehot(example_action)
-            example_inputs += (example_act_onehot,)
+            example_inputs += (example_action,)
 
         # model will generate an rnn_state even if we don't pass one
         example_inputs = buffer_to_device(example_inputs, device=self.device)
@@ -105,12 +105,14 @@ class CategoricalPgAgent(TorchAgent):
         if self.recurrent:
             # already on device
             rnn_states, previous_action = self._get_states(env_indices)
-            previous_action = self.distribution.to_onehot(previous_action)
             model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
 
         # sample action from distribution returned by policy
-        dist_info = DistInfo(prob=model_outputs.pi)
+        dist_info = DistInfoStd(
+            mean=model_outputs.mean,
+            log_std=model_outputs.log_std,
+        )
         action = self.distribution.sample(dist_info)
 
         # value may be None
@@ -141,7 +143,6 @@ class CategoricalPgAgent(TorchAgent):
         if self.recurrent:
             # already on device
             rnn_states, previous_action = self._get_states(...)          
-            previous_action = self.distribution.to_onehot(self.previous_action)
             model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         value = model_outputs.value
@@ -158,12 +159,14 @@ class CategoricalPgAgent(TorchAgent):
             # rnn_states were saved into the samples buffer as [B,N,H]
             # transform back [B,N,H] --> [N,B,H].
             previous_action = agent_info.prev_action
-            previous_action = self.distribution.to_onehot(previous_action)
             init_rnn_state = buffer_method(init_rnn_state, "transpose", 0, 1)
             init_rnn_state = buffer_method(init_rnn_state, "contiguous")
             model_inputs += (previous_action, init_rnn_state,)
         model_outputs: ModelOutputs = self.model(*model_inputs)
-        dist_info = DistInfo(prob=model_outputs.pi)
+        dist_info = DistInfoStd(
+            mean=model_outputs.mean,
+            log_std=model_outputs.log_std,
+        )
         value = model_outputs.value
         prediction = AgentPrediction(dist_info, value)
         return prediction
