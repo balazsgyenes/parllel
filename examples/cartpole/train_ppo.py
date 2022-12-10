@@ -74,7 +74,6 @@ def build(config: Dict) -> OnPolicyRunner:
         distribution=distribution,
         observation_space=obs_space,
         action_space=action_space,
-        n_states=batch_spec.B,
         device=device,
     )
     agent = TorchHandler(agent=agent)
@@ -138,14 +137,13 @@ def build(config: Dict) -> OnPolicyRunner:
         batch_transform=Compose(batch_transforms),
     )
 
-    dataloader_buffer = build_dataloader_buffer(batch_buffer, recurrent=False)
+    dataloader_buffer = build_dataloader_buffer(batch_buffer)
 
     dataloader = BatchedDataLoader(
         buffer=dataloader_buffer,
         sampler_batch_spec=batch_spec,
         # TODO: every time we abstract, the config becomes flatter and more smeared out
         n_batches=config["minibatches"],
-        recurrent=False,
     )
 
     optimizer = torch.optim.Adam(

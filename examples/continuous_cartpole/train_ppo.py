@@ -15,9 +15,9 @@ import parllel.logger as logger
 from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
     add_obs_normalization, add_reward_clipping, add_reward_normalization,
-    add_valid, build_cages_and_env_buffers, add_initial_rnn_state)
+    build_cages_and_env_buffers)
 from parllel.replays import BatchedDataLoader
-from parllel.runners.onpolicy import OnPolicyRunner
+from parllel.runners import OnPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.gaussian import GaussianPgAgent
 from parllel.torch.algos.ppo import (PPO, add_default_ppo_config,
@@ -29,7 +29,6 @@ from parllel.types import BatchSpec
 
 from envs.continuous_cartpole import build_cartpole
 from models.pg_model import GaussianCartPoleFfPgModel
-from hera_gym.wrappers import add_human_render_wrapper, add_subprocess_wrapper
 
 
 @contextmanager
@@ -42,12 +41,6 @@ def build(config: Dict) -> OnPolicyRunner:
     )
     TrajInfo.set_discount(config["discount"])
 
-    EnvClass = build_cartpole
-    if config["render_during_training"]:
-        if parallel:
-            EnvClass = add_subprocess_wrapper(EnvClass)
-        EnvClass = add_human_render_wrapper(EnvClass)
-
     if parallel:
         ArrayCls = SharedMemoryArray
         RotatingArrayCls = RotatingSharedMemoryArray
@@ -56,7 +49,7 @@ def build(config: Dict) -> OnPolicyRunner:
         RotatingArrayCls = RotatingArray
 
     cages, batch_action, batch_env = build_cages_and_env_buffers(
-        EnvClass=EnvClass,
+        EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
         wait_before_reset=False,
@@ -101,7 +94,7 @@ def build(config: Dict) -> OnPolicyRunner:
     # for advantage estimation, we need to estimate the value of the last
     # state in the batch
     batch_buffer = add_bootstrap_value(batch_buffer)
-    
+
     # add several helpful transforms
     batch_transforms, step_transforms = [], []
 
@@ -186,7 +179,7 @@ def build(config: Dict) -> OnPolicyRunner:
             cage.close()
         buffer_method(batch_buffer, "close")
         buffer_method(batch_buffer, "destroy")
-    
+
 
 if __name__ == "__main__":
     mp.set_start_method("fork")
@@ -203,7 +196,6 @@ if __name__ == "__main__":
         obs_norm_initial_count = 10000,
         normalize_advantage = True,
         max_steps_decorrelate = 50,
-        render_during_training = False,
         env = dict(
             max_episode_steps = 1000,
         ),
