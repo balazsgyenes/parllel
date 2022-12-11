@@ -185,30 +185,30 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        parallel = True,
-        batch_T = 128,
-        batch_B = 16,
-        discount = 0.99,
-        learning_rate = 0.001,
-        gae_lambda = 0.95,
-        reward_clip_min = -5,
-        reward_clip_max = 5,
-        obs_norm_initial_count = 10000,
-        normalize_advantage = True,
-        max_steps_decorrelate = 50,
-        env = dict(
-            max_episode_steps = 1000,
+        parallel=True,
+        batch_T=128,
+        batch_B=16,
+        discount=0.99,
+        learning_rate=0.001,
+        gae_lambda=0.95,
+        reward_clip_min=-5,
+        reward_clip_max=5,
+        obs_norm_initial_count=10000,
+        normalize_advantage=True,
+        max_steps_decorrelate=50,
+        env=dict(
+            max_episode_steps=1000,
         ),
-        device = "cuda:0" if torch.cuda.is_available() else "cpu",
-        model = dict(
+        device="cuda:0" if torch.cuda.is_available() else "cpu",
+        model=dict(
             hidden_sizes=[64, 64],
             hidden_nonlinearity=torch.nn.Tanh,
             mu_nonlinearity=torch.nn.Tanh,
             init_log_std=0.,
         ),
-        runner = dict(
-            n_steps = 100 * 16 * 128,
-            log_interval_steps = 10 * 16 * 128,
+        runner=dict(
+            n_steps=100 * 16 * 128,
+            log_interval_steps=10 * 16 * 128,
         ),
     )
 

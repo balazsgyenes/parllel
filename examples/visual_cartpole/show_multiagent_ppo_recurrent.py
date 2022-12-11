@@ -36,10 +36,10 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
     )
 
     cage_kwargs = dict(
-        EnvClass = build_multi_agent_cartpole,
-        env_kwargs = config["env"],
-        TrajInfoClass = TrajInfo,
-        wait_before_reset = False,
+        EnvClass=build_multi_agent_cartpole,
+        env_kwargs=config["env"],
+        TrajInfoClass=TrajInfo,
+        wait_before_reset=False,
     )
 
     cage = Cage(**cage_kwargs)
@@ -145,16 +145,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     eval_config = dict(
-        discount = 1.0,
-        max_steps = None,
-        min_trajectories = 20,
-        env = dict(
-            headless = False,
-            subprocess = False,
-            reward_type = "dense",
+        discount=1.0,
+        max_steps=None,
+        min_trajectories=20,
+        env=dict(
+            headless=False,
+            subprocess=False,
+            reward_type="dense",
         ),
         # None uses the device the model was trained on
-        device = None if torch.cuda.is_available() else "cpu",
+        device=None if torch.cuda.is_available() else "cpu",
     )
 
     config = JSONConfigSerializer().load(args.log_dir / "config.json")

@@ -189,24 +189,24 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        parallel = False,
-        batch_T = 128,
-        batch_B = 16,
-        discount = 0.99,
-        learning_rate = 0.001,
-        gae_lambda = 0.95,
-        reward_clip_min = -5,
-        reward_clip_max = 5,
-        normalize_advantage = True,
-        max_steps_decorrelate = 50,
-        render_during_training = False,
-        env = dict(
-            max_episode_steps = 1000,
-            reward_type = "sparse",
-            headless = True,
+        parallel=False,
+        batch_T=128,
+        batch_B=16,
+        discount=0.99,
+        learning_rate=0.001,
+        gae_lambda=0.95,
+        reward_clip_min=-5,
+        reward_clip_max=5,
+        normalize_advantage=True,
+        max_steps_decorrelate=50,
+        render_during_training=False,
+        env=dict(
+            max_episode_steps=1000,
+            reward_type="sparse",
+            headless=True,
         ),
-        device = "cuda:0" if torch.cuda.is_available() else "cpu",
-        model = dict(
+        device="cuda:0" if torch.cuda.is_available() else "cpu",
+        model=dict(
             channels=[32, 64, 128, 256],
             kernel_sizes=[3, 3, 3, 3],
             strides=[2, 2, 2, 2],
@@ -219,9 +219,9 @@ if __name__ == "__main__":
             post_lstm_hidden_sizes=512,
             post_lstm_nonlinearity=torch.nn.ReLU,
         ),
-        runner = dict(
-            n_steps = 200 * 16 * 128,
-            log_interval_steps = 1e4,
+        runner=dict(
+            n_steps=200 * 16 * 128,
+            log_interval_steps=1e4,
         ),
     )
 
