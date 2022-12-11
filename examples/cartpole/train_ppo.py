@@ -74,7 +74,6 @@ def build(config: Dict) -> OnPolicyRunner:
         distribution=distribution,
         observation_space=obs_space,
         action_space=action_space,
-        n_states=batch_spec.B,
         device=device,
     )
     agent = TorchHandler(agent=agent)
@@ -138,14 +137,13 @@ def build(config: Dict) -> OnPolicyRunner:
         batch_transform=Compose(batch_transforms),
     )
 
-    dataloader_buffer = build_dataloader_buffer(batch_buffer, recurrent=False)
+    dataloader_buffer = build_dataloader_buffer(batch_buffer)
 
     dataloader = BatchedDataLoader(
         buffer=dataloader_buffer,
         sampler_batch_spec=batch_spec,
         # TODO: every time we abstract, the config becomes flatter and more smeared out
         n_batches=config["minibatches"],
-        recurrent=False,
     )
 
     optimizer = torch.optim.Adam(
@@ -188,28 +186,28 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        parallel = False,
-        batch_T = 128,
-        batch_B = 16,
-        discount = 0.99,
-        learning_rate = 0.001,
-        gae_lambda = 0.95,
-        reward_clip_min = -5,
-        reward_clip_max = 5,
-        obs_norm_initial_count = 10000,
-        normalize_advantage = True,
-        max_steps_decorrelate = 50,
-        env = dict(
-            max_episode_steps = 1000,
+        parallel=False,
+        batch_T=128,
+        batch_B=16,
+        discount=0.99,
+        learning_rate=0.001,
+        gae_lambda=0.95,
+        reward_clip_min=-5,
+        reward_clip_max=5,
+        obs_norm_initial_count=10000,
+        normalize_advantage=True,
+        max_steps_decorrelate=50,
+        env=dict(
+            max_episode_steps=1000,
         ),
-        device = "cuda:0" if torch.cuda.is_available() else "cpu",
-        model = dict(
-            hidden_sizes = [64, 64],
+        device="cuda:0" if torch.cuda.is_available() else "cpu",
+        model=dict(
+            hidden_sizes=[64, 64],
             hidden_nonlinearity=torch.nn.Tanh,
         ),
-        runner = dict(
-            n_steps = 50 * 16 * 128,
-            log_interval_steps = 5 * 16 * 128,
+        runner=dict(
+            n_steps=50 * 16 * 128,
+            log_interval_steps=5 * 16 * 128,
         ),
     )
 

@@ -13,24 +13,22 @@ from parllel.cages import TrajInfo
 from parllel.configuration import add_default_config_fields
 import parllel.logger as logger
 from parllel.logger import Verbosity
-from parllel.patterns import (add_advantage_estimation, add_bootstrap_value, add_reward_clipping,
-    add_reward_normalization, add_valid, build_cages_and_env_buffers,
-    add_initial_rnn_state)
+from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
+    add_obs_normalization, add_reward_clipping, add_reward_normalization,
+    build_cages_and_env_buffers)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
-from parllel.samplers import RecurrentSampler
-from parllel.torch.agents.categorical import CategoricalPgAgent
-from parllel.torch.agents.ensemble import AgentProfile
-from parllel.torch.agents.independent import IndependentPgAgents
+from parllel.samplers import BasicSampler
+from parllel.torch.agents.gaussian import GaussianPgAgent
 from parllel.torch.algos.ppo import (PPO, add_default_ppo_config,
     build_dataloader_buffer)
-from parllel.torch.distributions import Categorical
+from parllel.torch.distributions import Gaussian
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
-from hera_gym.builds.multi_agent_cartpole import build_multi_agent_cartpole
-from models.atari_lstm_model import AtariLstmPgModel
+from envs.continuous_cartpole import build_cartpole
+from models.pg_model import GaussianCartPoleFfPgModel
 
 
 @contextmanager
@@ -51,10 +49,10 @@ def build(config: Dict) -> OnPolicyRunner:
         RotatingArrayCls = RotatingArray
 
     cages, batch_action, batch_env = build_cages_and_env_buffers(
-        EnvClass=build_multi_agent_cartpole,
+        EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
-        wait_before_reset=True,
+        wait_before_reset=False,
         batch_spec=batch_spec,
         parallel=parallel,
     )
@@ -62,47 +60,21 @@ def build(config: Dict) -> OnPolicyRunner:
     obs_space, action_space = cages[0].spaces
 
     # instantiate model and agent
+    model = GaussianCartPoleFfPgModel(
+        obs_space=obs_space,
+        action_space=action_space,
+        **config["model"],
+    )
+    distribution = Gaussian(dim=action_space.shape)
     device = torch.device(config["device"])
-    ## cart
-    cart_model = AtariLstmPgModel(
-        obs_space=obs_space,
-        action_space=action_space["cart"],
-        **config["cart_model"],
-    )
-    cart_distribution = Categorical(dim=action_space["cart"].n)
-    cart_agent = CategoricalPgAgent(
-        model=cart_model,
-        distribution=cart_distribution,
-        observation_space=obs_space,
-        action_space=action_space["cart"],
-        n_states=batch_spec.B,
-        device=device,
-        recurrent=True,
-    )
-    cart_profile = AgentProfile(instance=cart_agent, action_key="cart")
 
-    ## camera
-    camera_model = AtariLstmPgModel(
-        obs_space=obs_space,
-        action_space=action_space["camera"],
-        **config["camera_model"],
-    )
-    camera_distribution = Categorical(dim=action_space["camera"].n)
-    camera_agent = CategoricalPgAgent(
-        model=camera_model,
-        distribution=camera_distribution,
-        observation_space=obs_space,
-        action_space=action_space["camera"],
-        n_states=batch_spec.B,
-        device=device,
-        recurrent=True,
-    )
-    camera_profile = AgentProfile(instance=camera_agent, action_key="camera")
-
-    agent = IndependentPgAgents(
-        agent_profiles=[cart_profile, camera_profile],
+    # instantiate model and agent
+    agent = GaussianPgAgent(
+        model=model,
+        distribution=distribution,
         observation_space=obs_space,
         action_space=action_space,
+        device=device,
     )
     agent = TorchHandler(agent=agent)
 
@@ -119,20 +91,18 @@ def build(config: Dict) -> OnPolicyRunner:
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 
-    # for recurrent problems, we need to save the initial state at the 
-    # beginning of the batch
-    batch_buffer = add_initial_rnn_state(batch_buffer, agent)
-
     # for advantage estimation, we need to estimate the value of the last
     # state in the batch
     batch_buffer = add_bootstrap_value(batch_buffer)
-    
-    # for recurrent problems, compute mask that zeroes out samples after
-    # environments are done before they can be reset
-    batch_buffer = add_valid(batch_buffer)
 
     # add several helpful transforms
-    batch_transforms = []
+    batch_transforms, step_transforms = [], []
+
+    batch_buffer, step_transforms = add_obs_normalization(
+        batch_buffer,
+        step_transforms,
+        initial_count=config["obs_norm_initial_count"],
+    )
 
     batch_buffer, batch_transforms = add_reward_normalization(
         batch_buffer,
@@ -147,33 +117,32 @@ def build(config: Dict) -> OnPolicyRunner:
         reward_clip_max=config["reward_clip_max"],
     )
 
+    # add advantage normalization, required for PPO
     batch_buffer, batch_transforms = add_advantage_estimation(
         batch_buffer,
         batch_transforms,
         discount=config["discount"],
         gae_lambda=config["gae_lambda"],
-        multiagent=True,
         normalize=config["normalize_advantage"],
     )
 
-    sampler = RecurrentSampler(
+    sampler = BasicSampler(
         batch_spec=batch_spec,
         envs=cages,
         agent=agent,
         sample_buffer=batch_buffer,
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=True,
+        obs_transform=Compose(step_transforms),
         batch_transform=Compose(batch_transforms),
     )
 
-    dataloader_buffer = build_dataloader_buffer(batch_buffer, recurrent=True)
+    dataloader_buffer = build_dataloader_buffer(batch_buffer)
 
     dataloader = BatchedDataLoader(
         buffer=dataloader_buffer,
         sampler_batch_spec=batch_spec,
         n_batches=config["minibatches"],
-        batch_only_fields=["init_rnn_state"],
-        recurrent=True,
     )
 
     optimizer = torch.optim.Adam(
@@ -215,55 +184,39 @@ def build(config: Dict) -> OnPolicyRunner:
 if __name__ == "__main__":
     mp.set_start_method("fork")
 
-    model_config = dict(
-        channels=[32, 64, 64],
-        kernel_sizes=[8, 4, 3],
-        strides=[4, 2, 1],
-        paddings=[0, 0, 0],
-        use_maxpool=False,
-        post_conv_hidden_sizes=256,
-        post_conv_output_size=None,
-        post_conv_nonlinearity=torch.nn.ReLU,
-        lstm_size=256,
-        post_lstm_hidden_sizes=None,
-        post_lstm_nonlinearity=torch.nn.ReLU,
-    )
-
     config = dict(
-        parallel=False,
-        batch_T=64,
+        parallel=True,
+        batch_T=128,
         batch_B=16,
         discount=0.99,
-        learning_rate=3e-4,
-        gae_lambda=0.8,
+        learning_rate=0.001,
+        gae_lambda=0.95,
         reward_clip_min=-5,
         reward_clip_max=5,
+        obs_norm_initial_count=10000,
         normalize_advantage=True,
         max_steps_decorrelate=50,
-        render_during_training=False,
         env=dict(
             max_episode_steps=1000,
-            reward_type="sparse",
-            headless=True,
         ),
         device="cuda:0" if torch.cuda.is_available() else "cpu",
-        cart_model=model_config.copy(),
-        camera_model=model_config.copy(),
+        model=dict(
+            hidden_sizes=[64, 64],
+            hidden_nonlinearity=torch.nn.Tanh,
+            mu_nonlinearity=torch.nn.Tanh,
+            init_log_std=0.,
+        ),
         runner=dict(
-            n_steps=2e6,
-            log_interval_steps=1e4,
+            n_steps=100 * 16 * 128,
+            log_interval_steps=10 * 16 * 128,
         ),
     )
-
-    if config.get("render_during_training", False):
-        config["env"]["headless"] = False
-        config["env"]["subprocess"] = config["parallel"]
 
     config = add_default_ppo_config(config)
     config = add_default_config_fields(config)
 
     logger.init(
-        log_dir=Path(f"log_data/cartpole-multiagent-independentppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        log_dir=Path(f"log_data/continuous-cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
         output_files={
             "txt": "log.txt",
