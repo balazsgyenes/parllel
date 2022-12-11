@@ -228,44 +228,44 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        parallel = True,
-        batch_T = 128,
-        batch_B = 16,
-        discount = 0.99,
-        learning_rate = 0.001,
-        reward_clip_min = -5,
-        reward_clip_max = 5,
-        max_steps_decorrelate = 50,
-        env = dict(
-            max_episode_steps = 1000,
-            reward_type = "sparse",
+        parallel=True,
+        batch_T=128,
+        batch_B=16,
+        discount=0.99,
+        learning_rate=0.001,
+        reward_clip_min=-5,
+        reward_clip_max=5,
+        max_steps_decorrelate=50,
+        env=dict(
+            max_episode_steps=1000,
+            reward_type="sparse",
         ),
-        device = "cuda:0" if torch.cuda.is_available() else "cpu",
-        pi_model = dict(
+        device="cuda:0" if torch.cuda.is_available() else "cpu",
+        pi_model=dict(
             hidden_sizes=[64, 64],
             hidden_nonlinearity=torch.nn.Tanh,
         ),
-        q_model = dict(
+        q_model=dict(
             hidden_sizes=[64, 64],
             hidden_nonlinearity=torch.nn.Tanh,
         ),
-        agent = dict(
+        agent=dict(
             learning_starts=1e4,
         ),
-        replay_length = 20 * 128,
-        algo = dict(
-            learning_starts = 1e4,
-            replay_ratio = 64,
-            target_update_tau = 0.01
+        replay_length=20 * 128,
+        algo=dict(
+            learning_starts=1e4,
+            replay_ratio=64,
+            target_update_tau=0.01
         ),
-        eval_sampler = dict(
-            max_traj_length = 2000,
-            min_trajectories = 20,
-            n_eval_envs = 16,
+        eval_sampler=dict(
+            max_traj_length=2000,
+            min_trajectories=20,
+            n_eval_envs=16,
         ),
-        runner = dict(
-            n_steps = 100 * 16 * 128,
-            log_interval_steps = 5 * 16 * 128,
+        runner=dict(
+            n_steps=100 * 16 * 128,
+            log_interval_steps=5 * 16 * 128,
         ),
     )
 
