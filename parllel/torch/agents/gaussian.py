@@ -17,16 +17,14 @@ from .pg import AgentInfo, AgentPrediction
 class ModelOutputs:
     mean: Buffer
     log_std: Buffer
-    value: Buffer = None
-    next_rnn_state: Buffer = None
+    value: Optional[Buffer] = None
+    next_rnn_state: Optional[Buffer] = None
 
 
 class GaussianPgAgent(TorchAgent):
-    """Agent for policy gradient algorithm using categorical action
-    distribution for discrete action spaces. Same as `GaussianPgAgent` except
-    with `Categorical` distribution, and has a different interface to the model
-    (model here outputs discrete probabilities in place of means and log_stds,
-    while both output the value estimate).
+    """Agent for policy gradient algorithm using gaussian action
+    distribution for continuous action spaces. 
+    TODO
 
     Assumptions of the model:
         - input arguments must include observation, may include previous_action,
@@ -39,7 +37,7 @@ class GaussianPgAgent(TorchAgent):
             observation_space: gym.Space,
             action_space: gym.Space,
             n_states: Optional[int] = None,
-            device: torch.device = None,
+            device: Optional[torch.device] = None,
             recurrent: bool = False,
         ) -> None:
         super().__init__(model, distribution, device)
@@ -73,6 +71,7 @@ class GaussianPgAgent(TorchAgent):
             try:
                 model_outputs: ModelOutputs = self.model(*example_inputs)
             except TypeError as e:
+                # TODO e is not actually printed.
                 raise TypeError("You may have forgotten to pass recurrent=True"
                     " when creating this agent.") from e
 
