@@ -52,6 +52,7 @@ class Cage:
             env_unwrapped = env_unwrapped.env
             self._time_limit = isinstance(env_unwrapped, GymTimeLimit)
 
+        # save obs and action spaces for easy access
         self._spaces = EnvSpaces(
             observation=self._env.observation_space,
             action=self._env.action_space,
@@ -65,8 +66,13 @@ class Cage:
     def already_done(self) -> bool:
         return self._already_done
 
-    def set_samples_buffer(self, action: Buffer, obs: Buffer, reward: Buffer,
-                           done: Array, info: Buffer) -> None:
+    def set_samples_buffer(self,
+        action: Buffer,
+        obs: Buffer,
+        reward: Buffer,
+        done: Array,
+        info: Buffer,
+    ) -> None:
         pass
 
     def step_async(self,
@@ -115,6 +121,17 @@ class Cage:
         self._traj_info = self.TrajInfoClass()
 
     def await_step(self) -> Union[EnvStep, Tuple[Buffer, ...], Buffer, bool]:
+        """Wait for the asynchronous step to finish and return the results.
+        If step_async, reset_async, or random_step_async was called previously
+        with input arguments, returns whether the environment is now done and
+        needs reset.
+        If step_async was called previously without output arguments, returns
+        the EnvStep.
+        If reset_async was called previously without output arguments, returns
+        the reset observation.
+        If random_step_async was called previously without output arguments,
+        returns 
+        """
         result = self._step_result
         self._step_result = None
         return result
@@ -148,6 +165,7 @@ class Cage:
 
     def reset_async(self, *, out_obs: Buffer = None) -> None:
         if self._already_done:
+            # do not call reset, since reset was already done asynchronously
             _reset_obs = self._reset_obs
             self._already_done = False
             self._reset_obs = None
