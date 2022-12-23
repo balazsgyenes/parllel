@@ -27,13 +27,16 @@ class Cage:
         env_kwargs: Dict,
         TrajInfoClass: Callable,
         wait_before_reset: bool = False,
+        prepare_rendering: bool = False,
     ) -> None:
         self.EnvClass = EnvClass
         self.env_kwargs = env_kwargs
         self.TrajInfoClass = TrajInfoClass
         self.wait_before_reset = wait_before_reset
+        self.prepare_rendering = prepare_rendering
 
         self._already_done: bool = False
+        self._render: bool = False
         self._create_env()
 
     def _create_env(self) -> None:
@@ -52,6 +55,12 @@ class Cage:
             env_unwrapped = env_unwrapped.env
             self._time_limit = isinstance(env_unwrapped, GymTimeLimit)
 
+        # if env will be asked to render, fail early
+        if self.prepare_rendering:
+            if "rgb_array" not in self._env.metadata.get("render.modes", ()):
+                raise ValueError("Env does not support rendering in rgb_array mode.")
+            # TODO: verify that "render" buffer element exists
+
         # save obs and action spaces for easy access
         self._spaces = EnvSpaces(
             observation=self._env.observation_space,
@@ -65,6 +74,14 @@ class Cage:
     @property
     def already_done(self) -> bool:
         return self._already_done
+
+    @property
+    def render(self) -> bool:
+        return self._render
+
+    @render.setter
+    def render(self, value: bool) -> None:
+        self._render = value
 
     def set_samples_buffer(self,
         action: Buffer,
@@ -97,7 +114,6 @@ class Cage:
         if done:
             # store finished trajectory and start new one
             self._completed_trajs.append(self._traj_info)
-            self._traj_info = self.TrajInfoClass()
             if self.wait_before_reset:
                 # store done state
                 self._already_done = True
@@ -107,6 +123,14 @@ class Cage:
                 # reset immediately and overwrite last observation
                 obs = self._env.reset()
     
+        # TODO: strictly speaking, the rendering must wait until after the env
+        # was reset. How can this be done?
+        # TODO: should render be called before step, so that observations line
+        # up with corresponding renders?
+        if self.render:
+            rendering = self._env.render(mode="rgb_array")
+            env_info["rendering"] = rendering
+
         if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
             self._step_result = EnvStep(obs, reward, done, env_info)
         else:

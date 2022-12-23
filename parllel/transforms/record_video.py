@@ -22,6 +22,7 @@ def tile_images(img_nhwc: Sequence[np.ndarray]) -> np.ndarray:  # pragma: no cov
     # TODO: calculate new_height and new_width once and preallocate 
     """
     img_nhwc = np.asarray(img_nhwc)
+    img_nhwc = np.moveaxis(img_nhwc, -3, -1) # move channel dimension to the end
     n_images, height, width, n_channels = img_nhwc.shape # TODO: verify
     tiled_height = int(np.ceil(np.sqrt(n_images)))
     tiled_width = int(np.ceil(float(n_images) / tiled_height))
@@ -55,7 +56,9 @@ class RecordVectorizedVideo(StepTransform):
         self.env_fps = env_fps
 
     def __call__(self, batch_samples: Samples, t: int) -> Samples:
-        self.total_t += 1
+        # TODO: save batch size as variable
+        batch_B = batch_samples.env.done[t].shape[0]
+        self.total_t += batch_B
 
         # check if we should start recording
         # TODO: does this need to be corrected for recurrent batches that
@@ -67,6 +70,7 @@ class RecordVectorizedVideo(StepTransform):
 
         if self.recording:
             images = getattr(batch_samples.env, self.key)[t]
+            # TODO: freeze frames of environments that are done
             images_tiled = tile_images(np.asarray(images))
             self.recorder.capture_frame(images_tiled)
             self.recorded_frames += 1
@@ -75,7 +79,7 @@ class RecordVectorizedVideo(StepTransform):
 
     def _start_recording(self) -> None:
         self.recorder = video_recorder.ImageEncoder(
-            output_path=Path().home(), # TODO: fix
+            output_path=str(Path().home() / "cartpole.mp4"), # TODO: fix
             frame_shape=self.tiled_shape,
             frames_per_sec=self.env_fps,
             output_frames_per_sec=self.output_fps,

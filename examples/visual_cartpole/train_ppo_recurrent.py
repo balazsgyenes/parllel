@@ -25,6 +25,7 @@ from parllel.torch.algos.ppo import (PPO, add_default_ppo_config,
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
+from parllel.transforms.record_video import RecordVectorizedVideo
 from parllel.types import BatchSpec
 
 from hera_gym.builds.visual_cartpole import build_visual_cartpole
@@ -129,6 +130,18 @@ def build(config: Dict) -> OnPolicyRunner:
         normalize=config["normalize_advantage"],
     )
 
+    if config.get("video_recorder", {}):
+        video_recorder = RecordVectorizedVideo(
+            record_every_n_steps=1000,
+            video_length=50,
+            buffer_key_to_record="observation",
+            output_fps=30,
+            tiled_shape=(300, 450, 3),
+            env_fps=50,
+        )
+    else:
+        video_recorder = None
+
     sampler = RecurrentSampler(
         batch_spec=batch_spec,
         envs=cages,
@@ -137,6 +150,7 @@ def build(config: Dict) -> OnPolicyRunner:
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=True,
         batch_transform=Compose(batch_transforms),
+        obs_transform=video_recorder,
     )
 
     dataloader_buffer = build_dataloader_buffer(batch_buffer, recurrent=True)
@@ -190,6 +204,7 @@ if __name__ == "__main__":
 
     config = dict(
         parallel=False,
+        video_recorder=True,
         batch_T=128,
         batch_B=16,
         discount=0.99,

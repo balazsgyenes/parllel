@@ -24,6 +24,7 @@ def build_cages_and_env_buffers(
     batch_spec: BatchSpec,
     parallel: bool,
     video_recorder_kwargs: Optional[Dict] = None,
+    prepare_rendering: bool = False,
 ) -> Tuple:
 
     if parallel:
@@ -40,10 +41,12 @@ def build_cages_and_env_buffers(
         env_kwargs = env_kwargs,
         TrajInfoClass = TrajInfoClass,
         wait_before_reset = wait_before_reset,
+        prepare_rendering=prepare_rendering,
     )
 
     # create example env
     example_cage = Cage(**cage_kwargs)
+    example_cage.render = prepare_rendering
 
     # get example output from env
     example_cage.random_step_async()
