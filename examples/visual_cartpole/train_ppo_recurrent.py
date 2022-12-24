@@ -130,14 +130,12 @@ def build(config: Dict) -> OnPolicyRunner:
         normalize=config["normalize_advantage"],
     )
 
-    if config.get("video_recorder", {}):
+    if video_config := config.get("video_recorder", {}):
         video_recorder = RecordVectorizedVideo(
-            record_every_n_steps=1000,
-            video_length=50,
             buffer_key_to_record="observation",
-            output_fps=30,
             tiled_shape=(300, 450, 3),
             env_fps=50,
+            **video_config,
         )
     else:
         video_recorder = None
@@ -204,7 +202,11 @@ if __name__ == "__main__":
 
     config = dict(
         parallel=False,
-        video_recorder=True,
+        video_recorder=dict(
+            record_every_n_steps=1000,
+            video_length=50,
+            output_dir=Path(f"videos/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        ),
         batch_T=128,
         batch_B=16,
         discount=0.99,

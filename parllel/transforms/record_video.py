@@ -5,6 +5,7 @@ from gym.wrappers.monitoring import video_recorder
 import numpy as np
 
 from parllel.buffers import Samples, NamedTuple
+import parllel.logger as logger
 
 from .transform import StepTransform
 
@@ -38,17 +39,21 @@ def tile_images(img_nhwc: Sequence[np.ndarray]) -> np.ndarray:  # pragma: no cov
 
 class RecordVectorizedVideo(StepTransform):
     def __init__(self,
+        output_dir: Path,
+        buffer_key_to_record: str, # e.g. "observation" or "env_info.rendering"
         record_every_n_steps: int,
         video_length: int,
-        buffer_key_to_record: str, # e.g. "observation" or "rendering"
-        output_fps: int,
         tiled_shape: Tuple[int], # TODO: calculate this on init
         env_fps: int, # TODO: maybe grab this from example env metadata
+        output_fps: int = 30,
     ) -> None:
+        self.output_dir = Path(output_dir)
         self.record_every = record_every_n_steps
         self.length = video_length
         self.key = buffer_key_to_record
         self.output_fps = output_fps
+
+        self.output_dir.mkdir(parents=True)
 
         self.total_t = 0
         self.recording = False
@@ -64,6 +69,8 @@ class RecordVectorizedVideo(StepTransform):
         # TODO: does this need to be corrected for recurrent batches that
         # break early? maybe a batch transform would be better
         if not self.recording:
+            # TODO: count steps since last recording to ensure trigger is not
+            # missed if batch_size does not divide record_every
             self.recording = (self.total_t % self.record_every == 0)
             if self.recording:
                 self._start_recording()
@@ -78,8 +85,10 @@ class RecordVectorizedVideo(StepTransform):
                 self._stop_recording()
 
     def _start_recording(self) -> None:
+        path = self.output_dir / f"policy_video_step_{self.total_t}.mp4"
+        logger.log(f"Started recording video of policy to {path}")
         self.recorder = video_recorder.ImageEncoder(
-            output_path=str(Path().home() / "cartpole.mp4"), # TODO: fix
+            output_path=str(path),
             frame_shape=self.tiled_shape,
             frames_per_sec=self.env_fps,
             output_frames_per_sec=self.output_fps,
@@ -89,8 +98,10 @@ class RecordVectorizedVideo(StepTransform):
     def _stop_recording(self) -> None:
         # TODO: use weakref to ensure this gets closed even if training ends
         # during video recording (transform has no close method)
+        path = self.recorder.version_info["cmdline"][-1]
         self.recorder.close()
         self.recording = False
+        logger.debug(f"Finished recording video of policy to {path}")
 
     def close(self) -> None:
         # TODO: call this in the cleanup of build method
