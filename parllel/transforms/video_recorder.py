@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from gym.wrappers.monitoring import video_recorder
+from numba import njit
 import numpy as np
 
 from parllel.buffers import Buffer, Samples
@@ -83,9 +84,12 @@ class RecordVectorizedVideo(StepTransform):
         if self.recording:
             images = buffer_get_nested(batch_samples.env, self.keys)[t]
             images = np.asarray(images)
+            valid = getattr(batch_samples.env, "valid", None)
+            if valid is not None:
+                valid = np.asarray(valid[t])
             write_tiles_to_frame(
                 images=images,
-                valid=getattr(batch_samples.env[t], "valid", None),
+                valid=valid,
                 tiled_height=self.tiled_height,
                 tiled_width=self.tiled_width,
                 tiled_frame=self.tiled_frame_writable,
@@ -153,6 +157,7 @@ def find_tiling(n_images: int) -> Tuple[int, int]:
     return (tiled_height, tiled_width)
 
 
+@njit
 def write_tiles_to_frame(
     images: np.ndarray,
     valid: Optional[np.ndarray],
@@ -164,7 +169,7 @@ def write_tiles_to_frame(
     frame.
     """
     n_images = images.shape[0]
-    images_hwc = np.moveaxis(images, -3, -1) # move channel dimension to the end
+    images_hwc = images.transpose(0, 2, 3, 1) # move channel dimension to the end
 
     b = 0
     for i in range(tiled_height):
