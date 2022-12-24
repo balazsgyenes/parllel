@@ -25,7 +25,7 @@ from parllel.torch.algos.ppo import (PPO, add_default_ppo_config,
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
-from parllel.transforms.record_video import RecordVectorizedVideo
+from parllel.transforms.video_recorder import RecordVectorizedVideo
 from parllel.types import BatchSpec
 
 from hera_gym.builds.visual_cartpole import build_visual_cartpole
