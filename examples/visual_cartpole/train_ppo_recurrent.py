@@ -132,8 +132,8 @@ def build(config: Dict) -> OnPolicyRunner:
 
     if video_config := config.get("video_recorder", {}):
         video_recorder = RecordVectorizedVideo(
+            batch_buffer=batch_buffer,
             buffer_key_to_record="observation",
-            tiled_shape=(300, 450, 3),
             env_fps=50,
             **video_config,
         )

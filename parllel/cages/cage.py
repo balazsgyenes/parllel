@@ -101,6 +101,11 @@ class Cage:
     ) -> None:
         """If any out parameter is given, they must all be given. 
         """
+        # if rendering, render before step is taken so that the renderings
+        # line up with the corresponding observation
+        if self.render:
+            rendering = self._env.render(mode="rgb_array")
+        
         # get underlying numpy arrays and convert to dict if needed
         action = buffer_asarray(action)
         action = namedtuple_to_dict(action)
@@ -110,6 +115,9 @@ class Cage:
         
         if self._time_limit:
             env_info["timeout"] = env_info.pop("TimeLimit.truncated", False)
+
+        if self.render:
+            env_info["rendering"] = rendering
 
         if done:
             # store finished trajectory and start new one
@@ -123,14 +131,6 @@ class Cage:
                 # reset immediately and overwrite last observation
                 obs = self._env.reset()
     
-        # TODO: strictly speaking, the rendering must wait until after the env
-        # was reset. How can this be done?
-        # TODO: should render be called before step, so that observations line
-        # up with corresponding renders?
-        if self.render:
-            rendering = self._env.render(mode="rgb_array")
-            env_info["rendering"] = rendering
-
         if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
             self._step_result = EnvStep(obs, reward, done, env_info)
         else:
