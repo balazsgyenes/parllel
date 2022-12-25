@@ -200,11 +200,6 @@ if __name__ == "__main__":
 
     config = dict(
         parallel=False,
-        video_recorder=dict(
-            record_every_n_steps=2000,
-            video_length=100,
-            output_dir=Path(f"videos/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
-        ),
         batch_T=128,
         batch_B=16,
         discount=0.99,
@@ -243,6 +238,12 @@ if __name__ == "__main__":
     if config.get("render_during_training", False):
         config["env"]["headless"] = False
         config["env"]["subprocess"] = config["parallel"]
+
+    config["video_recorder"] = dict(
+        record_every_n_steps=5e4,
+        video_length=250,
+        output_dir=Path(f"videos/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+    ),
 
     config = add_default_ppo_config(config)
     config = add_default_config_fields(config)

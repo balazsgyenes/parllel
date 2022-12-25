@@ -1,6 +1,5 @@
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from gym.wrappers import RecordVideo
 import numpy as np
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
@@ -23,7 +22,6 @@ def build_cages_and_env_buffers(
     wait_before_reset: bool,
     batch_spec: BatchSpec,
     parallel: bool,
-    video_recorder_kwargs: Optional[Dict] = None,
     prepare_rendering: bool = False,
 ) -> Tuple:
 
@@ -71,29 +69,8 @@ def build_cages_and_env_buffers(
     if CageCls is ProcessCage:
         cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
     
-    # RecordVideo wrapper requires at least video_folder argument, so if no
-    # kwargs were given, video cannot be recorded
-    if video_recorder_kwargs:
-        # define new EnvClass callable that creates wrapped environment
-        def build_video_recorded_env(**kwargs):
-            video_kwargs = kwargs.pop("record_video")
-            env = EnvClass(**kwargs)
-            return RecordVideo(env, **video_kwargs)
-        cage_kwargs["EnvClass"] = build_video_recorded_env
-
-        # create each environment with different args so that videos from
-        # each env have different name prefixes
-        cages = []
-        for i in range(batch_spec.B):
-            # don't need to deep copy the dictionary here because the kwargs
-            # are consumed and the env is created before the loop body ends
-            video_recorder_kwargs["name_prefix"] = f"env-{i:0>2d}"
-            cage_kwargs["env_kwargs"]["record_video"] = video_recorder_kwargs
-            cages.append(CageCls(**cage_kwargs))
-
-    else:
-        # create cages to manage environments
-        cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
+    # create cages to manage environments
+    cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
     return cages, batch_action, batch_buffer_env
 

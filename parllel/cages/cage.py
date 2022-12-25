@@ -130,6 +130,7 @@ class Cage:
             else:
                 # reset immediately and overwrite last observation
                 obs = self._env.reset()
+                self._traj_info = self.TrajInfoClass()
     
         if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
             self._step_result = EnvStep(obs, reward, done, env_info)
