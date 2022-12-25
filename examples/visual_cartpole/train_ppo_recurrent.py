@@ -134,11 +134,10 @@ def build(config: Dict) -> OnPolicyRunner:
         video_recorder = RecordVectorizedVideo(
             batch_buffer=batch_buffer,
             buffer_key_to_record="observation",
-            env_fps=50,
+            env_fps=50, # TODO: grab this from example env metadata
             **video_config,
         )
-    else:
-        video_recorder = None
+        batch_transforms.append(video_recorder)
 
     sampler = RecurrentSampler(
         batch_spec=batch_spec,
@@ -148,7 +147,6 @@ def build(config: Dict) -> OnPolicyRunner:
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=True,
         batch_transform=Compose(batch_transforms),
-        obs_transform=video_recorder,
     )
 
     dataloader_buffer = build_dataloader_buffer(batch_buffer, recurrent=True)
@@ -203,8 +201,8 @@ if __name__ == "__main__":
     config = dict(
         parallel=False,
         video_recorder=dict(
-            record_every_n_steps=1000,
-            video_length=50,
+            record_every_n_steps=2000,
+            video_length=100,
             output_dir=Path(f"videos/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         ),
         batch_T=128,

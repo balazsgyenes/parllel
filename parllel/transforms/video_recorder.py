@@ -1,24 +1,24 @@
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 from gym.wrappers.monitoring import video_recorder
-from numba import njit
+import numba
 import numpy as np
 
 from parllel.buffers import Buffer, Samples
 import parllel.logger as logger
 
-from .transform import StepTransform
+from .transform import BatchTransform
 
 
-class RecordVectorizedVideo(StepTransform):
+class RecordVectorizedVideo(BatchTransform):
     def __init__(self,
         output_dir: Path,
         batch_buffer: Samples,
         buffer_key_to_record: str, # e.g. "observation" or "env_info.rendering"
         record_every_n_steps: int,
         video_length: int,
-        env_fps: int, # TODO: maybe grab this from example env metadata
+        env_fps: Optional[int] = None,
         output_fps: int = 30,
         tiled_height: Optional[int] = None,
         tiled_width: Optional[int] = None,
@@ -27,14 +27,16 @@ class RecordVectorizedVideo(StepTransform):
         self.record_every = record_every_n_steps
         self.length = video_length
         self.keys = buffer_key_to_record.split(".")
-        self.env_fps = env_fps
+        self.env_fps = env_fps if env_fps is not None else output_fps
         self.output_fps = output_fps
 
         self.output_dir.mkdir(parents=True)
 
-        images = buffer_get_nested(batch_buffer.env, self.keys)[0]
-        n_images, n_channels, height, width = images.shape
-        
+        images = buffer_get_nested(batch_buffer.env, self.keys)
+        batch_T, batch_B, n_channels, height, width = images.shape
+        n_images = batch_B
+        self.batch_size = batch_T * batch_B
+
         if tiled_height is not None and tiled_width is not None:
             tiled_height, tiled_width = int(tiled_height), int(tiled_width)
             if tiled_height * tiled_width < n_images:
@@ -61,32 +63,47 @@ class RecordVectorizedVideo(StepTransform):
             self.tiled_height, height, self.tiled_width, width, n_channels
         )
 
-        self.total_t = 0
+        self.total_t = 0 # used for namign video files
+        self.steps_since_last_recording = 0
         self.recording = False
 
-    def __call__(self, batch_samples: Samples, t: int) -> Samples:
-        # TODO: save batch size as variable
-        batch_B = batch_samples.env.done[t].shape[0]
-        self.total_t += batch_B
-
+    def __call__(self, batch_samples: Samples) -> Samples:
         # check if we should start recording
-        # TODO: does this need to be corrected for recurrent batches that
-        # break early? maybe a batch transform would be better
-        # TODO: maybe force recording to start at the beginning of a batch so
-        # that all environments start out valid?
         if not self.recording:
-            # TODO: count steps since last recording to ensure trigger is not
-            # missed if batch_size does not divide record_every
-            self.recording = (self.total_t % self.record_every == 0)
+            self.recording = (self.steps_since_last_recording >= self.record_every)
             if self.recording:
                 self._start_recording()
 
         if self.recording:
-            images = buffer_get_nested(batch_samples.env, self.keys)[t]
-            images = np.asarray(images)
-            valid = getattr(batch_samples.env, "valid", None)
-            if valid is not None:
-                valid = np.asarray(valid[t])
+            self._record_batch(batch_samples)
+
+        # update counters here since we prefer to start recording later than
+        # requested rather than earlier
+        self.total_t += self.batch_size
+        self.steps_since_last_recording += self.batch_size
+
+        return batch_samples
+
+    def _start_recording(self) -> None:
+        self.path = self.output_dir / f"policy_video_step_{self.total_t}.mp4"
+        logger.log(f"Started recording video of policy to {self.path}")
+        self.recorder = video_recorder.ImageEncoder(
+            output_path=str(self.path),
+            frame_shape=self.tiled_frame.shape,
+            frames_per_sec=self.env_fps,
+            output_frames_per_sec=self.output_fps,
+        )
+        self.recorded_frames = 0
+
+    def _record_batch(self, batch_samples: Samples) -> None:
+        images_batch = buffer_get_nested(batch_samples.env, self.keys)
+        images_batch = np.asarray(images_batch)
+
+        valid_batch = getattr(batch_samples.env, "valid", None)
+        if valid_batch is not None:
+            valid_batch = np.asarray(valid_batch)
+
+        for images, valid in zip_with_valid(images_batch, valid_batch):
             write_tiles_to_frame(
                 images=images,
                 valid=valid,
@@ -96,27 +113,22 @@ class RecordVectorizedVideo(StepTransform):
             )
             self.recorder.capture_frame(self.tiled_frame)
             self.recorded_frames += 1
+
             if self.recorded_frames >= self.length:
                 self._stop_recording()
+                break
 
-    def _start_recording(self) -> None:
-        path = self.output_dir / f"policy_video_step_{self.total_t}.mp4"
-        logger.log(f"Started recording video of policy to {path}")
-        self.recorder = video_recorder.ImageEncoder(
-            output_path=str(path),
-            frame_shape=self.tiled_frame.shape,
-            frames_per_sec=self.env_fps,
-            output_frames_per_sec=self.output_fps,
-        )
-        self.recorded_frames = 0
+            # if all environments are done, continue recording from next batch
+            if valid is not None and not np.any(valid):
+                break
 
     def _stop_recording(self) -> None:
         # TODO: use weakref to ensure this gets closed even if training ends
         # during video recording (transform has no close method)
-        path = self.recorder.version_info["cmdline"][-1]
         self.recorder.close()
         self.recording = False
-        logger.debug(f"Finished recording video of policy to {path}")
+        self.steps_since_last_recording -= self.record_every
+        logger.debug(f"Finished recording video of policy to {self.path}")
 
     def close(self) -> None:
         # TODO: call this in the cleanup of build method
@@ -142,7 +154,7 @@ def find_tiling(n_images: int) -> Tuple[int, int]:
     min_tiled_height = int(np.ceil(np.sqrt(n_images / 2)))
     try:
         tiled_height = next(
-            i for i in range(max_tiled_height, min_tiled_height - 1) if i % n_images == 0
+            i for i in range(max_tiled_height, min_tiled_height - 1, -1) if n_images % i == 0
         )
         tiled_width = n_images // tiled_height
         return (tiled_height, tiled_width)
@@ -157,7 +169,18 @@ def find_tiling(n_images: int) -> Tuple[int, int]:
     return (tiled_height, tiled_width)
 
 
-@njit
+def zip_with_valid(
+    array: np.ndarray,
+    valid: Optional[np.ndarray],
+) -> Iterator[Tuple[np.ndarray, Optional[np.ndarray]]]:
+    if valid is None:
+        for elem in array:
+            yield elem, valid
+    else:
+        yield from zip(array, valid)
+
+
+@numba.njit
 def write_tiles_to_frame(
     images: np.ndarray,
     valid: Optional[np.ndarray],
