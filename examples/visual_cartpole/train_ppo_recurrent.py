@@ -189,6 +189,8 @@ def build(config: Dict) -> OnPolicyRunner:
     
     finally:
         sampler.close()
+        if video_config := config.get("video_recorder", {}):
+            video_recorder.close()
         agent.close()
         for cage in cages:
             cage.close()
