@@ -103,7 +103,7 @@ class Cage:
         """
         # if rendering, render before step is taken so that the renderings
         # line up with the corresponding observation
-        if self.render:
+        if self._render:
             rendering = self._env.render(mode="rgb_array")
         
         # get underlying numpy arrays and convert to dict if needed
@@ -116,7 +116,7 @@ class Cage:
         if self._time_limit:
             env_info["timeout"] = env_info.pop("TimeLimit.truncated", False)
 
-        if self.render:
+        if self._render:
             env_info["rendering"] = rendering
 
         if done:
