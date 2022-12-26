@@ -239,17 +239,34 @@ if __name__ == "__main__":
         config["env"]["headless"] = False
         config["env"]["subprocess"] = config["parallel"]
 
-    config["video_recorder"] = dict(
-        record_every_n_steps=5e4,
-        video_length=250,
-        output_dir=Path(f"videos/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
-    ),
-
     config = add_default_ppo_config(config)
     config = add_default_config_fields(config)
 
+    try:
+        import wandb
+        run = wandb.init(
+            project="CartPole",
+            group="PPO",
+            tags=["discrete", "image-based", "ppo"],
+            config=config,
+            sync_tensorboard=True,  # auto-upload any values logged to tensorboard
+            monitor_gym=True,  # save videos to wandb
+            save_code=True,  # save script used to start training, git commit, and patch
+        )
+        run_id = run.id
+    except ImportError:
+        run = None
+        run_id = datetime.now().strftime('%Y-%m-%d_%H-%M')
+
+    config["video_recorder"] = dict(
+        record_every_n_steps=5e4,
+        video_length=250,
+        output_dir=Path(f"videos/{run_id}"),
+    )
+
     logger.init(
-        log_dir=Path(f"log_data/cartpole-visual-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        log_dir=Path(f"log_data/cartpole-visual-ppo/{run_id}"),
+        wandb_run=run,
         tensorboard=True,
         output_files={
             "txt": "log.txt",
@@ -262,3 +279,6 @@ if __name__ == "__main__":
 
     with build(config) as runner:
         runner.run()
+
+    if run is not None:
+        run.finish()
