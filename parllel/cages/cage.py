@@ -27,13 +27,11 @@ class Cage:
         env_kwargs: Dict,
         TrajInfoClass: Callable,
         wait_before_reset: bool = False,
-        prepare_rendering: bool = False,
     ) -> None:
         self.EnvClass = EnvClass
         self.env_kwargs = env_kwargs
         self.TrajInfoClass = TrajInfoClass
         self.wait_before_reset = wait_before_reset
-        self.prepare_rendering = prepare_rendering
 
         self._already_done: bool = False
         self._render: bool = False
@@ -54,12 +52,6 @@ class Cage:
         while not self._time_limit and hasattr(env_unwrapped, "env"):
             env_unwrapped = env_unwrapped.env
             self._time_limit = isinstance(env_unwrapped, GymTimeLimit)
-
-        # if env will be asked to render, fail early
-        if self.prepare_rendering:
-            if "rgb_array" not in self._env.metadata.get("render.modes", ()):
-                raise ValueError("Env does not support rendering in rgb_array mode.")
-            # TODO: verify that "render" buffer element exists
 
         # save obs and action spaces for easy access
         self._spaces = EnvSpaces(

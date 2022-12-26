@@ -55,12 +55,7 @@ def build(config: Dict) -> OnPolicyRunner:
         wait_before_reset=False,
         batch_spec=batch_spec,
         parallel=parallel,
-        prepare_rendering=bool(config["video_recorder"]),
     )
-
-    # TODO: replace with schedule
-    for cage in cages:
-        cage.render = True
 
     obs_space, action_space = cages[0].spaces
 
