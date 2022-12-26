@@ -24,8 +24,8 @@ class RecordVectorizedVideo(BatchTransform):
         tiled_width: Optional[int] = None,
     ) -> None:
         self.output_dir = Path(output_dir)
-        self.record_every = record_every_n_steps
-        self.length = video_length
+        self.record_every = int(record_every_n_steps)
+        self.length = int(video_length)
         self.keys = buffer_key_to_record.split(".")
         self.env_fps = env_fps if env_fps is not None else output_fps
         self.output_fps = output_fps
@@ -48,8 +48,8 @@ class RecordVectorizedVideo(BatchTransform):
         else:
             self.tiled_height, self.tiled_width = find_tiling(n_images)
             logger.debug(
-                f"Automatically chose a tiling of {tiled_height}x{tiled_width} "
-                "for vectorized video recording."
+                f"Automatically chose a tiling of {self.tiled_height}x"
+                f"{self.tiled_width} for vectorized video recording."
             )
 
         self.tiled_frame = np.zeros(
