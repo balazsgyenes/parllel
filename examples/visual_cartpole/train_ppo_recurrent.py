@@ -130,6 +130,7 @@ def build(config: Dict) -> OnPolicyRunner:
         normalize=config["normalize_advantage"],
     )
 
+    # TODO: log videos without calling `log`, which causes tensorboard to go out of sync
     if video_config := config.get("video_recorder", {}):
         video_recorder = RecordVectorizedVideo(
             batch_buffer=batch_buffer,
