@@ -258,7 +258,6 @@ if __name__ == "__main__":
             tags=["discrete", "image-based", "ppo"],
             config=config,
             sync_tensorboard=True,  # auto-upload any values logged to tensorboard
-            monitor_gym=True,  # save videos to wandb
             save_code=True,  # save script used to start training, git commit, and patch
         )
         run_id = run.id

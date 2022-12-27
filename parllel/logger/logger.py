@@ -33,12 +33,10 @@ class Verbosity(IntEnum):
     DEBUG = 4
 
 
-# for now, all warnings from this module should be converted to errors
-warnings.filterwarnings("error", module=__name__)
-# except these ones, which should remain warnings
-warnings.filterwarnings("default", message="No logger output will be saved to disk!", module=__name__)
-warnings.filterwarnings("default", message="No trained models will be saved to disk!", module=__name__)
-warnings.filterwarnings("default", message="No config information will be saved to disk!", module=__name__)
+# promote warnings regarding logging to WandB to errors
+warnings.filterwarnings("error", message="No data will be logged to WandB", module=__name__)
+# promote warnings regarding wandb's monitor_gym feature to errors
+warnings.filterwarnings("error", message="Calling wandb.init with `monitor_gym=True`", module=__name__)
 
 
 class Logger:
@@ -145,6 +143,18 @@ class Logger:
                     "No data will be logged to WandB because parllel was not "
                     "requested to log to Tensorboard. Please call "
                     "parllel.logger.init with `tensorboard=True`."
+                )
+
+            # check if user called wandb.init with monitor_gym=True
+            wandb_monitor_gym = len(wandb.patched["gym"]) > 0
+            if wandb_monitor_gym:
+                warnings.warn(
+                    "Calling wandb.init with `monitor_gym=True` is redundant, "
+                    "since videos created through parllel's "
+                    "RecordVectorizedVideo transform are saved to WandB "
+                    "automatically. In addition, `monitor_gym=True` has the "
+                    "side effect of adding extra logging steps to WandB. "
+                    "Please remove this parameter."
                 )
 
             # TODO: if no config was passed, take config from wandb
