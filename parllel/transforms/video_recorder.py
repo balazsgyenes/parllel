@@ -147,8 +147,7 @@ class RecordVectorizedVideo(BatchTransform):
         self.recorder.close()
         self.recording = False
         logger.debug(f"Finished recording video of policy to {self.path}")
-        # TODO: expose logger's has_wandb attribute
-        if wandb is not None and wandb.run is not None:
+        if logger.use_wandb:
             logger.debug("Uploading recorded video to wandb...")
             wandb.log({"policy_videos": wandb.Video(str(self.path))}, commit=False)
 

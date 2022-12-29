@@ -55,7 +55,7 @@ class Logger:
 
         self.verbosity = verbosity
         self._model_save_path = None
-        self.use_wandb = False
+        self._use_wandb = False
         self._log_dir = None
 
         self.values = defaultdict(float)  # values this iteration
@@ -83,6 +83,17 @@ class Logger:
         self._model_save_path = model_save_path
         import parllel.logger as logger
         logger.model_save_path = model_save_path
+
+    @property
+    def use_wandb(self) -> bool:
+        return self._use_wandb
+
+    @use_wandb.setter
+    def use_wandb(self, use_wandb: bool) -> None:
+        # after setting member variable, also set value in logger API
+        self._use_wandb = use_wandb
+        import parllel.logger as logger
+        logger.use_wandb = use_wandb
 
     def init(self,
         log_dir: Optional[PathLike] = None,
@@ -122,11 +133,11 @@ class Logger:
 
         self.close() # clean default writers created by __init__
 
-        # TODO: if a wandb is detected but none was passed, should wandb be
-        # used by default?
-        use_wandb = self.use_wandb = (has_wandb and wandb_run is not None)
+        # TODO: if a wandb run is detected but none was passed, should wandb
+        # be used by default?
+        self.use_wandb = (has_wandb and wandb_run is not None)
         self.missing_wandb = False
-        if use_wandb:
+        if self.use_wandb:
             # check if user did not call wandb.init with sync_tensorboard=True
             wandb_sync_tensorboard = len(wandb.patched['tensorboard']) > 0
             if not wandb_sync_tensorboard:
@@ -167,7 +178,7 @@ class Logger:
             )
 
         # determine log_dir by checking options in order of preference
-        if use_wandb and not wandb_run.disabled:
+        if self.use_wandb and not wandb_run.disabled:
             # wandb takes priority if given and not disabled
             log_dir = Path(wandb_run.dir)
         elif log_dir is not None:
@@ -175,7 +186,7 @@ class Logger:
             log_dir = Path(log_dir)
             # error if specified log_dir already exists
             log_dir.mkdir(parents=True)
-        elif use_wandb:
+        elif self.use_wandb:
             # if wandb is disabled, use its log_dir instead of raising error
             log_dir = Path(wandb_run.dir)
         else: # all outputs must have absolute paths
@@ -237,7 +248,7 @@ class Logger:
                 model_base_path = str(log_dir)
             self.model_base_path = model_base_path
 
-            if use_wandb:
+            if self.use_wandb:
                 wandb.save(
                     str(model_save_path),
                     base_path=model_base_path,

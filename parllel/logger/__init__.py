@@ -7,7 +7,7 @@ from .serializers import JSONConfigSerializer
 
 # create singleton Logger instance
 _logger = Logger(
-    stdout=True, # by default, Logger only outputs to stdout
+    stdout=True,  # by default, Logger only outputs to stdout
     verbosity=Verbosity.INFO,
 )
 
@@ -28,6 +28,7 @@ set_verbosity = _logger.set_verbosity
 close = _logger.close
 log_dir: Optional[Path] = None # updated by logger in log_dir.setter
 model_save_path: Optional[Path] = None # updated by logger in model_save_path.setter
+use_wandb: bool = False  # updated by logger in use_wandb.setter
 
 
 __all__ = [
