@@ -2,7 +2,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from parllel.buffers import Samples, buffer_asarray
+from parllel.buffers import Samples
 from parllel.buffers.utils import buffer_rotate
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
@@ -101,14 +101,12 @@ class RecurrentSampler(Sampler):
         valid[1:] = False
 
         # main sampling loop
-        b_not_done_yet = list(range(len(envs)))
+        b_not_done_yet = [b for b, env in enumerate(envs)]
         for t in range(self.batch_spec.T):
 
             # get a list of environments that are not done yet
             # we want to avoid stepping these
-            b_not_done_yet = list(
-                filter(lambda b: not envs[b].needs_reset, b_not_done_yet)
-            )
+            b_not_done_yet = [b for b in b_not_done_yet if not envs[b].needs_reset]
 
             if not b_not_done_yet:
                 # all done, we can stop sampling now
@@ -143,12 +141,16 @@ class RecurrentSampler(Sampler):
                 out_value=sample_buffer.agent.bootstrap_value,
             )
 
-        for b, env in enumerate(self.envs):
-            if env.needs_reset:
-                self.agent.reset_one(env_index=b)
-                # overwrite next first observation with reset observation
-                env.reset_async(out_obs=observation[self.batch_spec.T, b])
-                env.await_step()
+        # reset any environments that need reset in parallel
+        b_needs_reset = [b for b, env in enumerate(envs) if env.needs_reset]
+        
+        for b in b_needs_reset:
+            self.agent.reset_one(env_index=b)
+            # overwrite next first observation with reset observation
+            envs[b].reset_async(out_obs=observation[self.batch_spec.T, b])
+            
+        for b in b_needs_reset:
+            envs[b].await_step()
 
         # collect all completed trajectories from envs
         completed_trajectories = [
