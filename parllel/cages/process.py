@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import enum
 import multiprocessing as mp
-from typing import Any, List, Optional, Sequence, Tuple, Union
+from typing import Any, List, Optional, Sequence, Union
 
 from parllel.arrays import Array, ManagedMemoryArray
 from parllel.buffers import Buffer
@@ -9,7 +9,7 @@ from parllel.buffers.registry import BufferRegistry
 from parllel.buffers.utils import buffer_all
 
 from .cage import Cage
-from .collections import EnvStep, EnvSpaces
+from .collections import EnvStepType, EnvRandomStepType, ObsType, EnvSpaces
 from .traj_info import TrajInfo
 
 
@@ -54,10 +54,15 @@ class ProcessCage(Cage, mp.Process):
 
         # a simple locking mechanism on the caller side
         # ensures that `step` is always followed by `await_step`
-        self.waiting = False
+        self.waiting: bool = False
 
-    def set_samples_buffer(self, action: Buffer, obs: Buffer, reward: Buffer,
-                           done: Array, info: Buffer) -> None:
+    def set_samples_buffer(self,
+        action: Buffer,
+        obs: Buffer,
+        reward: Buffer,
+        done: Array,
+        info: Buffer,
+    ) -> None:
         """Pass reference to samples buffer after process start."""
         assert not self.waiting
         samples_buffer = (action, obs, reward, done, info)
@@ -74,10 +79,10 @@ class ProcessCage(Cage, mp.Process):
 
     def step_async(self,
         action: Buffer, *,
-        out_obs: Buffer = None,
-        out_reward: Buffer = None,
-        out_done: Buffer = None,
-        out_info: Buffer = None
+        out_obs: Optional[Buffer] = None,
+        out_reward: Optional[Buffer] = None,
+        out_done: Optional[Buffer] = None,
+        out_info: Optional[Buffer] = None,
     ) -> None:
         assert not self.waiting
         args = (action, out_obs, out_reward, out_done, out_info)
@@ -85,7 +90,7 @@ class ProcessCage(Cage, mp.Process):
         self._parent_pipe.send(Message(Command.step, args))
         self.waiting = True
 
-    def await_step(self) -> Union[EnvStep, Tuple[Buffer, EnvStep], Buffer]:
+    def await_step(self) -> Union[EnvStepType, EnvRandomStepType, ObsType]:
         assert self.waiting
         result = self._parent_pipe.recv()
         self.waiting = False
@@ -103,11 +108,11 @@ class ProcessCage(Cage, mp.Process):
         return trajs
     
     def random_step_async(self, *,
-        out_action: Buffer = None,
-        out_obs: Buffer = None,
-        out_reward: Buffer = None,
-        out_done: Buffer = None,
-        out_info: Buffer = None
+        out_action: Optional[Buffer] = None,
+        out_obs: Optional[Buffer] = None,
+        out_reward: Optional[Buffer] = None,
+        out_done: Optional[Buffer] = None,
+        out_info: Optional[Buffer] = None
     ) -> None:
         assert not self.waiting
         args = (out_action, out_obs, out_reward, out_done, out_info)
@@ -115,7 +120,7 @@ class ProcessCage(Cage, mp.Process):
         self._parent_pipe.send(Message(Command.random_step, tuple(args)))
         self.waiting = True
     
-    def reset_async(self, out_obs: Buffer = None) -> None:
+    def reset_async(self, *, out_obs: Optional[Buffer] = None) -> None:
         assert not self.waiting
         out_obs = self.buffer_registry.reduce_buffer(out_obs)
         self._parent_pipe.send(Message(Command.reset_async, out_obs))
@@ -127,7 +132,7 @@ class ProcessCage(Cage, mp.Process):
         self.join()  # wait for close command to finish
         mp.Process.close(self)
 
-    def run(self):
+    def run(self) -> None:
         """This method runs in a child process. It receives messages through
         follower_pipe, and sends back results.
         """
@@ -167,7 +172,7 @@ class ProcessCage(Cage, mp.Process):
                         obs = self._reset_env()
 
                 if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
-                    self._child_pipe.send(EnvStep(obs, reward, done, env_info))
+                    self._child_pipe.send((obs, reward, done, env_info))
                 else:
                     out_obs[:] = obs
                     out_reward[:] = reward

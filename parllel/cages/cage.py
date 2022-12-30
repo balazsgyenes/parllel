@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import gym
 from gym.wrappers import TimeLimit as GymTimeLimit
@@ -8,7 +8,7 @@ from parllel.arrays import Array
 from parllel.buffers import (Buffer, buffer_asarray, dict_to_namedtuple,
     namedtuple_to_dict)
 
-from .collections import EnvStep, EnvSpaces
+from .collections import ObsType, EnvStepType, EnvRandomStepType, EnvSpaces
 from .traj_info import TrajInfo
 
 
@@ -76,17 +76,7 @@ class Cage(ABC):
     def render(self, value: bool) -> None:
         self._render = value
 
-    @abstractmethod
-    def set_samples_buffer(self,
-        action: Buffer,
-        obs: Buffer,
-        reward: Buffer,
-        done: Array,
-        info: Buffer,
-    ) -> None:
-        raise NotImplementedError
-
-    def _step_env(self, action: Buffer) -> Tuple[Buffer, Buffer, Buffer, Buffer]:
+    def _step_env(self, action: Buffer) -> EnvStepType:
         """If any out parameter is given, they must all be given. 
         """
         # if rendering, render before step is taken so that the renderings
@@ -109,7 +99,7 @@ class Cage(ABC):
 
         return obs, reward, done, env_info
 
-    def _random_step_env(self) -> Tuple[Buffer, Buffer, Buffer, Buffer, Buffer]:
+    def _random_step_env(self) -> EnvRandomStepType:
 
         action = self._env.action_space.sample()
         action = dict_to_namedtuple(action, "action")
@@ -120,22 +110,41 @@ class Cage(ABC):
             # reset immediately and overwrite last observation
             obs = self._reset_env()
         
-        return action, obs, reward, done, env_info
+        return EnvRandomStepType(action, obs, reward, done, env_info)
 
-    def _reset_env(self) -> Buffer:
+    def _reset_env(self) -> ObsType:
         # store finished trajectory and start new one
         self._completed_trajs.append(self._traj_info)
         self._traj_info = self.TrajInfoClass()
         return self._env.reset()
 
     @abstractmethod
-    def await_step(self) -> Union[EnvStep, Tuple[Buffer, ...], Buffer, bool]:
+    def set_samples_buffer(self,
+        action: Buffer,
+        obs: Buffer,
+        reward: Buffer,
+        done: Array,
+        info: Buffer,
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def step_async(self,
+        action: Buffer, *,
+        out_obs: Optional[Buffer] = None,
+        out_reward: Optional[Buffer] = None,
+        out_done: Optional[Buffer] = None,
+        out_info: Optional[Buffer] = None,
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def await_step(self) -> Union[EnvStepType, EnvRandomStepType, ObsType]:
         """Wait for the asynchronous step to finish and return the results.
         If step_async, reset_async, or random_step_async was called previously
-        with input arguments, returns whether the environment is now done and
-        needs reset.
+        with input arguments, returns None.
         If step_async was called previously without output arguments, returns
-        the EnvStep.
+        the EnvStepType.
         If reset_async was called previously without output arguments, returns
         the reset observation.
         If random_step_async was called previously without output arguments,
@@ -149,11 +158,11 @@ class Cage(ABC):
 
     @abstractmethod
     def random_step_async(self, *,
-        out_action: Buffer = None,
-        out_obs: Buffer = None,
-        out_reward: Buffer = None,
-        out_done: Buffer = None,
-        out_info: Buffer = None
+        out_action: Optional[Buffer] = None,
+        out_obs: Optional[Buffer] = None,
+        out_reward: Optional[Buffer] = None,
+        out_done: Optional[Buffer] = None,
+        out_info: Optional[Buffer] = None
     ) -> None:
         """Take a step with a random action from the env's action space. The
         env resets automatically if done, regardless of the value of
@@ -162,7 +171,7 @@ class Cage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def reset_async(self, *, out_obs: Buffer = None) -> None:
+    def reset_async(self, *, out_obs: Optional[Buffer] = None) -> None:
         raise NotImplementedError
 
     @abstractmethod
