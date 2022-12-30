@@ -20,7 +20,7 @@ class Cage(ABC):
         `__init__` of `EnvClass` or to the factory function
     :param TrajInfoClass (Callable): TrajectoryInfo class or factory function
     wait_before_reset (bool): If True, environment does not reset when done
-        until `reset_async` is called, and `already_done` is set to True. If
+        until `reset_async` is called, and `needs_reset` is set to True. If
         False (default), the environment resets immediately.
     """
     def __init__(self,
@@ -34,7 +34,7 @@ class Cage(ABC):
         self.TrajInfoClass = TrajInfoClass
         self.wait_before_reset = wait_before_reset
 
-        self._already_done: bool = False
+        self._needs_reset: bool = False
         self._render: bool = False
 
     def _create_env(self) -> None:
@@ -65,8 +65,8 @@ class Cage(ABC):
         return self._spaces
 
     @property
-    def already_done(self) -> bool:
-        return self._already_done
+    def needs_reset(self) -> bool:
+        return self._needs_reset
 
     @property
     def render(self) -> bool:

@@ -107,7 +107,7 @@ class RecurrentSampler(Sampler):
             # get a list of environments that are not done yet
             # we want to avoid stepping these
             b_not_done_yet = list(
-                filter(lambda b: not envs[b].already_done, b_not_done_yet)
+                filter(lambda b: not envs[b].needs_reset, b_not_done_yet)
             )
 
             if not b_not_done_yet:
@@ -144,7 +144,7 @@ class RecurrentSampler(Sampler):
             )
 
         for b, env in enumerate(self.envs):
-            if env.already_done:
+            if env.needs_reset:
                 self.agent.reset_one(env_index=b)
                 # overwrite next first observation with reset observation
                 env.reset_async(out_obs=observation[self.batch_spec.T, b])

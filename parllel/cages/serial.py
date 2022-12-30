@@ -16,7 +16,7 @@ class SerialCage(Cage):
         `__init__` of `EnvClass` or to the factory function
     :param TrajInfoClass (Callable): TrajectoryInfo class or factory function
     wait_before_reset (bool): If True, environment does not reset when done
-        until `reset_async` is called, and `already_done` is set to True. If
+        until `reset_async` is called, and `needs_reset` is set to True. If
         False (default), the environment resets immediately.
     """
     def __init__(self,
@@ -58,7 +58,7 @@ class SerialCage(Cage):
         if done:
             if self.wait_before_reset:
                 # store done state
-                self._already_done = True
+                self._needs_reset = True
             else:
                 # reset immediately and overwrite last observation
                 obs = self._reset_env()
@@ -112,7 +112,7 @@ class SerialCage(Cage):
         
     def reset_async(self, *, out_obs: Buffer = None) -> None:
         reset_obs = self._reset_env()
-        self._already_done = False
+        self._needs_reset = False
 
         if out_obs is None:
             self._step_result = reset_obs

@@ -91,9 +91,9 @@ class ProcessCage(Cage, mp.Process):
         self.waiting = False
         if isinstance(result, bool):
             # obs, reward, done, info already written to out_args
-            self._already_done = result
+            self._needs_reset = result
         else:
-            self._already_done = self._parent_pipe.recv()
+            self._needs_reset = self._parent_pipe.recv()
             return result
 
     def collect_completed_trajs(self) -> List[TrajInfo]:
@@ -161,7 +161,7 @@ class ProcessCage(Cage, mp.Process):
                 if done:
                     if self.wait_before_reset:
                         # store done state
-                        self._already_done = True
+                        self._needs_reset = True
                     else:
                         # reset immediately and overwrite last observation
                         obs = self._reset_env()
@@ -173,7 +173,7 @@ class ProcessCage(Cage, mp.Process):
                     out_reward[:] = reward
                     out_done[:] = done
                     out_info[:] = env_info
-                self._child_pipe.send(self.already_done)
+                self._child_pipe.send(self.needs_reset)
 
                 # this Cage should not be stepped until the end of the batch
                 # so we start resetting already
