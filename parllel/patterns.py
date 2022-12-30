@@ -4,9 +4,9 @@ import numpy as np
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
     RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
-from parllel.buffers import (AgentSamples, EnvSamples, Samples, 
+from parllel.buffers import (Buffer, AgentSamples, EnvSamples, Samples, 
     NamedArrayTupleClass, NamedTuple, buffer_map)
-from parllel.cages import Cage, ProcessCage
+from parllel.cages import Cage, SerialCage, ProcessCage
 from parllel.handlers import Agent
 from parllel.samplers import EvalSampler
 from parllel.transforms import (Transform, Compose, ClipRewards,
@@ -22,14 +22,14 @@ def build_cages_and_env_buffers(
     wait_before_reset: bool,
     batch_spec: BatchSpec,
     parallel: bool,
-) -> Tuple:
+) -> Tuple[List[Cage], Buffer, Buffer]:
 
     if parallel:
         CageCls = ProcessCage
         ArrayCls = SharedMemoryArray
         RotatingArrayCls = RotatingSharedMemoryArray
     else:
-        CageCls = Cage
+        CageCls = SerialCage
         ArrayCls = Array
         RotatingArrayCls = RotatingArray
 
@@ -41,7 +41,7 @@ def build_cages_and_env_buffers(
     )
 
     # create example env
-    example_cage = Cage(**cage_kwargs)
+    example_cage = CageCls(**cage_kwargs)
 
     # get example output from env
     example_cage.random_step_async()

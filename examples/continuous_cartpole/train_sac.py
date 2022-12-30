@@ -56,7 +56,8 @@ def build(config: Dict) -> OffPolicyRunner:
         parallel=parallel,
     )
 
-    obs_space, action_space = cages[0].spaces
+    spaces = cages[0].spaces
+    obs_space, action_space = spaces.observation, spaces.action
 
     # instantiate model and agent
     pi_model = PiMlpModel(

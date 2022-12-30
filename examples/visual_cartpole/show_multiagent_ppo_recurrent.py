@@ -48,7 +48,7 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
     cage.random_step_async()
     action, obs, reward, done, info = cage.await_step()
 
-    obs_space, action_space = cage.spaces
+    obs_space, action_space = cage.spaces.observation, cage.spaces.action
 
     # allocate batch buffer based on examples
     step_observation = buffer_from_dict_example(obs, (1, 1), RotatingArray, name="obs", padding=1)

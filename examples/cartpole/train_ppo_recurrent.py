@@ -64,7 +64,8 @@ def build(config: Dict) -> OnPolicyRunner:
         parallel=parallel,
     )
 
-    obs_space, action_space = cages[0].spaces
+    spaces = cages[0].spaces
+    obs_space, action_space = spaces.observation, spaces.action
 
     # instantiate model and agent
     model = CartPoleLstmPgModel(

@@ -58,7 +58,8 @@ def build(config: Dict) -> OnPolicyRunner:
         parallel=parallel,
     )
 
-    obs_space, action_space = cages[0].spaces
+    spaces = cages[0].spaces
+    obs_space, action_space = spaces.observation, spaces.action
 
     # instantiate model and agent
     model = AtariLstmPgModel(
@@ -272,9 +273,9 @@ if __name__ == "__main__":
     )
 
     logger.init(
+        wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
         log_dir=Path(f"log_data/cartpole-visual-ppo/{run_id}"),
-        wandb_run=run,
         tensorboard=True,
         output_files={
             "txt": "log.txt",

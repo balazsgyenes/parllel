@@ -110,7 +110,7 @@ class Cage(ABC):
             # reset immediately and overwrite last observation
             obs = self._reset_env()
         
-        return EnvRandomStepType(action, obs, reward, done, env_info)
+        return action, obs, reward, done, env_info
 
     def _reset_env(self) -> ObsType:
         # store finished trajectory and start new one
