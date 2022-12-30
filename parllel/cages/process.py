@@ -54,13 +54,12 @@ class ProcessCage(Cage, mp.Process):
 
         # a simple locking mechanism on the caller side
         # ensures that `step` is always followed by `await_step`
-        # TODO: replace with waiting=True/False
-        self._last_command = None
+        self.waiting = False
 
     def set_samples_buffer(self, action: Buffer, obs: Buffer, reward: Buffer,
                            done: Array, info: Buffer) -> None:
         """Pass reference to samples buffer after process start."""
-        assert self._last_command is None
+        assert not self.waiting
         samples_buffer = (action, obs, reward, done, info)
         if not buffer_all(samples_buffer, lambda arr: isinstance(arr, ManagedMemoryArray)):
             raise TypeError(
@@ -80,17 +79,16 @@ class ProcessCage(Cage, mp.Process):
         out_done: Buffer = None,
         out_info: Buffer = None
     ) -> None:
-        assert self._last_command is None
+        assert not self.waiting
         args = (action, out_obs, out_reward, out_done, out_info)
         args = tuple(self.buffer_registry.reduce_buffer(buf) for buf in args)
         self._parent_pipe.send(Message(Command.step, args))
-        self._last_command = Command.step
+        self.waiting = True
 
     def await_step(self) -> Union[EnvStep, Tuple[Buffer, EnvStep], Buffer]:
-        assert self._last_command in {Command.step, Command.random_step,
-            Command.reset_async}
-        self._last_command = None
+        assert self.waiting
         result = self._parent_pipe.recv()
+        self.waiting = False
         if isinstance(result, bool):
             # obs, reward, done, info already written to out_args
             self._already_done = result
@@ -99,7 +97,7 @@ class ProcessCage(Cage, mp.Process):
             return result
 
     def collect_completed_trajs(self) -> List[TrajInfo]:
-        assert self._last_command is None
+        assert not self.waiting
         self._parent_pipe.send(Message(Command.collect_completed_trajs))
         trajs = self._parent_pipe.recv()
         return trajs
@@ -111,20 +109,20 @@ class ProcessCage(Cage, mp.Process):
         out_done: Buffer = None,
         out_info: Buffer = None
     ) -> None:
-        assert self._last_command is None
+        assert not self.waiting
         args = (out_action, out_obs, out_reward, out_done, out_info)
         args = (self.buffer_registry.reduce_buffer(buf) for buf in args)
         self._parent_pipe.send(Message(Command.random_step, tuple(args)))
-        self._last_command = Command.random_step
+        self.waiting = True
     
     def reset_async(self, out_obs: Buffer = None) -> None:
-        assert self._last_command is None
+        assert not self.waiting
         out_obs = self.buffer_registry.reduce_buffer(out_obs)
         self._parent_pipe.send(Message(Command.reset_async, out_obs))
-        self._last_command = Command.reset_async
+        self.waiting = True
 
     def close(self) -> None:
-        assert self._last_command is None
+        assert not self.waiting
         self._parent_pipe.send(Message(Command.close))
         self.join()  # wait for close command to finish
         mp.Process.close(self)
