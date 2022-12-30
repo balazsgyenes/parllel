@@ -46,7 +46,7 @@ class ProcessCage(Cage, mp.Process):
         # buffer ID and an indexing history
         self.buffer_registry = BufferRegistry(buffers)
 
-        # start executing `run` method, which also calls super().initialize()
+        # start executing `run` method, which also creates the environment
         self.start()
 
         # get env spaces from child process
@@ -116,8 +116,8 @@ class ProcessCage(Cage, mp.Process):
     ) -> None:
         assert not self.waiting
         args = (out_action, out_obs, out_reward, out_done, out_info)
-        args = (self.buffer_registry.reduce_buffer(buf) for buf in args)
-        self._parent_pipe.send(Message(Command.random_step, tuple(args)))
+        args = tuple(self.buffer_registry.reduce_buffer(buf) for buf in args)
+        self._parent_pipe.send(Message(Command.random_step, args))
         self.waiting = True
     
     def reset_async(self, *, out_obs: Optional[Buffer] = None) -> None:
@@ -134,7 +134,7 @@ class ProcessCage(Cage, mp.Process):
 
     def run(self) -> None:
         """This method runs in a child process. It receives messages through
-        follower_pipe, and sends back results.
+        child_pipe, and sends back results.
         """
         self._create_env() # create env, traj info, etc.
 
@@ -187,7 +187,8 @@ class ProcessCage(Cage, mp.Process):
 
             elif command == Command.collect_completed_trajs:
                 # data must be None
-                trajs: List[TrajInfo] = super().collect_completed_trajs()
+                trajs = self._completed_trajs
+                self._completed_trajs = []
                 self._child_pipe.send(trajs)
 
             elif command == Command.random_step:
