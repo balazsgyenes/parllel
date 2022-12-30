@@ -298,6 +298,7 @@ class Logger:
         key: str,
         value: Any,
         do_not_write_to: Optional[Union[str, Tuple[str, ...]]] = "",
+        write_only_to: Optional[Union[str, Tuple[str, ...]]] = "",
     ) -> None:
         """
         Log a value of some diagnostic
@@ -315,6 +316,7 @@ class Logger:
         key: str,
         value: Union[np.ndarray, List[float], float],
         do_not_write_to: Optional[Union[str, Tuple[str, ...]]] = "",
+        write_only_to: Optional[Union[str, Tuple[str, ...]]] = "",
     ) -> None:
         """
         The same as record(), but if called many times, values averaged.

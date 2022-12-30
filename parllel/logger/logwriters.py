@@ -33,7 +33,7 @@ class Video:
     :param fps: frames per second
     """
 
-    def __init__(self, frames: torch.Tensor, fps: Union[float, int]):
+    def __init__(self, frames: Union[np.ndarray, PathLike], fps: Union[float, int]):
         self.frames = frames
         self.fps = fps
 

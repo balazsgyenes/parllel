@@ -22,8 +22,8 @@ class RecordVectorizedVideo(BatchTransform):
         buffer_key_to_record: str, # e.g. "observation" or "env_info.rendering"
         record_every_n_steps: int,
         video_length: int,
-        env_fps: Optional[int] = None,
-        output_fps: int = 30,
+        env_fps: int = 4,
+        output_fps: Optional[int] = None,
         tiled_height: Optional[int] = None,
         tiled_width: Optional[int] = None,
     ) -> None:
@@ -31,8 +31,8 @@ class RecordVectorizedVideo(BatchTransform):
         self.record_every = int(record_every_n_steps)
         self.length = int(video_length)
         self.keys = buffer_key_to_record.split(".")
-        self.env_fps = env_fps if env_fps is not None else output_fps
-        self.output_fps = output_fps
+        self.env_fps = env_fps
+        self.output_fps = output_fps if output_fps is not None else env_fps
 
         self.output_dir.mkdir(parents=True)
 
