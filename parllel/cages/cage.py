@@ -34,6 +34,7 @@ class Cage:
         self.wait_before_reset = wait_before_reset
 
         self._already_done: bool = False
+        self._render: bool = False
         self._create_env()
 
     def _create_env(self) -> None:
@@ -52,6 +53,7 @@ class Cage:
             env_unwrapped = env_unwrapped.env
             self._time_limit = isinstance(env_unwrapped, GymTimeLimit)
 
+        # save obs and action spaces for easy access
         self._spaces = EnvSpaces(
             observation=self._env.observation_space,
             action=self._env.action_space,
@@ -65,8 +67,21 @@ class Cage:
     def already_done(self) -> bool:
         return self._already_done
 
-    def set_samples_buffer(self, action: Buffer, obs: Buffer, reward: Buffer,
-                           done: Array, info: Buffer) -> None:
+    @property
+    def render(self) -> bool:
+        return self._render
+
+    @render.setter
+    def render(self, value: bool) -> None:
+        self._render = value
+
+    def set_samples_buffer(self,
+        action: Buffer,
+        obs: Buffer,
+        reward: Buffer,
+        done: Array,
+        info: Buffer,
+    ) -> None:
         pass
 
     def step_async(self,
@@ -78,6 +93,11 @@ class Cage:
     ) -> None:
         """If any out parameter is given, they must all be given. 
         """
+        # if rendering, render before step is taken so that the renderings
+        # line up with the corresponding observation
+        if self._render:
+            rendering = self._env.render(mode="rgb_array")
+        
         # get underlying numpy arrays and convert to dict if needed
         action = buffer_asarray(action)
         action = namedtuple_to_dict(action)
@@ -88,10 +108,12 @@ class Cage:
         if self._time_limit:
             env_info["timeout"] = env_info.pop("TimeLimit.truncated", False)
 
+        if self._render:
+            env_info["rendering"] = rendering
+
         if done:
             # store finished trajectory and start new one
             self._completed_trajs.append(self._traj_info)
-            self._traj_info = self.TrajInfoClass()
             if self.wait_before_reset:
                 # store done state
                 self._already_done = True
@@ -100,6 +122,7 @@ class Cage:
             else:
                 # reset immediately and overwrite last observation
                 obs = self._env.reset()
+                self._traj_info = self.TrajInfoClass()
     
         if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
             self._step_result = EnvStep(obs, reward, done, env_info)
@@ -115,6 +138,17 @@ class Cage:
         self._traj_info = self.TrajInfoClass()
 
     def await_step(self) -> Union[EnvStep, Tuple[Buffer, ...], Buffer, bool]:
+        """Wait for the asynchronous step to finish and return the results.
+        If step_async, reset_async, or random_step_async was called previously
+        with input arguments, returns whether the environment is now done and
+        needs reset.
+        If step_async was called previously without output arguments, returns
+        the EnvStep.
+        If reset_async was called previously without output arguments, returns
+        the reset observation.
+        If random_step_async was called previously without output arguments,
+        returns the action, observation, reward, done and env_info as a tuple.
+        """
         result = self._step_result
         self._step_result = None
         return result
@@ -148,6 +182,7 @@ class Cage:
 
     def reset_async(self, *, out_obs: Buffer = None) -> None:
         if self._already_done:
+            # do not call reset, since reset was already done asynchronously
             _reset_obs = self._reset_obs
             self._already_done = False
             self._reset_obs = None
