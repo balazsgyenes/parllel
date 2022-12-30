@@ -1,17 +1,18 @@
+from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Tuple, Union
 
 import gym
 from gym.wrappers import TimeLimit as GymTimeLimit
 
 from parllel.arrays import Array
-from parllel.buffers import (Buffer, NamedTuple, buffer_asarray,
-    dict_to_namedtuple, namedtuple_to_dict)
+from parllel.buffers import (Buffer, buffer_asarray, dict_to_namedtuple,
+    namedtuple_to_dict)
 
 from .collections import EnvStep, EnvSpaces
 from .traj_info import TrajInfo
 
 
-class Cage:
+class Cage(ABC):
     """Cages abstract communication between the sampler and the environments.
 
     :param EnvClass (Callable): Environment class or factory function
@@ -35,13 +36,10 @@ class Cage:
 
         self._already_done: bool = False
         self._render: bool = False
-        self._create_env()
 
     def _create_env(self) -> None:
         self._completed_trajs: List[TrajInfo] = []
         self._traj_info: TrajInfo = self.TrajInfoClass()
-        self._step_result: Union[EnvStep, str] = None
-        self._reset_obs: Union[Buffer, str] = None
 
         self._env: gym.Env = self.EnvClass(**self.env_kwargs)
         self._env.reset()
@@ -59,6 +57,9 @@ class Cage:
             action=self._env.action_space,
         )
 
+    def _close_env(self) -> None:
+        self._env.close()
+
     @property
     def spaces(self) -> EnvSpaces:
         return self._spaces
@@ -75,6 +76,7 @@ class Cage:
     def render(self, value: bool) -> None:
         self._render = value
 
+    @abstractmethod
     def set_samples_buffer(self,
         action: Buffer,
         obs: Buffer,
@@ -82,15 +84,9 @@ class Cage:
         done: Array,
         info: Buffer,
     ) -> None:
-        pass
+        raise NotImplementedError
 
-    def step_async(self,
-        action: Buffer, *,
-        out_obs: Buffer = None,
-        out_reward: Buffer = None,
-        out_done: Buffer = None,
-        out_info: Buffer = None,
-    ) -> None:
+    def _step_env(self, action: Buffer) -> Tuple[Buffer, Buffer, Buffer, Buffer]:
         """If any out parameter is given, they must all be given. 
         """
         # if rendering, render before step is taken so that the renderings
@@ -111,32 +107,28 @@ class Cage:
         if self._render:
             env_info["rendering"] = rendering
 
+        return obs, reward, done, env_info
+
+    def _random_step_env(self) -> Tuple[Buffer, Buffer, Buffer, Buffer, Buffer]:
+
+        action = self._env.action_space.sample()
+        action = dict_to_namedtuple(action, "action")
+
+        obs, reward, done, env_info = self._step_env(action)
+
         if done:
-            # store finished trajectory and start new one
-            self._completed_trajs.append(self._traj_info)
-            if self.wait_before_reset:
-                # store done state
-                self._already_done = True
-                # start environment reset asynchronously
-                self._defer_env_reset()
-            else:
-                # reset immediately and overwrite last observation
-                obs = self._env.reset()
-                self._traj_info = self.TrajInfoClass()
-    
-        if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
-            self._step_result = EnvStep(obs, reward, done, env_info)
-        else:
-            out_obs[:] = obs
-            out_reward[:] = reward
-            out_done[:] = done
-            out_info[:] = env_info
-            self._step_result = self._already_done
+            # reset immediately and overwrite last observation
+            obs = self._reset_env()
+        
+        return action, obs, reward, done, env_info
 
-    def _defer_env_reset(self) -> None:
-        self._reset_obs = self._env.reset()
+    def _reset_env(self) -> Buffer:
+        # store finished trajectory and start new one
+        self._completed_trajs.append(self._traj_info)
         self._traj_info = self.TrajInfoClass()
+        return self._env.reset()
 
+    @abstractmethod
     def await_step(self) -> Union[EnvStep, Tuple[Buffer, ...], Buffer, bool]:
         """Wait for the asynchronous step to finish and return the results.
         If step_async, reset_async, or random_step_async was called previously
@@ -149,15 +141,13 @@ class Cage:
         If random_step_async was called previously without output arguments,
         returns the action, observation, reward, done and env_info as a tuple.
         """
-        result = self._step_result
-        self._step_result = None
-        return result
+        raise NotImplementedError
 
+    @abstractmethod
     def collect_completed_trajs(self) -> List[TrajInfo]:
-        completed_trajs = self._completed_trajs
-        self._completed_trajs = []
-        return completed_trajs
+        raise NotImplementedError
 
+    @abstractmethod
     def random_step_async(self, *,
         out_action: Buffer = None,
         out_obs: Buffer = None,
@@ -165,36 +155,16 @@ class Cage:
         out_done: Buffer = None,
         out_info: Buffer = None
     ) -> None:
-        """Take a step with a random action from the env's action space.
+        """Take a step with a random action from the env's action space. The
+        env resets automatically if done, regardless of the value of
+        wait_before_reset.
         """
-        action = self.spaces.action.sample()
-        action = dict_to_namedtuple(action, "action")
+        raise NotImplementedError
 
-        # call method in this class explicitly, in case overridden by child
-        Cage.step_async(self, action, out_obs=out_obs, out_reward=out_reward,
-            out_done=out_done, out_info=out_info)
-
-        if isinstance(self._step_result, NamedTuple):
-            self._step_result = (action, *self._step_result)
-        else:
-            out_action[:] = action
-            self._step_result = self._already_done
-
+    @abstractmethod
     def reset_async(self, *, out_obs: Buffer = None) -> None:
-        if self._already_done:
-            # do not call reset, since reset was already done asynchronously
-            _reset_obs = self._reset_obs
-            self._already_done = False
-            self._reset_obs = None
-        else:
-            _reset_obs = self._env.reset()
-            self._traj_info = self.TrajInfoClass()
+        raise NotImplementedError
 
-        if out_obs is None:
-            self._step_result = _reset_obs
-        else:
-            out_obs[:] = _reset_obs
-            self._step_result = self._already_done
-
+    @abstractmethod
     def close(self) -> None:
-        self._env.close()
+        raise NotImplementedError
