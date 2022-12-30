@@ -25,6 +25,7 @@ from parllel.torch.algos.ppo import (PPO, add_default_ppo_config,
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
+from parllel.transforms.video_recorder import RecordVectorizedVideo
 from parllel.types import BatchSpec
 
 from hera_gym.builds.visual_cartpole import build_visual_cartpole
@@ -129,6 +130,16 @@ def build(config: Dict) -> OnPolicyRunner:
         normalize=config["normalize_advantage"],
     )
 
+    # TODO: log videos without calling `log`, which causes tensorboard to go out of sync
+    if video_config := config.get("video_recorder", {}):
+        video_recorder = RecordVectorizedVideo(
+            batch_buffer=batch_buffer,
+            buffer_key_to_record="observation",
+            env_fps=50, # TODO: grab this from example env metadata
+            **video_config,
+        )
+        batch_transforms.append(video_recorder)
+
     sampler = RecurrentSampler(
         batch_spec=batch_spec,
         envs=cages,
@@ -178,6 +189,8 @@ def build(config: Dict) -> OnPolicyRunner:
     
     finally:
         sampler.close()
+        if video_config := config.get("video_recorder", {}):
+            video_recorder.close()
         agent.close()
         for cage in cages:
             cage.close()
@@ -232,8 +245,36 @@ if __name__ == "__main__":
     config = add_default_ppo_config(config)
     config = add_default_config_fields(config)
 
+    # default values if wandb is not installed (or not used)
+    run = None
+    run_id = datetime.now().strftime('%Y-%m-%d_%H-%M')
+
+    try:
+        import wandb
+        run = wandb.init(
+            anonymous="must", # for this example, send to wandb dummy account
+            project="CartPole",
+            group="PPO",
+            tags=["discrete", "image-based", "ppo"],
+            config=config,
+            sync_tensorboard=True,  # auto-upload any values logged to tensorboard
+            monitor_gym=True,  # save videos to wandb
+            save_code=True,  # save script used to start training, git commit, and patch
+        )
+        run_id = run.id
+    except ImportError:
+        pass
+
+    config["video_recorder"] = dict(
+        record_every_n_steps=5e4,
+        video_length=250,
+        output_dir=Path(f"videos/{run_id}"),
+    )
+
     logger.init(
-        log_dir=Path(f"log_data/cartpole-visual-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        # this log_dir is used if wandb is disabled (using `wandb disabled`)
+        log_dir=Path(f"log_data/cartpole-visual-ppo/{run_id}"),
+        wandb_run=run,
         tensorboard=True,
         output_files={
             "txt": "log.txt",
@@ -246,3 +287,6 @@ if __name__ == "__main__":
 
     with build(config) as runner:
         runner.run()
+
+    if run is not None:
+        run.finish()
