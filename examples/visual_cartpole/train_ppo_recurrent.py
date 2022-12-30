@@ -245,9 +245,14 @@ if __name__ == "__main__":
     config = add_default_ppo_config(config)
     config = add_default_config_fields(config)
 
+    # default values if wandb is not installed (or not used)
+    run = None
+    run_id = datetime.now().strftime('%Y-%m-%d_%H-%M')
+
     try:
         import wandb
         run = wandb.init(
+            anonymous="must", # for this example, send to wandb dummy account
             project="CartPole",
             group="PPO",
             tags=["discrete", "image-based", "ppo"],
@@ -258,8 +263,7 @@ if __name__ == "__main__":
         )
         run_id = run.id
     except ImportError:
-        run = None
-        run_id = datetime.now().strftime('%Y-%m-%d_%H-%M')
+        pass
 
     config["video_recorder"] = dict(
         record_every_n_steps=5e4,
@@ -268,6 +272,7 @@ if __name__ == "__main__":
     )
 
     logger.init(
+        # this log_dir is used if wandb is disabled (using `wandb disabled`)
         log_dir=Path(f"log_data/cartpole-visual-ppo/{run_id}"),
         wandb_run=run,
         tensorboard=True,

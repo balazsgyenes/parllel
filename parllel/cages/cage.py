@@ -147,7 +147,7 @@ class Cage:
         If reset_async was called previously without output arguments, returns
         the reset observation.
         If random_step_async was called previously without output arguments,
-        returns 
+        returns the action, observation, reward, done and env_info as a tuple.
         """
         result = self._step_result
         self._step_result = None

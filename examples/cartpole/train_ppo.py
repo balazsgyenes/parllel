@@ -214,7 +214,27 @@ if __name__ == "__main__":
     config = add_default_ppo_config(config)
     config = add_default_config_fields(config)
 
+    # default values if wandb is not installed (or not used)
+    run = None
+    run_id = datetime.now().strftime('%Y-%m-%d_%H-%M')
+
+    try:
+        import wandb
+        run = wandb.init(
+            anonymous="must", # for this example, send to wandb dummy account
+            project="CartPole",
+            group="PPO",
+            tags=["discrete", "state-based", "ppo"],
+            config=config,
+            sync_tensorboard=True,  # auto-upload any values logged to tensorboard
+            save_code=True,  # save script used to start training, git commit, and patch
+        )
+        run_id = run.id
+    except ImportError:
+        pass
+
     logger.init(
+        # this log_dir is used if wandb is disabled (using `wandb disabled`)
         log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
         output_files={
@@ -228,3 +248,6 @@ if __name__ == "__main__":
 
     with build(config) as runner:
         runner.run()
+
+    if run is not None:
+        run.finish()
