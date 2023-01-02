@@ -58,10 +58,10 @@ def build(config, parallel, profile_path):
     batch_spec: BatchSpec = config["sampler"]["batch_spec"]
 
     cage_kwargs = dict(
-        EnvClass = config["env"]["EnvClass"],
-        env_kwargs = config["env"]["env_kwargs"],
-        TrajInfoClass = config["env"]["TrajInfoClass"],
-        wait_before_reset = False, # reset immediately for speed test
+        EnvClass=config["env"]["EnvClass"],
+        env_kwargs=config["env"]["env_kwargs"],
+        TrajInfoClass=config["env"]["TrajInfoClass"],
+        reset_automatically=True, # reset immediately for speed test
     )
 
     # create_example env
@@ -95,11 +95,11 @@ def build(config, parallel, profile_path):
     batch_samples = Samples(batch_agent_samples, batch_buffer_env)
 
     sampler = ProfilingSampler(
-        batch_spec = config["sampler"]["batch_spec"],
-        envs = cages, 
-        sample_buffer = batch_samples,
-        n_iterations = config["sampler"]["n_iterations"],
-        profile_path = profile_path,
+        batch_spec=config["sampler"]["batch_spec"],
+        envs=cages, 
+        sample_buffer=batch_samples,
+        n_iterations=config["sampler"]["n_iterations"],
+        profile_path=profile_path,
     )
 
     try:

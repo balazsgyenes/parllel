@@ -39,7 +39,7 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
         EnvClass=build_multi_agent_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
-        wait_before_reset=False,
+        reset_automatically=True,
     )
 
     cage = Cage(**cage_kwargs)

@@ -19,7 +19,7 @@ def build_cages_and_env_buffers(
     EnvClass: Callable,
     env_kwargs: Dict,
     TrajInfoClass: Callable,
-    wait_before_reset: bool,
+    reset_automatically: bool,
     batch_spec: BatchSpec,
     parallel: bool,
 ) -> Tuple[List[Cage], Buffer, Buffer]:
@@ -34,10 +34,10 @@ def build_cages_and_env_buffers(
         RotatingArrayCls = RotatingArray
 
     cage_kwargs = dict(
-        EnvClass = EnvClass,
-        env_kwargs = env_kwargs,
-        TrajInfoClass = TrajInfoClass,
-        wait_before_reset = wait_before_reset,
+        EnvClass=EnvClass,
+        env_kwargs=env_kwargs,
+        TrajInfoClass=TrajInfoClass,
+        reset_automatically=reset_automatically,
     )
 
     # create example env
@@ -314,10 +314,10 @@ def build_eval_sampler(
     step_buffer = buffer_from_example(stripped_batch_buffer[0], (1,))
 
     eval_cage_kwargs = dict(
-        EnvClass = EnvClass,
-        env_kwargs = env_kwargs,
-        TrajInfoClass = TrajInfoClass,
-        wait_before_reset = False,
+        EnvClass=EnvClass,
+        env_kwargs=env_kwargs,
+        TrajInfoClass=TrajInfoClass,
+        reset_automatically=True,
     )
     if issubclass(CageCls, ProcessCage):
         eval_cage_kwargs["buffers"] = step_buffer

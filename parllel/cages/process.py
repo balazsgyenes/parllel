@@ -164,12 +164,12 @@ class ProcessCage(Cage, mp.Process):
                 obs, reward, done, env_info = self._step_env(action)
 
                 if done:
-                    if self.wait_before_reset:
-                        # store done state
-                        self._needs_reset = True
-                    else:
+                    if self.reset_automatically:
                         # reset immediately and overwrite last observation
                         obs = self._reset_env()
+                    else:
+                        # store done state
+                        self._needs_reset = True
 
                 if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
                     self._child_pipe.send((obs, reward, done, env_info))
@@ -182,7 +182,7 @@ class ProcessCage(Cage, mp.Process):
 
                 # this Cage should not be stepped until the end of the batch
                 # so we start resetting already
-                if done and self.wait_before_reset:
+                if done and not self.reset_automatically:
                     _reset_obs = self._reset_env()
 
             elif command == Command.collect_completed_trajs:

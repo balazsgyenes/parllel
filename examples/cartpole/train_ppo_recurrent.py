@@ -59,7 +59,7 @@ def build(config: Dict) -> OnPolicyRunner:
         EnvClass=EnvClass,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
-        wait_before_reset=True,
+        reset_automatically=False,
         batch_spec=batch_spec,
         parallel=parallel,
     )

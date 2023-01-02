@@ -26,10 +26,12 @@ class RecurrentSampler(Sampler):
         """Generates samples for training recurrent agents.
         """
         for cage in envs:
-            if not cage.wait_before_reset:
-                raise ValueError("RecurrentSampler expects cages that do not "
-                    "reset environments until the end of a batch. Set "
-                    "wait_before_reset=True")
+            if cage.reset_automatically:
+                raise ValueError(
+                    "RecurrentSampler expects cages that do not reset "
+                    "environments until commanded to. Set "
+                    "`reset_automatically=False`."
+                )
 
         # verify that initial_rnn_state field exists
         if not hasattr(sample_buffer.agent, "initial_rnn_state"):

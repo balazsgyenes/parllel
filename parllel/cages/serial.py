@@ -15,21 +15,22 @@ class SerialCage(Cage):
     :param env_kwargs (Dict): Key word arguments that should be passed to the
         `__init__` of `EnvClass` or to the factory function
     :param TrajInfoClass (Callable): TrajectoryInfo class or factory function
-    wait_before_reset (bool): If True, environment does not reset when done
-        until `reset_async` is called, and `needs_reset` is set to True. If
-        False (default), the environment resets immediately.
+    :param reset_automatically (bool): If True (default), environment is reset
+    immediately when done is True, replacing the returned observation with the
+    reset observation. If False, environment is not reset and the
+    `needs_reset` flag is set to True.
     """
     def __init__(self,
         EnvClass: Callable,
         env_kwargs: Dict,
         TrajInfoClass: Callable,
-        wait_before_reset: bool = False,
+        reset_automatically: bool = True,
     ) -> None:
         super().__init__(
             EnvClass=EnvClass,
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
-            wait_before_reset=wait_before_reset,
+            reset_automatically=reset_automatically,
         )
         # create env immediately in the local process
         self._create_env()
@@ -54,12 +55,12 @@ class SerialCage(Cage):
         obs, reward, done, env_info = self._step_env(action)
 
         if done:
-            if self.wait_before_reset:
-                # store done state
-                self._needs_reset = True
-            else:
+            if self.reset_automatically:
                 # reset immediately and overwrite last observation
                 obs = self._reset_env()
+            else:
+                # store done state
+                self._needs_reset = True
     
         if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
             self._step_result = (obs, reward, done, env_info)

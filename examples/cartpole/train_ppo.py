@@ -52,7 +52,7 @@ def build(config: Dict) -> OnPolicyRunner:
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
-        wait_before_reset=False,
+        reset_automatically=True,
         batch_spec=batch_spec,
         parallel=parallel,
     )

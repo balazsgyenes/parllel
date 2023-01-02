@@ -95,7 +95,7 @@ def envs(action_space, observation_space, batch_spec, multireward):
             multireward=multireward,
         ),
         TrajInfoClass=MultiAgentTrajInfo if multireward else TrajInfo,
-        wait_before_reset=False,
+        reset_automatically=True,
     ) for length in episode_lengths]
 
     yield cages
