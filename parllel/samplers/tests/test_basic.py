@@ -7,7 +7,7 @@ from parllel.arrays import (Array, RotatingArray, buffer_from_example,
     buffer_from_dict_example)
 from parllel.buffers import (AgentSamples, EnvSamples, NamedArrayTuple,
     NamedArrayTupleClass, Samples, buffer_method, buffer_asarray)
-from parllel.cages import Cage, MultiAgentTrajInfo, TrajInfo
+from parllel.cages import SerialCage, MultiAgentTrajInfo, TrajInfo
 from parllel.types import BatchSpec
 
 from parllel.buffers.tests.utils import buffer_equal
@@ -84,7 +84,7 @@ def envs(action_space, observation_space, batch_spec, multireward):
         EPISODE_LENGTH_START + EPISODE_LENGTH_STEP * batch_spec.B,
         EPISODE_LENGTH_STEP,
     )
-    cages = [Cage(
+    cages = [SerialCage(
         EnvClass=DummyEnv,
         env_kwargs=dict(
             action_space=action_space,

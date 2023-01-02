@@ -6,7 +6,7 @@ from parllel.arrays import (Array, RotatingArray, buffer_from_example,
     buffer_from_dict_example)
 from parllel.buffers import (AgentSamples, EnvSamples, NamedArrayTuple,
     NamedArrayTupleClass, Samples, buffer_method, buffer_asarray)
-from parllel.cages import Cage, MultiAgentTrajInfo, TrajInfo
+from parllel.cages import SerialCage, MultiAgentTrajInfo, TrajInfo
 
 from parllel.buffers.tests.utils import buffer_equal
 from parllel.samplers.recurrent import RecurrentSampler
@@ -29,7 +29,7 @@ def episode_lengths(request, batch_spec):
 
 @pytest.fixture
 def envs(action_space, observation_space, batch_spec, multireward, episode_lengths):
-    cages = [Cage(
+    cages = [SerialCage(
         EnvClass=DummyEnv,
         env_kwargs=dict(
             action_space=action_space,
