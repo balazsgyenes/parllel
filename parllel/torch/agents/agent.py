@@ -1,5 +1,5 @@
 from os import PathLike
-from typing import Callable, Union
+from typing import Callable, Optional, Union
 
 import torch
 
@@ -16,7 +16,7 @@ class TorchAgent(Agent):
     def __init__(self,
             model: torch.nn.Module,
             distribution: Distribution,
-            device: torch.device = None
+            device: Optional[torch.device] = None,
         ) -> None:
         self.model = model
         self.distribution = distribution

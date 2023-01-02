@@ -16,21 +16,26 @@ from .pg import AgentInfo, AgentPrediction
 @dataclass(frozen=True)
 class ModelOutputs:
     pi: Buffer
-    value: Buffer = None
-    next_rnn_state: Buffer = None
+    value: Optional[Buffer] = None
+    next_rnn_state: Optional[Buffer] = None
 
 
 class CategoricalPgAgent(TorchAgent):
     """Agent for policy gradient algorithm using categorical action
-    distribution for discrete action spaces. Same as `GaussianPgAgent` except
-    with `Categorical` distribution, and has a different interface to the model
-    (model here outputs discrete probabilities in place of means and log_stds,
-    while both output the value estimate).
+    distribution for discrete action spaces.
+    
+    The model must return the ModelOutputs type in this module, which contains:
+        - pi: probabilities for each discrete action in the action space
+        - value: value estimates, which can be omitted in cases without value
+            prediction (e.g. vanilla PG) or where another entity predicts
+            value (multi-agent scenarious)
+        - next_rnn_state: the hidden recurrent state for the next time step
 
-    Assumptions of the model:
-        - input arguments must include observation, may include previous_action,
-            and may include rnn_states as an optional argument (in this order)
-        - return type is the ModelOutputs dataclass defined in this module
+    The model must take between 1-3 arguments in the following order (arguments
+    are only positional, not passed by keyword):
+        - observation: current state of the environment
+        - previous_action: action sampled from distribution from last time step
+        - rnn_state: hidden recurrent state from last time step
     """
     def __init__(self,
             model: torch.nn.Module,
@@ -38,7 +43,7 @@ class CategoricalPgAgent(TorchAgent):
             observation_space: gym.Space,
             action_space: gym.Space,
             n_states: Optional[int] = None,
-            device: torch.device = None,
+            device: Optional[torch.device] = None,
             recurrent: bool = False,
         ) -> None:
         super().__init__(model, distribution, device)

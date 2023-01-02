@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Union
 
 import torch
 import torch.optim
+import numpy as np
 
 from parllel.algorithm import Algorithm
 from parllel.arrays import Array
@@ -49,6 +50,7 @@ class PPO(Algorithm):
         ratio_clip: float,
         value_clipping_mode: str,
         value_clip: Optional[float] = None,
+        kl_divergence_limit: float = np.inf,
     ) -> None:
         """Saves input settings."""
         self.batch_spec = batch_spec
@@ -63,8 +65,10 @@ class PPO(Algorithm):
         self.ratio_clip = ratio_clip
         self.value_clipping_mode = value_clipping_mode
         self.value_clip = value_clip
+        self.kl_divergence_limit = kl_divergence_limit
 
         self.update_counter = 0
+        self.early_stopping = False
         self.algo_log_info = defaultdict(list)
         self.to_device_func = partial(buffer_to_device,
             device=self.agent.device)
@@ -85,11 +89,14 @@ class PPO(Algorithm):
         self.dataloader.apply_func(self.to_device_func)
 
         self.algo_log_info.clear()
+        self.early_stopping = False
 
         for _ in range(self.epochs):
             for batch in self.dataloader.batches():
                 self.optimizer.zero_grad()
                 loss = self.loss(batch)
+                if self.early_stopping:
+                    break
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.agent.model.parameters(),
@@ -98,7 +105,10 @@ class PPO(Algorithm):
                 self.algo_log_info["grad_norm"].append(grad_norm.item())
                 self.optimizer.step()
                 self.update_counter += 1
-        
+
+            if self.early_stopping:
+                break
+
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
             self.algo_log_info["learning_rate"] = self.optimizer.param_groups[0]["lr"]
@@ -152,7 +162,7 @@ class PPO(Algorithm):
             value_error = torch.max(clipped_value_error, standard_value_error)
         else:
             raise ValueError(f"Invalid value clipping mode '{self.value_clipping_mode}'")
-        
+
         value_loss = self.value_loss_coeff * valid_mean(value_error, batch.valid)
 
         entropy = dist.mean_entropy(dist_info, batch.valid)
@@ -165,9 +175,12 @@ class PPO(Algorithm):
         # see issue #417: https://github.com/DLR-RM/stable-baselines3/issues/417
         # and discussion in PR #419: https://github.com/DLR-RM/stable-baselines3/pull/419
         # and Schulman blog: http://joschu.net/blog/kl-approx.html
-        # TODO: implement early stopping on kl_div_limit
         with torch.no_grad():
             approx_kl_div = torch.mean(ratio - 1 - torch.log(ratio))
+            if approx_kl_div >= self.kl_divergence_limit:
+                self.early_stopping = True
+                logger.info(f"Reached the maximum KL divergence limit of {self.kl_divergence_limit} at step {self.update_counter}, stopping further updates.")
+                return loss
 
         perplexity = dist.mean_perplexity(dist_info, batch.valid)
 
