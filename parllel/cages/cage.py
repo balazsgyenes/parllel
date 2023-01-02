@@ -1,47 +1,46 @@
-from typing import Callable, Dict, List, Tuple, Union
+from abc import ABC, abstractmethod
+from typing import Callable, Dict, List, Optional, Union
 
 import gym
 from gym.wrappers import TimeLimit as GymTimeLimit
 
 from parllel.arrays import Array
-from parllel.buffers import (Buffer, NamedTuple, buffer_asarray,
-    dict_to_namedtuple, namedtuple_to_dict)
+from parllel.buffers import (Buffer, buffer_asarray, dict_to_namedtuple,
+    namedtuple_to_dict)
 
-from .collections import EnvStep, EnvSpaces
+from .collections import ObsType, EnvStepType, EnvRandomStepType, EnvSpaces
 from .traj_info import TrajInfo
 
 
-class Cage:
+class Cage(ABC):
     """Cages abstract communication between the sampler and the environments.
 
     :param EnvClass (Callable): Environment class or factory function
     :param env_kwargs (Dict): Key word arguments that should be passed to the
         `__init__` of `EnvClass` or to the factory function
     :param TrajInfoClass (Callable): TrajectoryInfo class or factory function
-    wait_before_reset (bool): If True, environment does not reset when done
-        until `reset_async` is called, and `already_done` is set to True. If
-        False (default), the environment resets immediately.
+    :param reset_automatically (bool): If True (default), environment is reset
+    immediately when done is True, replacing the returned observation with the
+    reset observation. If False, environment is not reset and the
+    `needs_reset` flag is set to True.
     """
     def __init__(self,
         EnvClass: Callable,
         env_kwargs: Dict,
         TrajInfoClass: Callable,
-        wait_before_reset: bool = False,
+        reset_automatically: bool = True,
     ) -> None:
         self.EnvClass = EnvClass
         self.env_kwargs = env_kwargs
         self.TrajInfoClass = TrajInfoClass
-        self.wait_before_reset = wait_before_reset
+        self.reset_automatically = reset_automatically
 
-        self._already_done: bool = False
+        self._needs_reset: bool = False
         self._render: bool = False
-        self._create_env()
 
     def _create_env(self) -> None:
         self._completed_trajs: List[TrajInfo] = []
         self._traj_info: TrajInfo = self.TrajInfoClass()
-        self._step_result: Union[EnvStep, str] = None
-        self._reset_obs: Union[Buffer, str] = None
 
         self._env: gym.Env = self.EnvClass(**self.env_kwargs)
         self._env.reset()
@@ -59,13 +58,16 @@ class Cage:
             action=self._env.action_space,
         )
 
+    def _close_env(self) -> None:
+        self._env.close()
+
     @property
     def spaces(self) -> EnvSpaces:
         return self._spaces
 
     @property
-    def already_done(self) -> bool:
-        return self._already_done
+    def needs_reset(self) -> bool:
+        return self._needs_reset
 
     @property
     def render(self) -> bool:
@@ -75,24 +77,7 @@ class Cage:
     def render(self, value: bool) -> None:
         self._render = value
 
-    def set_samples_buffer(self,
-        action: Buffer,
-        obs: Buffer,
-        reward: Buffer,
-        done: Array,
-        info: Buffer,
-    ) -> None:
-        pass
-
-    def step_async(self,
-        action: Buffer, *,
-        out_obs: Buffer = None,
-        out_reward: Buffer = None,
-        out_done: Buffer = None,
-        out_info: Buffer = None,
-    ) -> None:
-        """If any out parameter is given, they must all be given. 
-        """
+    def _step_env(self, action: Buffer) -> EnvStepType:
         # if rendering, render before step is taken so that the renderings
         # line up with the corresponding observation
         if self._render:
@@ -111,90 +96,104 @@ class Cage:
         if self._render:
             env_info["rendering"] = rendering
 
+        return obs, reward, done, env_info
+
+    def _random_step_env(self) -> EnvRandomStepType:
+        action = self._env.action_space.sample()
+        action = dict_to_namedtuple(action, "action")
+
+        obs, reward, done, env_info = self._step_env(action)
+
         if done:
-            # store finished trajectory and start new one
-            self._completed_trajs.append(self._traj_info)
-            if self.wait_before_reset:
-                # store done state
-                self._already_done = True
-                # start environment reset asynchronously
-                self._defer_env_reset()
-            else:
-                # reset immediately and overwrite last observation
-                obs = self._env.reset()
-                self._traj_info = self.TrajInfoClass()
-    
-        if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
-            self._step_result = EnvStep(obs, reward, done, env_info)
-        else:
-            out_obs[:] = obs
-            out_reward[:] = reward
-            out_done[:] = done
-            out_info[:] = env_info
-            self._step_result = self._already_done
+            # reset immediately and overwrite last observation
+            obs = self._reset_env()
+        
+        return action, obs, reward, done, env_info
 
-    def _defer_env_reset(self) -> None:
-        self._reset_obs = self._env.reset()
+    def _reset_env(self) -> ObsType:
+        # store finished trajectory and start new one
+        self._completed_trajs.append(self._traj_info)
         self._traj_info = self.TrajInfoClass()
+        return self._env.reset()
 
-    def await_step(self) -> Union[EnvStep, Tuple[Buffer, ...], Buffer, bool]:
+    @abstractmethod
+    def set_samples_buffer(self,
+        action: Buffer,
+        obs: Buffer,
+        reward: Buffer,
+        done: Array,
+        info: Buffer,
+    ) -> None:
+        """Declare buffers that will be used during sampling, allowing
+        optimized communication during sampling (e.g. with a child process).
+        If buffers were passed during cage creation, this is not required.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def step_async(self,
+        action: Buffer, *,
+        out_obs: Optional[Buffer] = None,
+        out_reward: Optional[Buffer] = None,
+        out_done: Optional[Buffer] = None,
+        out_info: Optional[Buffer] = None,
+    ) -> None:
+        """Step the environment asynchronously using action. If out arguments
+        are provided, the result will be written there, otherwise it will be
+        returned as a tuple the next time that await_step is called. If any out
+        arguments are provided, they must all be. If reset_automatically=True,
+        the environment is reset immediately if done=True, and the reset
+        observation overwrites the last observation of the trajectory.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def await_step(self) -> Union[EnvStepType, EnvRandomStepType, ObsType]:
         """Wait for the asynchronous step to finish and return the results.
         If step_async, reset_async, or random_step_async was called previously
-        with input arguments, returns whether the environment is now done and
-        needs reset.
+        with input arguments, returns None.
         If step_async was called previously without output arguments, returns
-        the EnvStep.
+        a tuple of obs, reward, done, and env_info.
         If reset_async was called previously without output arguments, returns
         the reset observation.
         If random_step_async was called previously without output arguments,
-        returns the action, observation, reward, done and env_info as a tuple.
+        returns a tuple of action, obs, reward, done and env_info.
         """
-        result = self._step_result
-        self._step_result = None
-        return result
+        raise NotImplementedError
 
+    @abstractmethod
     def collect_completed_trajs(self) -> List[TrajInfo]:
-        completed_trajs = self._completed_trajs
-        self._completed_trajs = []
-        return completed_trajs
-
-    def random_step_async(self, *,
-        out_action: Buffer = None,
-        out_obs: Buffer = None,
-        out_reward: Buffer = None,
-        out_done: Buffer = None,
-        out_info: Buffer = None
-    ) -> None:
-        """Take a step with a random action from the env's action space.
+        """Return a list of the TrajInfo objects from trajectories that have
+        been completed since the last time this function was called.
         """
-        action = self.spaces.action.sample()
-        action = dict_to_namedtuple(action, "action")
+        raise NotImplementedError
 
-        # call method in this class explicitly, in case overridden by child
-        Cage.step_async(self, action, out_obs=out_obs, out_reward=out_reward,
-            out_done=out_done, out_info=out_info)
+    @abstractmethod
+    def random_step_async(self, *,
+        out_action: Optional[Buffer] = None,
+        out_obs: Optional[Buffer] = None,
+        out_reward: Optional[Buffer] = None,
+        out_done: Optional[Buffer] = None,
+        out_info: Optional[Buffer] = None
+    ) -> None:
+        """Take a step with a random action from the env's action space. If
+        out arguments are provided, the result will be written there,
+        otherwise it will be returned as a tuple the next time that await_step
+        is called. If any out arguments are provided, they must all be. The env
+        resets automatically if done, regardless of the value of
+        reset_automatically.
+        """
+        raise NotImplementedError
 
-        if isinstance(self._step_result, NamedTuple):
-            self._step_result = (action, *self._step_result)
-        else:
-            out_action[:] = action
-            self._step_result = self._already_done
+    @abstractmethod
+    def reset_async(self, *, out_obs: Optional[Buffer] = None) -> None:
+        """Reset the environment. If out_obs is provided, the reset observation
+        is written there, otherwise it is returned the next time that
+        await_step is called.
+        """
+        raise NotImplementedError
 
-    def reset_async(self, *, out_obs: Buffer = None) -> None:
-        if self._already_done:
-            # do not call reset, since reset was already done asynchronously
-            _reset_obs = self._reset_obs
-            self._already_done = False
-            self._reset_obs = None
-        else:
-            _reset_obs = self._env.reset()
-            self._traj_info = self.TrajInfoClass()
-
-        if out_obs is None:
-            self._step_result = _reset_obs
-        else:
-            out_obs[:] = _reset_obs
-            self._step_result = self._already_done
-
+    @abstractmethod
     def close(self) -> None:
-        self._env.close()
+        """Close the cage and its environment."""
+        raise NotImplementedError

@@ -22,14 +22,18 @@ class BufferRegistry:
             self._registry[buffer.buffer_id] = buffer
 
     def reduce_buffer(self, buffer: Buffer):
+        if buffer is None:
+            return
         if buffer.buffer_id in self._registry:
-            # for registere buffers, just send ID and index history
+            # for registered buffers, just send ID and index history
             return (buffer.buffer_id, buffer.index_history)
         else:
             # for unregistered buffers, resort to sending buffer over pipe
             return buffer
 
     def rebuild_buffer(self, reduction: Tuple[int, Tuple[Indices, ...]]):
+        if reduction is None:
+            return
         buffer_id, index_history = reduction
         try:
             base = self._registry[buffer_id]

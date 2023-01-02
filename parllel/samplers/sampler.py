@@ -97,17 +97,17 @@ class Sampler(ABC):
             dtype=np.int32,
         )
 
-        envs_to_decorrelate = tuple(enumerate(self.envs))
+        env_to_step = list(enumerate(self.envs))
         for t in range(self.max_steps_decorrelate):
 
             # filter out any environments that don't need to be stepped anymore
-            envs_to_decorrelate = tuple(
-                filter(lambda b_env: t < n_random_steps[b_env[0]],
-                       envs_to_decorrelate)
-            )
+            env_to_step = [(b, env) for b, env in env_to_step if t <= n_random_steps[b]]
 
-            env: Cage  # type declaration
-            for b, env in envs_to_decorrelate:
+            if not env_to_step:
+                # all done, we can stop decorrelating now
+                break
+
+            for b, env in env_to_step:
                 # always write data to last time step in the batch buffer, so
                 # that previous values of first batch are correct after
                 # rotating
@@ -119,16 +119,13 @@ class Sampler(ABC):
                     out_info=env_info[T_last, b]
                 )
 
-            for b, env in envs_to_decorrelate:
+            for b, env in env_to_step:
                 env.await_step()
 
-            # need to reset environment if it doesn't reset automatically
-            for b, env in envs_to_decorrelate:
-                if done[T_last, b] and env.wait_before_reset:
-                    env.reset_async(out_obs=observation[T_last + 1, b])
-                    env.await_step()
+            # no need to reset environments, since they are always reset
+            # automatically when calling random_step_async
 
-        # ignore any completed trajectories. The incomplete ones will be
+        # discard any completed trajectories. The incomplete ones will be
         # continued during batch collection
         [env.collect_completed_trajs() for env in self.envs]
 
