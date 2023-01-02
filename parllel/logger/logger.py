@@ -22,7 +22,8 @@ except ImportError:
 from parllel.handlers.agent import Agent
 
 from .serializers import JSONConfigSerializer
-from .logwriters import LogWriter, KeyValueWriter, MessageWriter, StdOutWriter
+from .logwriters import (LogWriter, KeyValueWriter, MessageWriter, StdOutWriter,
+    VideoWriter, Video, MP4Writer)
 
 
 class Verbosity(IntEnum):
@@ -297,8 +298,8 @@ class Logger:
     def record(self,
         key: str,
         value: Any,
-        do_not_write_to: Optional[Union[str, Tuple[str, ...]]] = "",
-        write_only_to: Optional[Union[str, Tuple[str, ...]]] = "",
+        do_not_write_to: Union[str, Tuple[str, ...]] = "",
+        write_only_to: Union[str, Tuple[str, ...]] = "",
     ) -> None:
         """
         Log a value of some diagnostic
@@ -315,8 +316,8 @@ class Logger:
     def record_mean(self,
         key: str,
         value: Union[np.ndarray, List[float], float],
-        do_not_write_to: Optional[Union[str, Tuple[str, ...]]] = "",
-        write_only_to: Optional[Union[str, Tuple[str, ...]]] = "",
+        do_not_write_to: Union[str, Tuple[str, ...]] = "",
+        write_only_to: Union[str, Tuple[str, ...]] = "",
     ) -> None:
         """
         The same as record(), but if called many times, values averaged.
@@ -373,6 +374,33 @@ class Logger:
             #         base_path=self.model_base_path,
             #         policy="now",
             #     )
+
+    def log_video(self,
+        key: str,
+        video: Video,
+        step: int,
+        do_not_write_to: Union[str, Tuple[str, ...]] = "",
+        write_only_to: Union[str, Tuple[str, ...]] = "",
+    ) -> None:
+        if self.verbosity == Verbosity.DISABLED:
+            return
+
+        if "wandb" in self.writers and "mp4" not in self.writers:
+            # add mp4 writer on the fly to prevent WandB from converting the
+            # video for us
+            # TODO: when log_dir is allowed to be None, create a temp dir
+            mp4_writer = MP4Writer(folder=self.log_dir / "videos")
+            video = mp4_writer.write_video(key, video, step)
+
+        for writer_name, writer in self.writers.items():
+            if isinstance(writer, VideoWriter) and writer_name not in do_not_write_to:
+                new_video = writer.write_video(key, video, step)
+                # for writer might change the video (e.g. by compressing
+                # it and writing to disk), and we may want to use that modified
+                # video (e.g. by saving it directly to WandB without having to
+                # compress again). This depends on the order of the writers.
+                if new_video is not None:
+                    video = new_video
 
     def log(self, *args, level: Verbosity = Verbosity.INFO) -> None:
         """

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from os import PathLike
+from pathlib import Path
 import sys
 import warnings
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+from gym.wrappers.monitoring import video_recorder
 import numpy as np
 # from matplotlib import pyplot as plt
 
@@ -24,18 +26,63 @@ try:
 except ImportError:
     tqdm = None
 
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
 
 class Video:
     """
-    Video data class storing the video frames and the frame per seconds
+    Stores data that should be saved to a video and its associated metadata.
 
-    :param frames: frames to create the video from
-    :param fps: frames per second
+    :param data_or_path: numpy array to create the video from or the filepath
+        where the video can be found
+    :param fps: frames per second that the video was "recorded" at
+    :param outout_fps: frames per second that the video should be written at,
+        if different from the recorded fps.
+    :param file_format: if the video is a file, what file format (available
+        formats are "gif", "mp4", "webm" or "ogg")
+    :param channel_format: if the video is a numpy array, the order of the
+        axes (available formats are "CHW" and "HWC")
     """
 
-    def __init__(self, frames: Union[np.ndarray, PathLike], fps: Union[float, int]):
-        self.frames = frames
+    def __init__(self,
+        data_or_path: Union[np.ndarray, PathLike],
+        fps: Union[float, int],
+        output_fps: Optional[int] = None,
+        file_format: Optional[str] = None,
+        channel_format: Optional[str] = None,
+    ) -> None:
+        self.data_or_path = data_or_path
         self.fps = fps
+        self.output_fps = output_fps or fps
+        self.file_format = file_format
+        self.channel_format = channel_format
+
+        self._is_file = not isinstance(data_or_path, np.ndarray)
+
+    @property
+    def frame_shape(self) -> Tuple[int, int, int]:
+        if self._is_file:
+            return None
+        return self.data_or_path.shape[1:]
+
+    @property
+    def is_file(self) -> bool:
+        return self._is_file
+
+    def as_video_file(self, path: PathLike, file_format: str) -> Video:
+        """Return a new Video object representing the video file that this
+        video has been converted to.
+        """
+        return Video(
+            data_or_path=path,
+            fps=self.output_fps,
+            output_fps=None,
+            file_format=file_format,
+            channel_format=None,
+        )
 
 
 class Figure:
@@ -46,7 +93,7 @@ class Figure:
     :param close: if true, close the figure after logging it
     """
 
-    def __init__(self, figure: plt.figure, close: bool):
+    def __init__(self, figure: plt.figure, close: bool) -> None:
         self.figure = figure
         self.close = close
 
@@ -61,7 +108,7 @@ class Image:
         Gym envs normally use 'HWC' (channel last)
     """
 
-    def __init__(self, image: Union[torch.Tensor, np.ndarray, str], dataformats: str):
+    def __init__(self, image: Union[np.ndarray, str], dataformats: str) -> None:
         self.image = image
         self.dataformats = dataformats
 
@@ -75,7 +122,10 @@ class HParam:
         A non-empty metrics dict is required to display hyperparameters in the corresponding Tensorboard section.
     """
 
-    def __init__(self, hparam_dict: Dict[str, Union[bool, str, float, int, None]], metric_dict: Dict[str, Union[float, int]]):
+    def __init__(self,
+        hparam_dict: Dict[str, Union[bool, str, float, int, None]],
+        metric_dict: Dict[str, Union[float, int]],
+    ) -> None:
         self.hparam_dict = hparam_dict
         if not metric_dict:
             raise Exception("`metric_dict` must not be empty to display hyperparameters to the HPARAMS tensorboard tab.")
@@ -131,7 +181,7 @@ class LogWriter:
         """
         Close owned resources
         """
-        raise NotImplementedError
+        pass
 
 
 class KeyValueWriter:
@@ -145,6 +195,15 @@ class KeyValueWriter:
         :param key_values:
         :param step:
         """
+        raise NotImplementedError
+
+
+class VideoWriter:
+    """A logwriter type that can accept video as input. Returns a new Video
+    object if the video was encoded to file as part of logging, otherwise
+    returns None.
+    """
+    def write_video(self, key: str, video: Video, step: int) -> Optional[Video]:
         raise NotImplementedError
 
 
@@ -418,3 +477,69 @@ class TensorBoardWriter(KeyValueWriter, LogWriter, name="tensorboard"):
         if self.writer:
             self.writer.close()
             self.writer = None
+
+
+class WandBWriter(KeyValueWriter, VideoWriter, LogWriter):
+    def __init__(self) -> None:
+        if wandb is None:
+            raise RuntimeError(
+                "WandB is not installed. Install with `pip install wandb`"
+            )
+        if wandb.run is None:
+            raise ValueError(
+                "WandB is not initialized. Call `wandb.init` with arguments."
+            )
+
+    def write(self, key_values: Dict[str, Any], step: int = 0) -> None:
+        for key, value in key_values.items():
+            if isinstance(value, np.ScalarType):
+                pass
+            elif isinstance(value, Image):
+                key_values[key] = wandb.Image(
+                    value.image,
+                    mode=value.dataformats,
+                )
+
+        wandb.log(key_values, step=step)
+
+    def write_video(self, key: str, video: Video, step: int) -> Optional[Path]:
+        if not video.is_file:
+            assert video.channel_format == "CHW"
+
+        wandb_video = wandb.Video(
+            data_or_path=video.data_or_path,
+            caption=f"step_{step}",
+            fps=video.fps,
+            format="mp4" if video.is_file else None,
+        )
+        wandb.log({key: wandb_video}, commit=False)
+
+
+class MP4Writer(VideoWriter, LogWriter, name="mp4"):
+    def __init__(self, folder: PathLike, name: Optional[str] = None) -> None:
+        self.output_dir = Path(folder)
+    
+    def write_video(self, key: str, video: Video, step: int) -> Optional[Path]:
+        path = self.output_dir / f"{key}_step_{step}.mp4"
+
+        assert not video.is_file, "MP4Writer is for writing numpy arrays to disk"
+
+        video_data = video.data_or_path
+
+        # TODO: make more general?
+        if video.channel_format == "CHW":
+            video_data = video_data.transpose(0, 2, 3, 1)
+
+        recorder = video_recorder.ImageEncoder(
+            output_path=str(path),
+            frame_shape=video.frame_shape,
+            frames_per_sec=video.fps,
+            output_frames_per_sec=video.output_fps,
+        )
+
+        for frame in video_data:
+            recorder.capture_frame(frame)
+
+        recorder.close()
+        
+        return video.as_video_file(path=path, file_format="mp4")
