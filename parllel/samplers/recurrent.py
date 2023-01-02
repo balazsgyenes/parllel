@@ -86,7 +86,6 @@ class RecurrentSampler(Sampler):
             self.sample_buffer.env.valid,
         )
         sample_buffer = self.sample_buffer
-        envs = self.envs
 
         # rotate last values from previous batch to become previous values
         buffer_rotate(sample_buffer)
@@ -103,14 +102,14 @@ class RecurrentSampler(Sampler):
         valid[1:] = False
 
         # main sampling loop
-        b_not_done_yet = [b for b, env in enumerate(envs)]
+        envs_to_step = list(enumerate(self.envs))
         for t in range(self.batch_spec.T):
 
             # get a list of environments that are not done yet
             # we want to avoid stepping these
-            b_not_done_yet = [b for b in b_not_done_yet if not envs[b].needs_reset]
+            envs_to_step = [(b, env) for b, env in envs_to_step if not env.needs_reset]
 
-            if not b_not_done_yet:
+            if not envs_to_step:
                 # all done, we can stop sampling now
                 break
 
@@ -122,13 +121,13 @@ class RecurrentSampler(Sampler):
             self.agent.step(observation[t], out_action=action[t],
                 out_agent_info=agent_info[t])
 
-            for b in b_not_done_yet:
-                envs[b].step_async(action[t, b],
+            for b, env in envs_to_step:
+                env.step_async(action[t, b],
                     out_obs=observation[t+1, b], out_reward=reward[t, b],
                     out_done=done[t, b], out_info=env_info[t, b])
 
-            for b in b_not_done_yet:
-                envs[b].await_step()
+            for b, env in envs_to_step:
+                env.await_step()
 
             # calculate validity of samples in next time step
             # this might be required by the obs_transform
@@ -144,16 +143,16 @@ class RecurrentSampler(Sampler):
             )
 
         # reset any environments that need reset in parallel
-        b_needs_reset = [b for b, env in enumerate(envs) if env.needs_reset]
+        envs_need_reset = [(b, env) for b, env in enumerate(self.envs) if env.needs_reset]
         
-        for b in b_needs_reset:
+        for b, env in envs_need_reset:
             # overwrite next first observation with reset observation
-            envs[b].reset_async(out_obs=observation[self.batch_spec.T, b])
+            env.reset_async(out_obs=observation[self.batch_spec.T, b])
             
-        self.agent.reset_one(np.asarray(b_needs_reset))
+        self.agent.reset_one([b for b, env in envs_need_reset])
 
-        for b in b_needs_reset:
-            envs[b].await_step()
+        for b, env in envs_need_reset:
+            env.await_step()
 
         # collect all completed trajectories from envs
         completed_trajectories = [
