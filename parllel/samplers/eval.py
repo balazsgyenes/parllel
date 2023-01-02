@@ -22,9 +22,11 @@ class EvalSampler(Sampler):
         obs_transform: Optional[Transform] = None,
     ) -> None:
         for cage in envs:
-            if cage.wait_before_reset:
-                raise ValueError("EvaluationSampler expects cages that reset"
-                    " environments immediately. Set wait_before_reset=False")
+            if not cage.reset_automatically:
+                raise ValueError(
+                    "EvalSampler expects cages that reset environments "
+                    "automatically. Set `reset_automatically=True`."
+                )
         
         super().__init__(
             batch_spec=BatchSpec(1, len(envs)),

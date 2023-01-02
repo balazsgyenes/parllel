@@ -52,12 +52,13 @@ def build(config: Dict) -> OnPolicyRunner:
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
-        wait_before_reset=False,
+        reset_automatically=True,
         batch_spec=batch_spec,
         parallel=parallel,
     )
 
-    obs_space, action_space = cages[0].spaces
+    spaces = cages[0].spaces
+    obs_space, action_space = spaces.observation, spaces.action
 
     # instantiate model and agent
     model = GaussianCartPoleFfPgModel(
