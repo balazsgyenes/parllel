@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import enum
 import multiprocessing as mp
-from typing import Any, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from parllel.arrays import Array, ManagedMemoryArray
 from parllel.buffers import Buffer
@@ -31,13 +31,34 @@ class Message:
 
 
 class ProcessCage(Cage, mp.Process):
-    def __init__(self, *args,
+    """Environment is created and stepped within a subprocess. Commands are
+    sent across Pipes, but data is read from and written directly to the batch
+    buffer.
+
+    :param EnvClass (Callable): Environment class or factory function
+    :param env_kwargs (Dict): Key word arguments that should be passed to the
+        `__init__` of `EnvClass` or to the factory function
+    :param TrajInfoClass (Callable): TrajectoryInfo class or factory function
+    :param reset_automatically (bool): If True (default), environment is reset
+    immediately when done is True, replacing the returned observation with the
+    reset observation. If False, environment is not reset and the
+    `needs_reset` flag is set to True.
+    """
+    def __init__(self,
+        EnvClass: Callable,
+        env_kwargs: Dict,
+        TrajInfoClass: Callable,
+        reset_automatically: bool = False,
         buffers: Optional[Sequence[Buffer]] = None,
-        **kwargs,
     ) -> None:
         mp.Process.__init__(self)
 
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            EnvClass=EnvClass,
+            env_kwargs=env_kwargs,
+            TrajInfoClass=TrajInfoClass,
+            reset_automatically=reset_automatically,
+        )
 
         # pipe is used for communication between main and child processes
         self._parent_pipe, self._child_pipe = mp.Pipe()

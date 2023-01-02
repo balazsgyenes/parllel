@@ -9,7 +9,8 @@ from .traj_info import TrajInfo
 
 
 class SerialCage(Cage):
-    """Cages abstract communication between the sampler and the environments.
+    """Environment is created and stepped within the local process. This Cage
+    can be useful for debugging, or for toy problems.
 
     :param EnvClass (Callable): Environment class or factory function
     :param env_kwargs (Dict): Key word arguments that should be passed to the

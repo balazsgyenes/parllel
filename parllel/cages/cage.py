@@ -78,8 +78,6 @@ class Cage(ABC):
         self._render = value
 
     def _step_env(self, action: Buffer) -> EnvStepType:
-        """If any out parameter is given, they must all be given. 
-        """
         # if rendering, render before step is taken so that the renderings
         # line up with the corresponding observation
         if self._render:
@@ -101,7 +99,6 @@ class Cage(ABC):
         return obs, reward, done, env_info
 
     def _random_step_env(self) -> EnvRandomStepType:
-
         action = self._env.action_space.sample()
         action = dict_to_namedtuple(action, "action")
 
@@ -127,6 +124,10 @@ class Cage(ABC):
         done: Array,
         info: Buffer,
     ) -> None:
+        """Declare buffers that will be used during sampling, allowing
+        optimized communication during sampling (e.g. with a child process).
+        If buffers were passed during cage creation, this is not required.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -137,6 +138,13 @@ class Cage(ABC):
         out_done: Optional[Buffer] = None,
         out_info: Optional[Buffer] = None,
     ) -> None:
+        """Step the environment asynchronously using action. If out arguments
+        are provided, the result will be written there, otherwise it will be
+        returned as a tuple the next time that await_step is called. If any out
+        arguments are provided, they must all be. If reset_automatically=True,
+        the environment is reset immediately if done=True, and the reset
+        observation overwrites the last observation of the trajectory.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -145,16 +153,19 @@ class Cage(ABC):
         If step_async, reset_async, or random_step_async was called previously
         with input arguments, returns None.
         If step_async was called previously without output arguments, returns
-        the EnvStepType.
+        a tuple of obs, reward, done, and env_info.
         If reset_async was called previously without output arguments, returns
         the reset observation.
         If random_step_async was called previously without output arguments,
-        returns the action, observation, reward, done and env_info as a tuple.
+        returns a tuple of action, obs, reward, done and env_info.
         """
         raise NotImplementedError
 
     @abstractmethod
     def collect_completed_trajs(self) -> List[TrajInfo]:
+        """Return a list of the TrajInfo objects from trajectories that have
+        been completed since the last time this function was called.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -165,16 +176,24 @@ class Cage(ABC):
         out_done: Optional[Buffer] = None,
         out_info: Optional[Buffer] = None
     ) -> None:
-        """Take a step with a random action from the env's action space. The
-        env resets automatically if done, regardless of the value of
+        """Take a step with a random action from the env's action space. If
+        out arguments are provided, the result will be written there,
+        otherwise it will be returned as a tuple the next time that await_step
+        is called. If any out arguments are provided, they must all be. The env
+        resets automatically if done, regardless of the value of
         reset_automatically.
         """
         raise NotImplementedError
 
     @abstractmethod
     def reset_async(self, *, out_obs: Optional[Buffer] = None) -> None:
+        """Reset the environment. If out_obs is provided, the reset observation
+        is written there, otherwise it is returned the next time that
+        await_step is called.
+        """
         raise NotImplementedError
 
     @abstractmethod
     def close(self) -> None:
+        """Close the cage and its environment."""
         raise NotImplementedError
