@@ -145,10 +145,11 @@ class RecurrentSampler(Sampler):
         b_needs_reset = [b for b, env in enumerate(envs) if env.needs_reset]
         
         for b in b_needs_reset:
-            self.agent.reset_one(env_index=b)
             # overwrite next first observation with reset observation
             envs[b].reset_async(out_obs=observation[self.batch_spec.T, b])
             
+        self.agent.reset_one(np.asarray(b_needs_reset))
+
         for b in b_needs_reset:
             envs[b].await_step()
 
