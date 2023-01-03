@@ -225,13 +225,14 @@ class ProcessCage(Cage, mp.Process):
                     out_reward[:] = reward
                     out_done[:] = done
                     out_info[:] = env_info
-                # already done is always False because resets automatically
-                self._child_pipe.send(False)
+                # needs_reset should always be False unless random_step is
+                # called on an env that already needs reset
+                self._child_pipe.send(self.needs_reset)
 
             elif command == Command.reset_async:
                 out_obs = data
                 out_obs = self.buffer_registry.rebuild_buffer(out_obs)
-                if _reset_obs is None:
+                if _reset_obs is not None:
                     reset_obs = _reset_obs
                     _reset_obs = None
                 else:
@@ -240,8 +241,8 @@ class ProcessCage(Cage, mp.Process):
                 if out_obs is None:
                     out_obs[:] = reset_obs
                     self._child_pipe.send(reset_obs)
-                # already done is always False after reset
-                self._child_pipe.send(False)
+                self._needs_reset = False
+                self._child_pipe.send(self.needs_reset)
 
             elif command == Command.close:
                 self.buffer_registry.close()
