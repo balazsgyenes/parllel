@@ -47,7 +47,8 @@ def valid_mean(
 ) -> torch.Tensor:
     """Mean of ``tensor``, accounting for optional mask ``valid``, optionally
     along a dimension. Valid mask is "broadcast" across trailing dimensions of
-    tensor, if tensor has more dimensions than valid.
+    tensor, if tensor has more dimensions than valid. nan and inf values are
+    also masked out properly.
     """
     if valid is None:
         dim = () if dim is None else dim
@@ -57,8 +58,8 @@ def valid_mean(
         # e.g. if tensor has shape [T,B,N] and valid has [T,B]
         return tensor[valid].mean()
     # add extra trailing dimensions to valid mask
-    valid = valid[(...,) + (None,) * (tensor.ndims - valid.ndims)]
-    masked_tensor = tensor * valid
+    valid = valid[(...,) + (None,) * (tensor.ndim - valid.ndim)]
+    masked_tensor = torch.where(valid, tensor, 0)
     return masked_tensor.sum(dim=dim) / masked_tensor.count_nonzero(dim=dim)
 
 
@@ -186,7 +187,7 @@ def update_state_dict(
         model.load_state_dict(update_sd)
 
 
-def explained_variance(y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+def explained_variance(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
     """
     Computes fraction of variance that ypred explains about y.
     Returns 1 - Var[y-ypred] / Var[y]
@@ -205,5 +206,6 @@ def explained_variance(y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tens
     assert y_true.ndim == y_pred.ndim
     var_y = y_true.var()
     if torch.allclose(var_y, torch.zeros_like(var_y)):
-        return torch.nan
-    return 1 - (y_true - y_pred).var() / var_y
+        return torch.nan # surprisingly, torch.nan is a float
+    # call `item()` here to prevent the caller from doing `torch.nan.item()`
+    return (1 - (y_true - y_pred).var() / var_y).item()
