@@ -59,6 +59,7 @@ class OnPolicyRunner(Runner):
         self.log_progress(elapsed_steps, self.n_iterations)
 
         progress_bar.close()
+        # TODO: replace with logger.finish method
         logger.info("Finished training.")
         if logger.log_dir is not None:
             logger.info(f"Log files saved to {logger.log_dir}")

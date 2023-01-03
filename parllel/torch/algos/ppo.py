@@ -97,6 +97,7 @@ class PPO(Algorithm):
                     break
                 loss.backward()
                 if self.clip_grad_norm is not None:
+                    # TODO: compute and log grad_norm even if not clipping
                     grad_norm = torch.nn.utils.clip_grad_norm_(
                         self.agent.model.parameters(),
                         self.clip_grad_norm,
