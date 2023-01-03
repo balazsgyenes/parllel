@@ -27,6 +27,8 @@ class RecordVectorizedVideo(BatchTransform):
         tiled_height: Optional[int] = None,
         tiled_width: Optional[int] = None,
     ) -> None:
+        # TODO: add max_envs to restrict the number of envs to include in video
+        # TODO: add image resizing if renderings are too large
         self.output_dir = Path(output_dir)
         self.record_every = int(record_every_n_steps)
         self.length = int(video_length)
