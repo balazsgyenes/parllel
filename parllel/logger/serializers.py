@@ -1,4 +1,6 @@
+from enum import Enum
 import importlib
+from inspect import isclass
 import json
 from os import PathLike
 from pathlib import Path
@@ -22,9 +24,13 @@ class JSONConfigSerializer:
         def encode_non_basic_types(obj: Any) -> str:
             """Encodes any non-basic type (str, int, float, bool, None) as a str.
             """
+            if isclass(obj):
+                return format_specifier.format(obj.__name__, obj.__module__)
             if isinstance(obj, Path):
                 return str(obj)
-            return format_specifier.format(obj.__name__, obj.__module__)
+            if isinstance(obj, Enum):
+                return str(obj) # TODO: convert into form that can be recovered
+            return f"{type(obj).__name__}: {repr(obj.__dict__)}"
 
         with open(path, "w") as f:
             json.dump(

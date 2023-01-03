@@ -27,6 +27,7 @@ error = _logger.error
 set_verbosity = _logger.set_verbosity
 close = _logger.close
 log_dir: Optional[Path] = None # updated by logger in log_dir.setter
+model_save_path: Optional[Path] = None # updated by logger in model_save_path.setter
 
 
 __all__ = [

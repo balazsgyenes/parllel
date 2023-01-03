@@ -13,9 +13,9 @@ conda activate parllel
 
 Install pytorch (or ML framework of your choice, coming soon). The process depends on your hardware, but some common cases are handled by installing yml files.
 
-Linux with CUDA 11.3+: `conda env update --name parllel --file torch_cuda11.yml`
+Linux with CUDA 11.3+: `conda env update --file torch_cuda11.yml`
 
-Mac OS on Apple Silicon: `conda env update --name parllel --file torch_m1.yml`
+Mac OS on Apple Silicon: `conda env update --file torch_m1.yml`
 
 Install other requirements.
 
