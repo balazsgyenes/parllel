@@ -86,12 +86,23 @@ class LargeArray(RotatingArray):
     
     def rotate(self) -> None:
 
-        self.offset = (self.offset + self.apparent_size) % self.full_size
-        self.shift = self.offset + self._padding
-        self._current_array = None
-        self._apparent_shape = None
+        # only rotate if called on the original array
+        if not self._index_history:
 
-        super().rotate()
+            self.offset += self.apparent_size
+
+            if self._padding and self.offset >= self.full_size:
+                # copy values from end of base array to beginning
+                final_values = slice(-(self._padding * 2), None)
+                next_previous_values = slice(0, self._padding * 2)
+                self._base_array[next_previous_values] = self._base_array[final_values]
+
+            self.offset %= self.full_size
+            self.shift = self.offset + self._padding
+
+            # current array is now invalid, but apparent shape should still be
+            # correct
+            self._current_array = None
 
 
 def shift_indices(indices: Indices, shift: int, apparent_size: int,

@@ -4,7 +4,8 @@ import pytest
 import multiprocessing as mp
 import numpy as np
 
-from parllel.arrays.sharedmemory import SharedMemoryArray, RotatingSharedMemoryArray
+from parllel.arrays.sharedmemory import (SharedMemoryArray,
+    RotatingSharedMemoryArray, LargeSharedMemoryArray)
 from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
 
 
@@ -14,11 +15,11 @@ def mp_ctx(request):
 
 @pytest.fixture(params=[
     SharedMemoryArray, RotatingSharedMemoryArray,
-    ManagedMemoryArray, RotatingManagedMemoryArray
+    pytest.param(ManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
+    pytest.param(RotatingManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
+    LargeSharedMemoryArray,
     ], scope="module")
 def ArrayClass(request):
-    if issubclass(request.param, ManagedMemoryArray):
-        pytest.xfail("Currently broken: 'BufferError: cannot close exported pointers exist'")
     return request.param
 
 @pytest.fixture(scope="module")

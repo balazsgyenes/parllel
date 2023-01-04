@@ -7,10 +7,10 @@ from typing import Dict
 
 import torch
 
-from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
-    RotatingSharedMemoryArray, buffer_from_example)
+from parllel.arrays import buffer_from_example
 from parllel.arrays import buffer_from_dict_example
 from parllel.arrays.large import LargeArray
+from parllel.arrays.sharedmemory import LargeSharedMemoryArray
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.buffers import EnvSamples
 from parllel.cages import TrajInfo
@@ -45,13 +45,6 @@ def build(config: Dict) -> OffPolicyRunner:
     )
     TrajInfo.set_discount(config["discount"])
 
-    if parallel:
-        ArrayCls = SharedMemoryArray
-        RotatingArrayCls = RotatingSharedMemoryArray
-    else:
-        ArrayCls = Array
-        RotatingArrayCls = RotatingArray
-
     replay_buffer_dims = (config["replay_length"], batch_spec.B)
 
     EnvClass = build_cartpole
@@ -63,13 +56,9 @@ def build(config: Dict) -> OffPolicyRunner:
 
     if parallel:
         CageCls = ProcessCage
-        ArrayCls = SharedMemoryArray
-        RotatingArrayCls = RotatingSharedMemoryArray
-        LargeArrayCls = LargeArray
+        LargeArrayCls = LargeSharedMemoryArray
     else:
         CageCls = SerialCage
-        ArrayCls = Array
-        RotatingArrayCls = RotatingArray
         LargeArrayCls = LargeArray
 
     cage_kwargs = dict(
@@ -92,7 +81,7 @@ def build(config: Dict) -> OffPolicyRunner:
     batch_observation = buffer_from_dict_example(obs, replay_buffer_dims, LargeArrayCls, name="obs", padding=1, apparent_size=batch_spec.T)
     batch_reward = buffer_from_dict_example(reward, replay_buffer_dims, LargeArrayCls, name="reward", apparent_size=batch_spec.T)
     batch_done = buffer_from_dict_example(done, replay_buffer_dims, LargeArrayCls, name="done", padding=1, apparent_size=batch_spec.T)
-    batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
+    batch_info = buffer_from_dict_example(info, tuple(batch_spec), LargeArrayCls, name="envinfo")
     batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
     """In discrete problems, integer actions are used as array indices during
@@ -158,7 +147,7 @@ def build(config: Dict) -> OffPolicyRunner:
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), ArrayCls)
+    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), LargeArrayCls)
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 

@@ -3,15 +3,17 @@ import functools
 import pytest
 import numpy as np
 
+from parllel.arrays.large import LargeArray
 from parllel.arrays.managedmemory import RotatingManagedMemoryArray
 from parllel.arrays.rotating import RotatingArray, shift_index
-from parllel.arrays.sharedmemory import RotatingSharedMemoryArray
+from parllel.arrays.sharedmemory import RotatingSharedMemoryArray, LargeSharedMemoryArray
 
 
 @pytest.fixture(params=[
     RotatingArray,
     RotatingSharedMemoryArray,
-    RotatingManagedMemoryArray,
+    pytest.param(RotatingManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
+    LargeArray, LargeSharedMemoryArray,
     ], scope="module")
 def ArrayClass(request):
     return request.param

@@ -4,19 +4,21 @@ import pytest
 import numpy as np
 
 from parllel.arrays.array import Array
+from parllel.arrays.large import LargeArray
 from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
 from parllel.arrays.rotating import RotatingArray
-from parllel.arrays.sharedmemory import RotatingSharedMemoryArray, SharedMemoryArray
+from parllel.arrays.sharedmemory import (RotatingSharedMemoryArray,
+    SharedMemoryArray, LargeSharedMemoryArray)
 
 
 @pytest.fixture(params=[
     Array, RotatingArray,
     SharedMemoryArray, RotatingSharedMemoryArray,
-    ManagedMemoryArray, RotatingManagedMemoryArray,
+    pytest.param(ManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
+    pytest.param(RotatingManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
+    LargeArray, LargeSharedMemoryArray,
     ], scope="module")
 def ArrayClass(request):
-    if issubclass(request.param, ManagedMemoryArray):
-        pytest.xfail("Currently broken: 'BufferError: cannot close exported pointers exist'")
     return request.param
 
 @pytest.fixture(scope="module")
@@ -27,14 +29,17 @@ def shape():
 def dtype(request):
     return request.param
 
-@pytest.fixture(params=[1, 0], ids=["padding=1", "padding=0"], scope="module")
+@pytest.fixture(params=[0, 1], ids=["padding=0", "padding=1"], scope="module")
 def padding(request):
     return request.param
 
 @pytest.fixture
 def blank_array(ArrayClass, shape, dtype, padding):
     if issubclass(ArrayClass, RotatingArray):
+        # LargeArray and co. are subclasses of RotatingArray as well
         array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
+    elif padding > 0:
+        pytest.skip("Base Array class does not have padding")
     else:
         array = ArrayClass(shape=shape, dtype=dtype)
     yield array

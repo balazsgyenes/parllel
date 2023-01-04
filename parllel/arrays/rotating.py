@@ -69,6 +69,9 @@ class RotatingArray(Array):
         Replaces indexing at -1 in numpy arrays.
         e.g. array[-1] -> rot_array[rot_array.last]
         """
+        if self._apparent_shape is None:
+            self._resolve_indexing_history()
+        
         return self._apparent_shape[0] - 1
 
     def _resolve_indexing_history(self) -> None:
