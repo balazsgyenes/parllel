@@ -179,6 +179,7 @@ def build(config: Dict) -> OffPolicyRunner:
         # TODO: verify that even most recent samples are valid now that buffer
         # is LargeArrays
         newest_n_samples_invalid=0,
+        oldest_n_samples_invalid=1,
     )
 
     # add several helpful transforms
