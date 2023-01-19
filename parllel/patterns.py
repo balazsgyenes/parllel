@@ -55,7 +55,7 @@ def build_cages_and_env_buffers(
     batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward")
     batch_done = buffer_from_dict_example(done, tuple(batch_spec), RotatingArrayCls, name="done", padding=1)
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
-    batch_buffer_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
+    batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
     """In discrete problems, integer actions are used as array indices during
     optimization. Pytorch requires indices to be 64-bit integers, so we do not
@@ -74,7 +74,7 @@ def build_cages_and_env_buffers(
 
     logger.debug("Environments instantiated.")
 
-    return cages, batch_action, batch_buffer_env
+    return cages, batch_action, batch_env
 
 
 def add_initial_rnn_state(batch_buffer: Samples, agent: Agent) -> Samples:
@@ -251,8 +251,9 @@ def add_reward_normalization(
 
     # allocate new Array for past discounted returns
     # TODO: add smarter allocation rules here
+    # TODO: this is currently a LargeArray sometimes
     RotatingArrayCls = type(env_samples.done)
-    batch_past_return = RotatingArrayCls(shape=reward.shape, dtype=reward.dtype)
+    batch_past_return = RotatingArrayCls(shape=reward.shape, dtype=reward.dtype, padding=1)
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(
@@ -304,19 +305,20 @@ def build_eval_sampler(
 
     # allocate a step buffer with space for a single step
     # RotatingArrays are preserved
-    stripped_batch_buffer = Samples(
-        AgentSamples(
-            action=samples_buffer.agent.action,
-            agent_info=samples_buffer.agent.agent_info,
-        ),
-        EnvSamples(
-            observation=samples_buffer.env.observation,
-            reward=samples_buffer.env.reward,
-            done=samples_buffer.env.done,
-            env_info=samples_buffer.env.env_info,
-        )
+    # TODO: replace with array_like when it's done
+    simple_batch_agent = AgentSamples(
+        action=samples_buffer.agent.action,
+        agent_info=samples_buffer.agent.agent_info,
     )
-    step_buffer = buffer_from_example(stripped_batch_buffer[0], (1,))
+    step_buffer = Samples(
+        agent=buffer_from_example(simple_batch_agent[0], (1,)),
+        env=EnvSamples(
+            observation=buffer_from_example(samples_buffer.env.observation[0], (1,), padding=1),
+            reward=buffer_from_example(samples_buffer.env.reward[0], (1,)),
+            done=buffer_from_example(samples_buffer.env.done[0], (1,)),
+            env_info=buffer_from_example(samples_buffer.env.env_info[0], (1,)),
+        ),
+    )
 
     eval_cage_kwargs = dict(
         EnvClass=EnvClass,

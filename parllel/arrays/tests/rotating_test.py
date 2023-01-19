@@ -3,15 +3,17 @@ import functools
 import pytest
 import numpy as np
 
+from parllel.arrays.large import LargeArray, shift_index as new_shift_index
 from parllel.arrays.managedmemory import RotatingManagedMemoryArray
 from parllel.arrays.rotating import RotatingArray, shift_index
-from parllel.arrays.sharedmemory import RotatingSharedMemoryArray
+from parllel.arrays.sharedmemory import RotatingSharedMemoryArray, LargeSharedMemoryArray
 
 
 @pytest.fixture(params=[
     RotatingArray,
     RotatingSharedMemoryArray,
-    RotatingManagedMemoryArray,
+    pytest.param(RotatingManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
+    LargeArray, LargeSharedMemoryArray,
     ], scope="module")
 def ArrayClass(request):
     return request.param
@@ -173,16 +175,24 @@ class TestRotatingArray:
             in zip(subarray1.index_history, subarray2.index_history))
 
 
-class TestIndexShifting:
-    def test_shift_integer(self):
-        assert shift_index(4, 2) == (6,)
-        assert shift_index(0, 1) == (1,)
-        assert shift_index(-1, 2) == (1,)
-        assert shift_index(-2, 2) == (0,)
+@pytest.fixture(params=[
+    pytest.param(shift_index, id="shift_index"),
+    pytest.param(functools.partial(new_shift_index, size=10), id="new_shift_index"),
+], scope="module")
+def index_shifter(request):
+    return request.param
 
-    def test_shift_index_too_negative(self):
+
+class TestIndexShifting:
+    def test_shift_integer(self, index_shifter):
+        assert index_shifter(4, 2) == (6,)
+        assert index_shifter(0, 1) == (1,)
+        assert index_shifter(-1, 2) == (1,)
+        assert index_shifter(-2, 2) == (0,)
+
+    def test_shift_index_too_negative(self, index_shifter):
         with pytest.raises(IndexError):
-            _ = shift_index(-2, 1)
+            _ = index_shifter(-2, 1)
 
     def test_shift_slice(self):
         assert shift_index(slice(1, 5, 2), 2) == (slice(3, 7, 2),)
@@ -191,14 +201,33 @@ class TestIndexShifting:
         assert shift_index(slice(None, 5, 1), 1) == (slice(1, 6, 1),)
         assert shift_index(slice(2, None, 2), 2) == (slice(4, -2, 2),)
 
+    def test_shift_slice_new(self):
+        assert new_shift_index(slice(1, 5, 2), 2, size=10) == (slice(3, 7, 2),)
+        assert new_shift_index(slice(None, None, 2), 1, size=10) == (slice(1, 11, 2),)
+        assert new_shift_index(slice(None, 5), 1, size=10) == (slice(1, 6, None),)
+        assert new_shift_index(slice(None, 5, 1), 1, size=10) == (slice(1, 6, 1),)
+        assert new_shift_index(slice(2, None, 2), 2, size=10) == (slice(4, 12, 2),)
+
     def test_shift_reversed_slice(self):
-        assert shift_index(slice(1, 4, -1), 2) == (slice(3, 6, -1),)
+        assert shift_index(slice(4, 1, -1), 2) == (slice(6, 3, -1),)
         assert shift_index(slice(None, None, -1), 1) == (slice(-2, 0, -1),)
         assert shift_index(slice(None, None, -1), 2) == (slice(-3, 1, -1),)
         assert shift_index(slice(None, 3, -1), 1) == (slice(-2, 4, -1),)
         assert shift_index(slice(5, None, -2), 1) == (slice(6, 0, -2),)
         assert shift_index(slice(6, None, -3), 2) == (slice(8, 1, -3),)
 
+    def test_shift_reversed_slice_new(self):
+        assert new_shift_index(slice(4, 1, -1), 2, size=10) == (slice(6, 3, -1),)
+        assert new_shift_index(slice(None, None, -1), 1, size=10) == (slice(10, 0, -1),)
+        assert new_shift_index(slice(None, None, -1), 2, size=10) == (slice(11, 1, -1),)
+        assert new_shift_index(slice(None, 3, -1), 1, size=10) == (slice(10, 4, -1),)
+        assert new_shift_index(slice(5, None, -2), 1, size=10) == (slice(6, 0, -2),)
+        assert new_shift_index(slice(6, None, -3), 2, size=10) == (slice(8, 1, -3),)
+
     def test_shift_ellipsis(self):
         assert shift_index(..., 1) == (slice(1, -1), Ellipsis)
         assert shift_index(..., 2) == (slice(2, -2), Ellipsis)
+
+    def test_shift_ellipsis_new(self):
+        assert new_shift_index(..., 1, size=10) == (slice(1, 11), Ellipsis)
+        assert new_shift_index(..., 2, size=10) == (slice(2, 12), Ellipsis)

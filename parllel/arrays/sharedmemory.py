@@ -6,6 +6,7 @@ import numpy as np
 
 from .array import Array
 from .rotating import RotatingArray
+from .large import LargeArray
 
 
 class SharedMemoryArray(Array):
@@ -51,4 +52,8 @@ class SharedMemoryArray(Array):
 
 
 class RotatingSharedMemoryArray(RotatingArray, SharedMemoryArray):
+    pass
+
+
+class LargeSharedMemoryArray(LargeArray, SharedMemoryArray):
     pass
