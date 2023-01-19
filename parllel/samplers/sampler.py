@@ -4,7 +4,7 @@ from typing import List, Optional, Sequence, Tuple
 import numpy as np
 from numpy import random
 
-from parllel.buffers import Samples
+from parllel.buffers import Samples, buffer_method
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
 import parllel.logger as logger
@@ -56,6 +56,8 @@ class Sampler(ABC):
         of the observation buffer, assuming that batch collection begins by
         rotating the batch buffer.
         """
+        logger.debug("Resetting sampler buffer state.")
+        buffer_method(self.sample_buffer, "reset")
         logger.debug("Resetting all environments.")
         observation = self.sample_buffer.env.observation
         for b, env in enumerate(self.envs):

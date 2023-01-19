@@ -32,8 +32,8 @@ class RotatingArray(Array):
         padding: int = 1,
     ) -> None:
 
-        if not padding > 0:
-            raise ValueError("Padding must be positive.")
+        if not padding >= 0:
+            raise ValueError("Padding must be non-negative.")
         self._padding = padding
 
         if not shape:
@@ -69,6 +69,9 @@ class RotatingArray(Array):
         Replaces indexing at -1 in numpy arrays.
         e.g. array[-1] -> rot_array[rot_array.last]
         """
+        if self._apparent_shape is None:
+            self._resolve_indexing_history()
+        
         return self._apparent_shape[0] - 1
 
     def _resolve_indexing_history(self) -> None:
@@ -78,10 +81,13 @@ class RotatingArray(Array):
             # shift only the first indices, leave the rest (if thereare more)
             index_history = [shift_indices(self._index_history[0], self._padding),
                             ] + self._index_history[1:]
-        else:
+        elif self.padding > 0:
             # even if the array was never indexed, only this slice of the array
             # should be returned by __array__
             index_history = [slice(self._padding, -self._padding)]
+        else:
+            # never indexed and no padding
+            index_history = [slice(None)]
 
         # if index history has only 1 element, this has no effect
         array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
@@ -128,7 +134,7 @@ class RotatingArray(Array):
         value[last]         ->  value[first - 1]    = value[-1]
         value[last - 1]     ->  value[first - 2]    = value[-2]
         """
-        if not self._index_history:
+        if self._padding and not self._index_history:
             # only rotate if called on the base array.
             # rotating subarrays is not possible anyway
             final_values = slice(-(self._padding * 2), None)
@@ -147,6 +153,8 @@ def shift_indices(indices: Indices, shift: int) -> Tuple[Index, ...]:
 def shift_index(index: Index, shift: int) -> Tuple[Index, ...]:
     """Shifts an array index up by an integer value.
     """
+    if shift == 0:
+        return (index,)
     if isinstance(index, int):
         if index < -shift:
             raise IndexError(f"Not enough padding ({shift}) to accomodate "

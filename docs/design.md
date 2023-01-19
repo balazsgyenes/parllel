@@ -31,6 +31,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Can we avoid defining a rigid interface to the Handler/Agent/Model? How can a user add another argument to the agent/model, and what is the use case for this? (e.g. agent_ids for multi-agent case)
 - What object(s) are responsible for array allocation for the batch buffer. This batch buffer is basically global state, so it falls under the responsibility of the build function, but Transform types currently allocate their own additional Arrays.
 - With complete control of the pipe and pickler, we should be able to make buffer registration a lot more seamless. Can we implement pytorch's approach, where arrays are automatically copied into shared memory (and registered) the first time they are moved between processes?
+- Should objects strictly only receive constructor arguments that they need during execution? This sounds like good abstraction, but in practice it means we get a pattern function for every type to handle the "front-end" value processing. e.g. SAC receives replay ratio, sampler batch spec and replay ratio batch size and calculates its own updates_per_optimize. In theory, SAC should just receive updates_per_optimize as an argument, but then this value would have to be calculated by a pattern function.
 
 ## TODOs and Ideas
 
@@ -67,9 +68,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
         - Use `init_subclass` hook to register subclasses and organize them by e.g. memory type. Add `__new__` method that chooses between subclasses based on arguments.
         - Maybe add method to return arguments required to create a duplicate `Array`.
         - Maybe add `array_like` method to create a clone of the given array with the option to override certain parameters (e.g. shape, dtype, memory).
-    - ReplayArray allocates more space than a single batch for use in ReplayBuffer types. `rotate` shifts the writable portion in time, and another method exposes the entire array for sampling.
-        - To avoid having to deal with disjoint sections of memory when wrapping, allocate an integer multiple of `batch_T` and copy on `rotate`.
-        - ReplayArray needs to know how many samples before and after writable portion are invalid (i.e. because `n_step_returns` have been overwritten).
     - SwitchingArray wraps two arrays and switches between them on `rotate`. This is useful for asynchronous sampling, where different parts of the array are simultaneously written to by the sampler and read from by the algorithm.
         - Overloading `rotate` is useful because the batch buffer is already rotated before each batch.
         - SwitchingRotatingArray needs to add 4x padding or maybe we should just allocate 2 arrays.
@@ -93,9 +91,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Handler:
     - Make Handler a subclass of Agent to prevent silly linter problems and redundant wrapper functions.
     - Implement CPU sampling by duplicating the agent with a model parameters on the CPU. Handler overrides `sampling_mode` and `training_mode`, etc. to know when to sync model parameters.
-- Replay buffers
-    - Make replay buffer share memory with batch buffer, such that the Replay object simply wraps some existing buffer structure and exposes the ability to sample from it. This allows the user to define at the top-level what format the replay samples have.
-        - If the ReplayArray does not store its state in shared memory, then `set_samples_buffer` before every batch in all cases, otherwise `rotate` would have no effect in child processes.
 - Runners
     - Add `ChainRunner`, which chains multiple Runners to execute in sequence. `ChainRunner` must implement some resource management, such that resources for a runner are not created until needed, and destroyed after they are no longer needed. This is difficult because it's likely that some resources are shared between runners.
 - Samplers
@@ -124,3 +119,4 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Lazy indexing of numpy arrays within `Array`. This operation is only on the critical path when there are many envs and the main process must send each of them a slice. For the `SynchronizedProcessCage` this is no longer a problem, because all environments begin stepping as soon as `step_async` is called on the first env, while the parent process continues slicing and verifying that the slices are as expected.
 - Performance loss of maintaining separate array for `previous_action` under `agent_info`.
 - Performance gain of only saving `initial_rnn_state` to batch buffer
+- Performance of indexing cuda tensor with numpy array vs. cpu tensor vs. cuda tensor

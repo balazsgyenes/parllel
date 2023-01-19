@@ -7,23 +7,26 @@ from typing import Dict
 
 import torch
 
-from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
-    RotatingSharedMemoryArray, buffer_from_example)
-from parllel.buffers import AgentSamples, buffer_method, Samples, NamedArrayTupleClass
+from parllel.arrays import buffer_from_example
+from parllel.arrays import buffer_from_dict_example
+from parllel.arrays.large import LargeArray
+from parllel.arrays.sharedmemory import LargeSharedMemoryArray
+from parllel.buffers import AgentSamples, buffer_method, Samples
+from parllel.buffers import EnvSamples
 from parllel.cages import TrajInfo
+from parllel.cages import SerialCage, ProcessCage
 from parllel.configuration import add_default_config_fields
 import parllel.logger as logger
 from parllel.logger import Verbosity
-from parllel.patterns import (add_reward_clipping, add_reward_normalization,
-    build_cages_and_env_buffers, build_eval_sampler)
+from parllel.patterns import (build_cages_and_env_buffers, build_eval_sampler)
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.sac_agent import SacAgent
-from parllel.torch.algos.sac import SAC, add_default_sac_config
+from parllel.torch.algos.sac import SAC, add_default_sac_config, SamplesForLoss
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.torch.handler import TorchHandler
-from parllel.transforms import Compose
+from parllel.torch.utils import torchify_buffer
 from parllel.types import BatchSpec
 
 from envs.continuous_cartpole import build_cartpole
@@ -40,21 +43,57 @@ def build(config: Dict) -> OffPolicyRunner:
     )
     TrajInfo.set_discount(config["discount"])
 
-    if parallel:
-        ArrayCls = SharedMemoryArray
-        RotatingArrayCls = RotatingSharedMemoryArray
-    else:
-        ArrayCls = Array
-        RotatingArrayCls = RotatingArray
+    replay_buffer_dims = (config["replay_length"], batch_spec.B)
 
-    cages, batch_action, batch_env = build_cages_and_env_buffers(
-        EnvClass=build_cartpole,
-        env_kwargs=config["env"],
-        TrajInfoClass=TrajInfo,
-        reset_automatically=True,
-        batch_spec=batch_spec,
-        parallel=parallel,
+    EnvClass = build_cartpole
+    env_kwargs = config["env"]
+    TrajInfoClass = TrajInfo
+    reset_automatically = True
+    batch_spec = batch_spec
+    parallel = parallel
+
+    if parallel:
+        CageCls = ProcessCage
+        LargeArrayCls = LargeSharedMemoryArray
+    else:
+        CageCls = SerialCage
+        LargeArrayCls = LargeArray
+
+    cage_kwargs = dict(
+        EnvClass=EnvClass,
+        env_kwargs=env_kwargs,
+        TrajInfoClass=TrajInfoClass,
+        reset_automatically=reset_automatically,
     )
+
+    # create example env
+    example_cage = CageCls(**cage_kwargs)
+
+    # get example output from env
+    example_cage.random_step_async()
+    action, obs, reward, done, info = example_cage.await_step()
+
+    example_cage.close()
+
+    # allocate batch buffer based on examples
+    batch_observation = buffer_from_dict_example(obs, replay_buffer_dims, LargeArrayCls, name="obs", padding=1, apparent_size=batch_spec.T)
+    batch_reward = buffer_from_dict_example(reward, replay_buffer_dims, LargeArrayCls, name="reward", apparent_size=batch_spec.T)
+    batch_done = buffer_from_dict_example(done, replay_buffer_dims, LargeArrayCls, name="done", padding=1, apparent_size=batch_spec.T)
+    batch_info = buffer_from_dict_example(info, tuple(batch_spec), LargeArrayCls, name="envinfo")
+    batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
+
+    """In discrete problems, integer actions are used as array indices during
+    optimization. Pytorch requires indices to be 64-bit integers, so we do not
+    convert here.
+    """
+    batch_action = buffer_from_dict_example(action, replay_buffer_dims, LargeArrayCls, name="action", force_32bit=False, apparent_size=batch_spec.T)
+
+    # pass batch buffers to Cage on creation
+    if CageCls is ProcessCage:
+        cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
+    
+    # create cages to manage environments
+    cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
     spaces = cages[0].spaces
     obs_space, action_space = spaces.observation, spaces.action
@@ -106,25 +145,9 @@ def build(config: Dict) -> OffPolicyRunner:
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), ArrayCls)
+    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), LargeArrayCls)
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
-
-    # add several helpful transforms
-    batch_transforms = []
-
-    batch_buffer, batch_transforms = add_reward_normalization(
-        batch_buffer,
-        batch_transforms,
-        discount=config["discount"],
-    )
-
-    batch_buffer, batch_transforms = add_reward_clipping(
-        batch_buffer,
-        batch_transforms,
-        reward_clip_min=config["reward_clip_min"],
-        reward_clip_max=config["reward_clip_max"],
-    )
 
     sampler = BasicSampler(
         batch_spec=batch_spec,
@@ -133,32 +156,27 @@ def build(config: Dict) -> OffPolicyRunner:
         sample_buffer=batch_buffer,
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=False,
-        batch_transform=Compose(batch_transforms),
     )
 
-    # create the replay buffer as a longer version of the batch buffer
-    replay_length = config["replay_length"]
-    replay_buffer = buffer_from_example(batch_buffer[0], (replay_length,))
-    ReplayBufferSamples = NamedArrayTupleClass("ReplayBufferSamples",
-        ["observation", "action", "reward", "done", "next_observation"])
-    replay_obs = replay_buffer.env.observation
-    replay_buffer_samples = ReplayBufferSamples(
-        observation=replay_obs,
-        action=replay_buffer.agent.action,
-        reward=replay_buffer.env.reward,
-        done=replay_buffer.env.done,
-        # TODO: replace with replay_obs.next
-        next_observation=replay_obs[1 : replay_obs.last + 2],
+    batch_obs = batch_buffer.env.observation
+    replay_buffer = SamplesForLoss(
+        observation=batch_obs.full,
+        action=batch_buffer.agent.action.full,
+        reward=batch_buffer.env.reward.full,
+        done=batch_buffer.env.done.full,
+        next_observation=batch_obs.full.next,
     )
+    # because we are not using frame stacks, we can optionally convert the
+    # entire replay buffer to torch Tensors here
+    # replay_buffer = torchify_buffer(replay_buffer)
 
     replay_buffer = ReplayBuffer(
-        buffer_to_append=replay_buffer,
-        buffer_to_sample=replay_buffer_samples,
-        batch_spec=batch_spec,
-        length_T=replay_length,
-        newest_n_samples_invalid=1, # next_observation not set yet
-        # actually, all samples have a next_observation already, but it is not
-        # copied into the replay buffer because of conversion to ndarray
+        buffer=replay_buffer,
+        sampler_batch_spec=batch_spec,
+        size_T=config["replay_length"],
+        replay_batch_size=config["batch_size"],
+        newest_n_samples_invalid=0,
+        oldest_n_samples_invalid=1,
     )
 
     optimizers = {
@@ -183,6 +201,7 @@ def build(config: Dict) -> OffPolicyRunner:
         agent=agent,
         replay_buffer=replay_buffer,
         optimizers=optimizers,
+        discount=config["discount"],
         **config["algo"],
     )
 
@@ -229,13 +248,11 @@ if __name__ == "__main__":
     mp.set_start_method("fork")
 
     config = dict(
-        parallel=True,
+        parallel=False,
         batch_T=128,
         batch_B=16,
         discount=0.99,
         learning_rate=0.001,
-        reward_clip_min=-5,
-        reward_clip_max=5,
         max_steps_decorrelate=50,
         env=dict(
             max_episode_steps=1000,
@@ -255,7 +272,7 @@ if __name__ == "__main__":
         ),
         replay_length=20 * 128,
         algo=dict(
-            learning_starts=1e4,
+            learning_starts=int(1e4),
             replay_ratio=64,
             target_update_tau=0.01
         ),
