@@ -173,8 +173,8 @@ def build(config: Dict) -> OffPolicyRunner:
     replay_buffer = ReplayBuffer(
         buffer=replay_buffer,
         sampler_batch_spec=batch_spec,
-        leading_dim=config["replay_length"],
-        n_samples=config["batch_size"],
+        size_T=config["replay_length"],
+        replay_batch_size=config["batch_size"],
         newest_n_samples_invalid=0,
         oldest_n_samples_invalid=1,
     )

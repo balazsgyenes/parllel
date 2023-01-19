@@ -44,11 +44,11 @@ class SAC(Algorithm):
         self.target_update_interval = target_update_interval
         self.clip_grad_norm = clip_grad_norm
 
-        batch_size = self.replay_buffer.n_samples
+        replay_batch_size = self.replay_buffer.replay_batch_size
         self.updates_per_optimize = int(self.replay_ratio * batch_spec.size /
-            batch_size)
+            replay_batch_size)
         logger.debug(f"From sampler batch size {batch_spec.size}, training "
-            f"batch size {batch_size}, and replay ratio "
+            f"batch size {replay_batch_size}, and replay ratio "
             f"{self.replay_ratio}, computed {self.updates_per_optimize} "
             f"updates per iteration.")
         self.update_counter = 0
@@ -67,7 +67,7 @@ class SAC(Algorithm):
         by gradient updates (with the number of updates determined by replay
         ratio, sampler batch size, and training batch size).
         """
-        self.replay_buffer.rotate()
+        self.replay_buffer.next_iteration()
 
         if elapsed_steps < self.learning_starts:
             return {}

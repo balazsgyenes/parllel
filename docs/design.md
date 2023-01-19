@@ -68,9 +68,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
         - Use `init_subclass` hook to register subclasses and organize them by e.g. memory type. Add `__new__` method that chooses between subclasses based on arguments.
         - Maybe add method to return arguments required to create a duplicate `Array`.
         - Maybe add `array_like` method to create a clone of the given array with the option to override certain parameters (e.g. shape, dtype, memory).
-    - ReplayArray allocates more space than a single batch for use in ReplayBuffer types. `rotate` shifts the writable portion in time, and another method exposes the entire array for sampling.
-        - To avoid having to deal with disjoint sections of memory when wrapping, allocate an integer multiple of `batch_T` and copy on `rotate`.
-        - ReplayArray needs to know how many samples before and after writable portion are invalid (i.e. because `n_step_returns` have been overwritten).
     - SwitchingArray wraps two arrays and switches between them on `rotate`. This is useful for asynchronous sampling, where different parts of the array are simultaneously written to by the sampler and read from by the algorithm.
         - Overloading `rotate` is useful because the batch buffer is already rotated before each batch.
         - SwitchingRotatingArray needs to add 4x padding or maybe we should just allocate 2 arrays.
@@ -94,9 +91,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
 - Handler:
     - Make Handler a subclass of Agent to prevent silly linter problems and redundant wrapper functions.
     - Implement CPU sampling by duplicating the agent with a model parameters on the CPU. Handler overrides `sampling_mode` and `training_mode`, etc. to know when to sync model parameters.
-- Replay buffers
-    - Make replay buffer share memory with batch buffer, such that the Replay object simply wraps some existing buffer structure and exposes the ability to sample from it. This allows the user to define at the top-level what format the replay samples have.
-        - If the ReplayArray does not store its state in shared memory, then `set_samples_buffer` before every batch in all cases, otherwise `rotate` would have no effect in child processes.
 - Runners
     - Add `ChainRunner`, which chains multiple Runners to execute in sequence. `ChainRunner` must implement some resource management, such that resources for a runner are not created until needed, and destroyed after they are no longer needed. This is difficult because it's likely that some resources are shared between runners.
 - Samplers
