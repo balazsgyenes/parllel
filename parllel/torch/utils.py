@@ -126,8 +126,8 @@ def torchify_buffer(buffer: Buffer[Union[np.ndarray, Array]],
         # buffer is a tuple
         return contents
 
-    if buffer is None:
-        return None
+    if buffer is None or isinstance(buffer, torch.Tensor):
+        return buffer
     return torch.from_numpy(np.asarray(buffer))
 
 

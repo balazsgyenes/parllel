@@ -34,21 +34,20 @@ class SAC(Algorithm):
         clip_grad_norm: float,
     ):
         """Save input arguments."""
-        self.batch_spec = batch_spec
         self.agent = agent
         self.replay_buffer = replay_buffer
         self.optimizers = optimizers
         self.discount = discount
-        self.learning_starts = learning_starts
+        self.learning_starts = int(learning_starts)
         self.replay_ratio = replay_ratio
         self.target_update_tau = target_update_tau 
         self.target_update_interval = target_update_interval
         self.clip_grad_norm = clip_grad_norm
 
         batch_size = self.replay_buffer.n_samples
-        self.updates_per_optimize = int(self.replay_ratio * self.batch_spec.size /
+        self.updates_per_optimize = int(self.replay_ratio * batch_spec.size /
             batch_size)
-        logger.debug(f"From sampler batch size {self.batch_spec.size}, training "
+        logger.debug(f"From sampler batch size {batch_spec.size}, training "
             f"batch size {batch_size}, and replay ratio "
             f"{self.replay_ratio}, computed {self.updates_per_optimize} "
             f"updates per iteration.")
@@ -81,7 +80,6 @@ class SAC(Algorithm):
             # get a random batch of samples from the replay buffer and move them
             # to the GPU
             samples = self.replay_buffer.sample_batch()
-            # TODO: can we ensure compatibility for tensor buffers and Array buffers?
             samples = torchify_buffer(samples)
             samples = buffer_to_device(samples, self.agent.device)
 

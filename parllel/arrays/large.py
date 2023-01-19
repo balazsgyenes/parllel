@@ -1,3 +1,4 @@
+from __future__ import annotations # full returns another LargeArray
 from functools import reduce
 from typing import Any, Optional, Tuple
 
@@ -34,18 +35,19 @@ class LargeArray(RotatingArray):
         
     def _resolve_indexing_history(self) -> None:
         array = self._base_array
+        self.shift = shift = self.offset + self._padding
 
         if self._index_history:
             # shift only the first indices, leave the rest (if there are more)
             index_history = [shift_indices(
                 self._index_history[0],
-                self.shift,
+                shift,
                 self.apparent_size,
             )] + self._index_history[1:]
         else:
             # even if the array was never indexed, only this slice of the array
             # should be returned by __array__
-            index_history = [slice(self.shift, self.shift + self.apparent_size)]
+            index_history = [slice(shift, shift + self.apparent_size)]
 
         # if index history has only 1 element, this has no effect
         array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
@@ -58,11 +60,24 @@ class LargeArray(RotatingArray):
         self._apparent_shape = array.shape
     
     def reset(self) -> None:
+        """Resets array, such after calling `rotate()` once, the offset will
+        be 0. This is useful in the sampler, which calls `rotate()` before
+        every batch.
+        """
+        if self._index_history:
+            raise RuntimeError("Only allowed to call `reset()` on original array")
+        
         # if apparent size is not smaller, sets offset to 0
         self.offset = self.full_size - self.apparent_size
-        self.shift = self.offset + self._padding
+
+        # current array is now invalid, but apparent shape should still be
+        # correct
+        self._current_array = None
 
     def __setitem__(self, location: Indices, value: Any) -> None:
+        # TODO: optimize this method to avoid resolving history if location
+        # is slice(None) or Ellipsis and history only has one element
+        # in this case, only previous_array is required
         if self._current_array is None:
             self._resolve_indexing_history()
 
@@ -86,23 +101,60 @@ class LargeArray(RotatingArray):
     
     def rotate(self) -> None:
 
-        # only rotate if called on the original array
-        if not self._index_history:
+        if self._index_history:
+            raise RuntimeError("Only allowed to call `rotate()` on original array")
 
-            self.offset += self.apparent_size
+        self.offset += self.apparent_size
 
-            if self._padding and self.offset >= self.full_size:
-                # copy values from end of base array to beginning
-                final_values = slice(-(self._padding * 2), None)
-                next_previous_values = slice(0, self._padding * 2)
-                self._base_array[next_previous_values] = self._base_array[final_values]
+        if self._padding and self.offset >= self.full_size:
+            # copy values from end of base array to beginning
+            final_values = slice(-(self._padding * 2), None)
+            next_previous_values = slice(0, self._padding * 2)
+            self._base_array[next_previous_values] = self._base_array[final_values]
 
-            self.offset %= self.full_size
-            self.shift = self.offset + self._padding
+        self.offset %= self.full_size
 
-            # current array is now invalid, but apparent shape should still be
-            # correct
-            self._current_array = None
+        # current array is now invalid, but apparent shape should still be
+        # correct
+        self._current_array = None
+
+    @property
+    def full(self) -> LargeArray:
+        full: LargeArray = self.__new__(type(self))
+        full.__dict__.update(self.__dict__)
+
+        full.apparent_size = full.full_size
+        full.offset = 0
+
+        full._index_history = []
+        full._current_array = None
+        full._apparent_shape = None
+        return full
+
+    @property
+    def next(self) -> LargeArray:
+        return self._get_at_offset(offset=1)
+
+    @property
+    def previous(self) -> LargeArray:
+        return self._get_at_offset(offset=-1)
+
+    def _get_at_offset(self, offset: int) -> LargeArray:
+        if self._index_history:
+            raise RuntimeError("Only allowed to get at offset from unindexed array")
+
+        new: LargeArray = self.__new__(type(self))
+        new.__dict__.update(self.__dict__)
+
+        # total shift of offset cannot exceed +/-padding, but we do not check
+        # if padding is exceeded, getitem/setitem may throw error
+        new.offset += offset
+
+        # index_history is already empty
+        # current array is now invalid, but apparent shape should still be
+        # correct
+        new._current_array = None
+        return new
 
 
 def shift_indices(indices: Indices, shift: int, apparent_size: int,

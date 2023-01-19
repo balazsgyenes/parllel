@@ -82,7 +82,5 @@ class ReplayBuffer(Generic[BufferType]):
         self._cursor += self.batch_spec.T
 
         if self._cursor >= self.leading_dim:
-            # note that previous check is for greater than, but here we also
-            # check for equality
             self._full = True
             self._cursor %= self.leading_dim

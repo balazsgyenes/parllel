@@ -18,8 +18,7 @@ from parllel.cages import SerialCage, ProcessCage
 from parllel.configuration import add_default_config_fields
 import parllel.logger as logger
 from parllel.logger import Verbosity
-from parllel.patterns import (add_reward_clipping, add_reward_normalization,
-    build_cages_and_env_buffers, build_eval_sampler)
+from parllel.patterns import (build_cages_and_env_buffers, build_eval_sampler)
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
 from parllel.samplers import BasicSampler
@@ -28,7 +27,6 @@ from parllel.torch.algos.sac import SAC, add_default_sac_config, SamplesForLoss
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.torch.handler import TorchHandler
 from parllel.torch.utils import torchify_buffer
-from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
 from envs.continuous_cartpole import build_cartpole
@@ -151,54 +149,6 @@ def build(config: Dict) -> OffPolicyRunner:
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 
-    # TODO: for now, the replay buffer must be built before the Sampler is
-    # instantiated, otherwise the LargeArrays get reset. Fix this or make this
-    # requirement explicit
-    batch_obs = batch_buffer.env.observation
-    replay_buffer = SamplesForLoss(
-        # TODO: make a function that returns a view of the entire LargeArray
-        observation=batch_obs[:config["replay_length"]],
-        action=batch_buffer.agent.action[:config["replay_length"]],
-        reward=batch_buffer.env.reward[:config["replay_length"]],
-        done=batch_buffer.env.done[:config["replay_length"]],
-        # TODO: replace with batch_obs.next
-        next_observation=batch_obs[1 : config["replay_length"] + 1],
-    )
-    """
-    TODO: in the case without FrameStacks, this can still be a buffer of torch
-    tensors. However, to do this we need a view of the LargeArray that shows
-    all of the array.
-    """
-    # replay_buffer = torchify_buffer(replay_buffer)
-
-    replay_buffer = ReplayBuffer(
-        buffer=replay_buffer,
-        sampler_batch_spec=batch_spec,
-        leading_dim=config["replay_length"],
-        n_samples=config["batch_size"],
-        # TODO: verify that even most recent samples are valid now that buffer
-        # is LargeArrays
-        newest_n_samples_invalid=0,
-        oldest_n_samples_invalid=1,
-    )
-
-    # add several helpful transforms
-    batch_transforms = []
-
-    batch_buffer, batch_transforms = add_reward_normalization(
-        batch_buffer,
-        batch_transforms,
-        discount=config["discount"],
-        initial_count=1000,
-    )
-
-    batch_buffer, batch_transforms = add_reward_clipping(
-        batch_buffer,
-        batch_transforms,
-        reward_clip_min=config["reward_clip_min"],
-        reward_clip_max=config["reward_clip_max"],
-    )
-
     sampler = BasicSampler(
         batch_spec=batch_spec,
         envs=cages,
@@ -206,7 +156,27 @@ def build(config: Dict) -> OffPolicyRunner:
         sample_buffer=batch_buffer,
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=False,
-        batch_transform=Compose(batch_transforms),
+    )
+
+    batch_obs = batch_buffer.env.observation
+    replay_buffer = SamplesForLoss(
+        observation=batch_obs.full,
+        action=batch_buffer.agent.action.full,
+        reward=batch_buffer.env.reward.full,
+        done=batch_buffer.env.done.full,
+        next_observation=batch_obs.full.next,
+    )
+    # because we are not using frame stacks, we can optionally convert the
+    # entire replay buffer to torch Tensors here
+    # replay_buffer = torchify_buffer(replay_buffer)
+
+    replay_buffer = ReplayBuffer(
+        buffer=replay_buffer,
+        sampler_batch_spec=batch_spec,
+        leading_dim=config["replay_length"],
+        n_samples=config["batch_size"],
+        newest_n_samples_invalid=0,
+        oldest_n_samples_invalid=1,
     )
 
     optimizers = {
@@ -283,8 +253,6 @@ if __name__ == "__main__":
         batch_B=16,
         discount=0.99,
         learning_rate=0.001,
-        reward_clip_min=-5,
-        reward_clip_max=5,
         max_steps_decorrelate=50,
         env=dict(
             max_episode_steps=1000,
@@ -304,7 +272,7 @@ if __name__ == "__main__":
         ),
         replay_length=20 * 128,
         algo=dict(
-            learning_starts=1e4,
+            learning_starts=int(1e4),
             replay_ratio=64,
             target_update_tau=0.01
         ),
