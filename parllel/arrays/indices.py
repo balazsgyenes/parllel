@@ -1,4 +1,4 @@
-from typing import List, Sequence, Tuple
+from typing import List, Sequence, Tuple, TypeVar
 
 import numpy as np
 from nptyping import NDArray
@@ -54,12 +54,12 @@ def compute_indices(base_array: NDArray, current_array: NDArray):
     return tuple(current_indices)
 
 
-def predict_copy_on_index(apparent_shape: Tuple[int, ...], location: Indices):
-    return (len(location) == len(apparent_shape) and 
-        all(isinstance(index, int) for index in location))
+def predict_copy_on_index(shape: Tuple[int, ...], new_location: Indices):
+    return (len(new_location) == len(shape) and 
+        all(isinstance(index, int) for index in new_location))
 
 
-def add_indices(current_indices: List[Index], location: Indices):
+def add_locations(current_location: List[Index], new_location: Indices):
     """Takes an indexing location, the current indices of the subarray relative
     to the base array, and the base array's shape, and returns the next indices
     of the subarray relative to the base array after indexing.
@@ -76,93 +76,117 @@ def add_indices(current_indices: List[Index], location: Indices):
     - it may be faster to create a jitclass for Index which represents either
         int, slice, or Ellipsis, and can then be passed to jitted functions
     """
-    if isinstance(location, tuple):
-        location = list(location)
+    if isinstance(new_location, tuple):
+        new_location = list(new_location)
     else:
-        location = [location]
+        new_location = [new_location]
 
-    # check if Ellipsis occurs in location
-    i = next((index for index, elem in enumerate(location) if elem is Ellipsis), None)
+    # check if Ellipsis occurs in new_location
+    i = next((index for index, elem in enumerate(new_location) if elem is Ellipsis), None)
     if i is not None:
-        # pad location with slice(None) elements until length equals ndim
+        # pad new_location with slice(None) elements until length equals ndim
         # assume Ellipsis only occurs once, since the location is well-formed
-        location[i:i+1] = [slice(None)] * (len(current_indices) - len(location) + 1)
+        new_location[i:i+1] = [slice(None)] * (len(current_location) - len(new_location) + 1)
 
     i = 0
-    for dim, curr_index in enumerate(current_indices):
-        if isinstance(curr_index, int):
+    for dim, current_index in enumerate(current_location):
+        if isinstance(current_index, int):
             # this dimension has already been indexed with an integer, it
             # cannot be indexed further
             continue
 
-        new_index = location[i]
-
-        if curr_index == slice(None):
-            # this dimension has not yet been indexed at all
-            # new_index must be cleaned, and then overwrites curr_index
-            if isinstance(new_index, slice):
-                step = new_index.step or 1
-                new_index = slice(
-                    new_index.start or (0 if step > 0 else -1),
-                    new_index.stop,
-                    step,
-                )
-            current_indices[dim] = new_index
-        else:
-            # this dimension has been indexed with a non-trivial slice
-            # add new_index to existing slice
-            if isinstance(new_index, int):
-                current_indices[dim] = index_slice(curr_index, new_index)
-
-            # no op if indexed with the trivial slice
-            elif new_index != slice(None):  # new_index: slice
-
-                step = curr_index.step
-                # translate new_index.start into "world coordinates"
-                start = index_slice(curr_index, new_index.start or (
-                    0 if step > 0 else -1
-                ))
-                
-                if (new_stop := new_index.stop) is not None:
-                    # translate new_stop into "world coordinates"
-                    new_stop = index_slice(curr_index, new_stop)
-
-                    stop = (
-                        min(curr_stop, new_stop)
-                        if (curr_stop := curr_index.stop) is not None else
-                        new_stop
-                    )
-                else:
-                    # curr_index.stop might be None, that's okay
-                    stop = curr_index.stop
-
-                # update step by multiplying new step onto it
-                if new_step := new_index.step is not None:
-                    step *= new_step
-
-                current_indices[dim] = slice(start, stop, step)
+        current_location[dim] = add_indices(current_index, new_location[i])
 
         i += 1  # consider next new_index on next loop iteration
-        if i == len(location):
-            # new_indices exhausted
+        if i == len(new_location):
+            # new_location exhausted
             break
-
-    return current_indices
-
-
-def index_slice(current_slice: slice, new_index: int) -> int:
-    step = current_slice.step
-    start = (
-        current_slice.start
-        if new_index >= 0 else
-        # if index negative, determine index of the end of the array
-        current_slice.stop or (
-            0  # end=None means we must index from just past the -1th element
-            if step > 0 else  # end of flipped array is the beginning
-            -1  # end=None means we must index from just before the 0th element
+    else:
+        # if new_location has not been exhausted, just add the remaining
+        # elements to current_indices after cleaning them
+        current_location.extend(
+            add_indices(slice(None), new_index)
+            for new_index in new_location[i:]
         )
-    )
-    return start + new_index * step
+
+    return current_location
+
+
+IndexType = TypeVar("IndexType", int, slice)
+def add_indices(current_index: slice, new_index: IndexType) -> IndexType:
+    if current_index == slice(None):
+        # this dimension has not yet been indexed at all
+        # new_index must be cleaned, and then overwrites current_index
+        if isinstance(new_index, slice):
+            step = new_index.step or 1
+            # we leave the stop as potentially being None because:
+            # 1. we do not know the length of this dimension
+            # 2. there is no way to represent an endpoint of None with a
+            # negative step, even if we know the size
+            new_index = slice(
+                new_index.start or (0 if step > 0 else -1),
+                new_index.stop,
+                step,
+            )
+        return new_index
+    else:
+        # this dimension has been indexed with a non-trivial slice
+        # add new_index to existing slice
+        if isinstance(new_index, int):
+            return index_slice(current_index, new_index)
+
+        # no op if indexed with the trivial slice
+        elif new_index != slice(None):  # new_index: slice
+
+            step = current_index.step
+            # translate new_index.start into "world coordinates"
+            start = index_slice(current_index, new_index.start or (
+                0 if step > 0 else -1
+            ))
+            
+            if (new_stop := new_index.stop) is not None:
+                # translate new_stop into "world coordinates"
+                new_stop = index_slice(current_index, new_stop)
+
+                stop = (
+                    (
+                        min(curr_stop, new_stop)
+                        if step > 0 else
+                        max(curr_stop, new_stop)
+                    )
+                    if (curr_stop := current_index.stop) is not None else
+                    new_stop
+                )
+            else:
+                # current_index.stop might be None, that's okay
+                # TODO: needs to be flipped if new_step is negative
+                stop = current_index.stop
+
+            # update step by multiplying new step onto it
+            if (new_step := new_index.step) is not None:
+                step *= new_step
+
+            return slice(start, stop, step)
+
+        return current_index
+
+
+def index_slice(current_slice: slice, index: int) -> int:
+    step = current_slice.step
+    if index >= 0:
+        start = current_slice.start
+    else:
+        # if index negative, determine index of the end of the array
+        if (start := current_slice.stop) is None:
+            start = (
+                0  # end=None means we must index from just past the -1th element
+                if step > 0 else  # end of flipped array is the beginning
+                -1  # end=None means we must index from just before the 0th element
+            )
+        # else:
+        #     # correct for case when step does not divide 
+        #     start += start % step
+    return start + index * step
 
 
 def shape_from_indices(base_shape: Tuple[int, ...], indices: Sequence[Index]):
