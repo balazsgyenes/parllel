@@ -79,17 +79,15 @@ class TestAddIndices:
         pytest.param([
             slice(2, None, -1),
             ], id="negative step ending at None",
-            marks=pytest.mark.skip,
         ),
     ])
     def test_add_indices(self, np_array, index_history):
-        base_shape = np_array.shape
         subarray = np_array
-        curr_indices = [slice(None) for _ in base_shape]
+        curr_indices = [slice(None) for _ in np_array.shape]
 
         for indices in index_history:
             subarray = subarray[indices]
-            curr_indices = add_indices(base_shape, curr_indices, indices)
+            curr_indices = add_indices(curr_indices, indices)
 
         assert np.array_equal(subarray, np_array[tuple(curr_indices)])
 

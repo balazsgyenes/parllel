@@ -59,9 +59,7 @@ def predict_copy_on_index(apparent_shape: Tuple[int, ...], location: Indices):
         all(isinstance(index, int) for index in location))
 
 
-def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index],
-    location: Indices
-):
+def add_indices(current_indices: List[Index], location: Indices):
     """Takes an indexing location, the current indices of the subarray relative
     to the base array, and the base array's shape, and returns the next indices
     of the subarray relative to the base array after indexing.
@@ -69,12 +67,6 @@ def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index],
     Issues:
     - no checks to make sure that index is valid (e.g. bounds checking), so the
         indexing has to be done on the ndarray as well.
-    - this functions converts slice `s` to standard form (start/stop positive
-        integers and step non-zero integer) using `slice(*s.indices(size))`.
-        However, does not return a slice in standard form for stop=None and
-        step < 0, where the new stop is negative. This results in a "standard"
-        slice that gives a different result than the original.
-        e.g. slice(5, None, -1) -> slice(5, -1, -1), which is a 0-length slice
 
     Possible optimizations:
     - move to for loop over location zipped with current_indices with ints
@@ -99,45 +91,56 @@ def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index],
     i = 0
     for dim, curr_index in enumerate(current_indices):
         if isinstance(curr_index, int):
-            # this dimension has already been indexed with an integer, so it is
-            # ignored
+            # this dimension has already been indexed with an integer, it
+            # cannot be indexed further
             continue
 
         new_index = location[i]
-        base_size = base_shape[dim]
 
         if curr_index == slice(None):
             # this dimension has not yet been indexed at all
-            # new index must be cleaned, and then overwrites curr_index
-            if new_index == slice(None):
-                # don't need to clean this
-                pass
-            elif isinstance(new_index, int):
-                # make negative indices positive
-                new_index %= base_size
-            else:  # new_index: slice
-                # make start/stop positive integers and step non-zero integer
-                new_index = slice(*new_index.indices(base_size))
+            # new_index must be cleaned, and then overwrites curr_index
+            if isinstance(new_index, slice):
+                step = new_index.step or 1
+                new_index = slice(
+                    new_index.start or (0 if step > 0 else -1),
+                    new_index.stop,
+                    step,
+                )
             current_indices[dim] = new_index
         else:
             # this dimension has been indexed with a non-trivial slice
             # add new_index to existing slice
             if isinstance(new_index, int):
-                # no need to check bounds on this, we assume the index is
-                # correct
-                new_index = curr_index.start + new_index * curr_index.step
+                current_indices[dim] = index_slice(curr_index, new_index)
 
-                current_indices[dim] = new_index
-            else:  # new_index: slice
-                # get current size of this dimension
-                size = shape_from_indices((base_size,), (curr_index,))[0]
-                # use the current size to resolve the slice
-                start, stop, step = new_index.indices(size)
-                current_indices[dim] = slice(
-                    curr_index.start + start * curr_index.step,  # start
-                    curr_index.start + stop * curr_index.step,   # stop
-                    curr_index.step * step,                      # step
-                )
+            # no op if indexed with the trivial slice
+            elif new_index != slice(None):  # new_index: slice
+
+                step = curr_index.step
+                # translate new_index.start into "world coordinates"
+                start = index_slice(curr_index, new_index.start or (
+                    0 if step > 0 else -1
+                ))
+                
+                if (new_stop := new_index.stop) is not None:
+                    # translate new_stop into "world coordinates"
+                    new_stop = index_slice(curr_index, new_stop)
+
+                    stop = (
+                        min(curr_stop, new_stop)
+                        if (curr_stop := curr_index.stop) is not None else
+                        new_stop
+                    )
+                else:
+                    # curr_index.stop might be None, that's okay
+                    stop = curr_index.stop
+
+                # update step by multiplying new step onto it
+                if new_step := new_index.step is not None:
+                    step *= new_step
+
+                current_indices[dim] = slice(start, stop, step)
 
         i += 1  # consider next new_index on next loop iteration
         if i == len(location):
@@ -145,6 +148,21 @@ def add_indices(base_shape: Tuple[int, ...], current_indices: List[Index],
             break
 
     return current_indices
+
+
+def index_slice(current_slice: slice, new_index: int) -> int:
+    step = current_slice.step
+    start = (
+        current_slice.start
+        if new_index >= 0 else
+        # if index negative, determine index of the end of the array
+        current_slice.stop or (
+            0  # end=None means we must index from just past the -1th element
+            if step > 0 else  # end of flipped array is the beginning
+            -1  # end=None means we must index from just before the 0th element
+        )
+    )
+    return start + new_index * step
 
 
 def shape_from_indices(base_shape: Tuple[int, ...], indices: Sequence[Index]):
