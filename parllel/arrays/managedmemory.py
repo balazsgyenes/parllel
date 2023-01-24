@@ -6,11 +6,11 @@ import numpy as np
 from .array import Array
 
 
-class ManagedMemoryArray(Array, kind="managed"):
+class ManagedMemoryArray(Array, storage="managed"):
     """An array in OS shared memory that can be shared between processes at any
     time.
     """
-    kind = "managed"
+    storage = "managed"
 
     def _allocate(self) -> None:
         # allocate array in OS shared memory

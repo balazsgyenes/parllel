@@ -17,28 +17,28 @@ class Array:
         >>> array[:, slice(1, 3), 2] = 5.
     """
     _subclasses = {}
-    kind = "local"
+    storage = "local"
 
-    def __init_subclass__(cls, /, kind: Optional[str] = None, **kwargs) -> None:
+    def __init_subclass__(cls, /, storage: Optional[str] = None, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
-        if kind is not None:
-            cls._subclasses[kind] = cls
+        if storage is not None:
+            cls._subclasses[storage] = cls
 
-    def __new__(cls, *args, kind: str = "local", **kwargs):
+    def __new__(cls, *args, storage: str = "local", **kwargs):
         # if instantiating a subclass directly, just create that class
-        if cls != Array or kind == "local":
+        if cls != Array or storage == "local":
             return super().__new__(cls)
         # otherwise look up name in dictionary of registered subclasses
         try:
-            subcls = cls._subclasses[kind]
+            subcls = cls._subclasses[storage]
         except KeyError:
-            raise RuntimeError(f"No writer registered under kind {kind}")
+            raise ValueError(f"No array registered under storage type '{storage}'")
         return super().__new__(subcls)
 
     def __init__(self,
         shape: Tuple[int, ...],
         dtype: np.dtype,
-        kind: str = "local",
+        storage: str = "local",
         padding: int = 0,
         apparent_size: Optional[int] = None,
     ) -> None:
@@ -103,13 +103,13 @@ class Array:
         array: Array,
         shape: Optional[Tuple[int, ...]],
         dtype: Optional[np.dtype],
-        kind: Optional[str],
+        storage: Optional[str],
         padding: Optional[int],
         apparent_size: Optional[int],
     ) -> Array:
         shape = shape or array.full_shape
         dtype = dtype or array.dtype
-        kind = kind or array.kind
+        storage = storage or array.storage
         padding = padding or array.padding
         # if apparent_size is not the default, inherit it from given array
         apparent_size = apparent_size or (
@@ -117,7 +117,7 @@ class Array:
             if array.apparent_size < array.full_size else
             None
         )
-        return Array(shape, dtype, kind, padding, apparent_size)
+        return Array(shape, dtype, storage, padding, apparent_size)
 
     def _allocate(self) -> None:
         # initialize numpy array

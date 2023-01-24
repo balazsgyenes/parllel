@@ -7,12 +7,12 @@ import numpy as np
 from .array import Array
 
 
-class SharedMemoryArray(Array, kind="shared"):
+class SharedMemoryArray(Array, storage="shared"):
     """An array in OS shared memory that can be shared between processes on
     process startup only (i.e. process inheritance). Starting processes with
     the `spawn` method is also supported.
     """
-    kind = "shared"
+    storage = "shared"
 
     def _allocate(self) -> None:
         # allocate array in OS shared memory
