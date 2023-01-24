@@ -1,35 +1,78 @@
-from __future__ import annotations
+from __future__ import annotations # full returns another Array
 from functools import reduce
-from typing import Any, List, Tuple
+from typing import Any, Optional, Tuple
 
 import numpy as np
-from nptyping import NDArray
 
-from parllel.buffers.buffer import Buffer, Indices
+from parllel.buffers import Index, Indices
 
 
-class Array(Buffer):
+class Array:
     """An object wrapping a numpy array for use in sampling. An Array remembers
     indexing operations used to get subarrays. Math operations are generally
     not supported, use `np.asarray(arr)` to get the underlying numpy array.
 
     Example:
         >>> array = Array(shape=(4, 4, 4), dtype=np.float32)
-        >>> array.initialize()
         >>> array[:, slice(1, 3), 2] = 5.
-
-    TODO:
-        - enforce dtype to be an actual np.dtype
     """
+    _subclasses = {}
+    kind = "local"
+
+    def __init_subclass__(cls, /, kind: Optional[str] = None, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        if kind is not None:
+            cls._subclasses[kind] = cls
+
+    def __new__(cls, *args, kind: str = "local", **kwargs):
+        # if instantiating a subclass directly, just create that class
+        if cls != Array or kind == "local":
+            return super().__new__(cls)
+        # otherwise look up name in dictionary of registered subclasses
+        try:
+            subcls = cls._subclasses[kind]
+        except KeyError:
+            raise RuntimeError(f"No writer registered under kind {kind}")
+        return super().__new__(subcls)
 
     def __init__(self,
         shape: Tuple[int, ...],
         dtype: np.dtype,
+        kind: str = "local",
+        padding: int = 0,
+        apparent_size: Optional[int] = None,
     ) -> None:
+
+        if apparent_size is None:
+            apparent_size = shape[0]
+        if shape[0] % apparent_size != 0:
+            raise ValueError(
+                "The leading dimension of the array must divide evenly into "
+                "the apparent leading dimension."
+            )
+        self.full_size = shape[0] # full leading dimension without padding
+        self.apparent_size = apparent_size
+        self.offset = 0
+        self.shift = self.offset + padding
+
+        if not padding >= 0:
+            raise ValueError("Padding must be non-negative.")
+        self._padding = padding
+
         if not shape:
             raise ValueError("Non-empty shape required.")
-        self._base_shape = shape
-        self._apparent_shape = shape
+
+        if not shape[0] >= padding:
+            raise ValueError(f"Leading dimension {shape[0]} must be at least "
+                f"as long as padding {padding}")
+        
+        # add padding onto both ends of first dimension
+        padded_shape = (shape[0] + 2 * self._padding,) + shape[1:]
+
+        if not padded_shape:
+            raise ValueError("Non-empty padded_shape required.")
+        self._base_shape = padded_shape
+        self._apparent_shape = padded_shape
 
         dtype = np.dtype(dtype)
         if dtype == np.object_:
@@ -37,44 +80,53 @@ class Array(Buffer):
         self.dtype = dtype
 
         self._buffer_id: int = id(self)
-        self._index_history: List[Indices] = []
+        self._index_history: list[Indices] = []
 
         self._allocate()
 
         # the result of calling np.asarray() on the array at any time
-        self._current_array: NDArray = self._base_array
+        self._current_array = self._base_array
 
         # used to enable indexing into a single element like element[:] = 0
         # set to the previous value of current_array, or the base_array
-        self._previous_array: NDArray = self._base_array
+        self._previous_array = self._base_array
+
+        # unlike in base class, _current_array is not the same as _base_array
+        # this also fixes _apparent_shape, which still includes the padding
+        self._resolve_indexing_history()
 
     def _allocate(self) -> None:
         # initialize numpy array
-        self._base_array: NDArray = np.zeros(shape=self._base_shape, dtype=self.dtype)
-
-    def _resolve_indexing_history(self) -> None:
-        array = self._base_array
+        self._base_array = np.zeros(shape=self._base_shape, dtype=self.dtype)
         
-        # if index history has 0 or 1 elements, this has no effect
-        array = reduce(lambda arr, index: arr[index], self._index_history[:-1], array)
-        self._previous_array = array
-        
-        # index last item in history only if there is a history
-        if self._index_history:
-            array = array[self._index_history[-1]]
-
-        self._current_array = array
-        self._apparent_shape = array.shape
-
     @property
     def shape(self):
         if self._apparent_shape is None:
             self._resolve_indexing_history()
 
         return self._apparent_shape
+        
+    @property
+    def padding(self) -> int:
+        return self._padding
 
-    def reset(self) -> None:
-        pass
+    @property
+    def first(self) -> int:
+        """The index of the first element in the array, not including padding.
+        Enables syntactic sugar like `arr[arr.first - 1]`
+        """
+        return 0
+
+    @property
+    def last(self) -> int:
+        """The index of the final element in the array, not including padding.
+        Replaces indexing at -1 in numpy arrays.
+        e.g. array[-1] -> rot_array[rot_array.last]
+        """
+        if self._apparent_shape is None:
+            self._resolve_indexing_history()
+        
+        return self._apparent_shape[0] - 1
 
     def __getitem__(self, location: Indices) -> Array:
         # new Array object initialized through a (shallow) copy. Attributes
@@ -94,24 +146,130 @@ class Array(Buffer):
         result._previous_array = self._current_array
         return result
 
+    def _resolve_indexing_history(self) -> None:
+        array = self._base_array
+        self.shift = shift = self.offset + self._padding
+
+        if self._index_history:
+            # shift only the first indices, leave the rest (if there are more)
+            index_history = [shift_indices(
+                self._index_history[0],
+                shift,
+                self.apparent_size,
+            )] + self._index_history[1:]
+        else:
+            # even if the array was never indexed, only this slice of the array
+            # should be returned by __array__
+            index_history = [slice(shift, shift + self.apparent_size)]
+
+        # if index history has only 1 element, this has no effect
+        array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
+        self._previous_array = array
+        
+        # we guarantee that index_history has at least 1 element
+        array = array[index_history[-1]]
+
+        self._current_array = array
+        self._apparent_shape = array.shape
+    
+    def reset(self) -> None:
+        """Resets array, such after calling `rotate()` once, the offset will
+        be 0. This is useful in the sampler, which calls `rotate()` before
+        every batch.
+        """
+        if self._index_history:
+            raise RuntimeError("Only allowed to call `reset()` on original array")
+        
+        # if apparent size is not smaller, sets offset to 0
+        self.offset = self.full_size - self.apparent_size
+
+        # current array is now invalid, but apparent shape should still be
+        # correct
+        self._current_array = None
+
     def __setitem__(self, location: Indices, value: Any) -> None:
+        # TODO: optimize this method to avoid resolving history if location
+        # is slice(None) or Ellipsis and history only has one element
+        # in this case, only previous_array is required
         if self._current_array is None:
             self._resolve_indexing_history()
 
-        if self._apparent_shape == ():
-            # Need to avoid item assignment on a scalar (0-D) array, so we assign
-            # into previous array using the last indices used
-            if not (location == slice(None) or location == ...):
-                raise IndexError("Cannot take slice of 0-D array.")
-            # in this case, there must be an index history
-            location = self._index_history[-1]
-            destination = self._previous_array
+        if self._index_history:
+            if self._apparent_shape == ():
+                # Need to avoid item assignment on a scalar (0-D) array, so we assign
+                # into previous array using the last indices used
+                if not (location == slice(None) or location == ...):
+                    raise IndexError("Cannot take slice of 0-D array.")
+                location = self._index_history[-1]
+                # indices must be shifted if they were the first indices
+                if len(self._index_history) == 1:
+                    location = shift_indices(location, self.shift, self.apparent_size)
+                destination = self._previous_array
+            else:
+                destination = self._current_array
         else:
-            destination = self._current_array
-
+            location = shift_indices(location, self.shift, self.apparent_size)
+            destination = self._base_array
         destination[location] = value
+    
+    def rotate(self) -> None:
 
-    def __array__(self, dtype=None) -> NDArray:
+        if self._index_history:
+            raise RuntimeError("Only allowed to call `rotate()` on original array")
+
+        self.offset += self.apparent_size
+
+        if self._padding and self.offset >= self.full_size:
+            # copy values from end of base array to beginning
+            final_values = slice(-(self._padding * 2), None)
+            next_previous_values = slice(0, self._padding * 2)
+            self._base_array[next_previous_values] = self._base_array[final_values]
+
+        self.offset %= self.full_size
+
+        # current array is now invalid, but apparent shape should still be
+        # correct
+        self._current_array = None
+
+    @property
+    def full(self) -> Array:
+        full: Array = self.__new__(type(self))
+        full.__dict__.update(self.__dict__)
+
+        full.apparent_size = full.full_size
+        full.offset = 0
+
+        full._index_history = []
+        full._current_array = None
+        full._apparent_shape = None
+        return full
+
+    @property
+    def next(self) -> Array:
+        return self._get_at_offset(offset=1)
+
+    @property
+    def previous(self) -> Array:
+        return self._get_at_offset(offset=-1)
+
+    def _get_at_offset(self, offset: int) -> Array:
+        if self._index_history:
+            raise RuntimeError("Only allowed to get at offset from unindexed array")
+
+        new: Array = self.__new__(type(self))
+        new.__dict__.update(self.__dict__)
+
+        # total shift of offset cannot exceed +/-padding, but we do not check
+        # if padding is exceeded, getitem/setitem may throw error
+        new.offset += offset
+
+        # index_history is already empty
+        # current array is now invalid, but apparent shape should still be
+        # correct
+        new._current_array = None
+        return new
+
+    def __array__(self, dtype=None) -> np.ndarray:
         if self._current_array is None:
             self._resolve_indexing_history()
         
@@ -126,7 +284,7 @@ class Array(Buffer):
     def __bool__(self) -> bool:
         return bool(self.__array__())
 
-    def __eq__(self, o: object) -> NDArray:
+    def __eq__(self, o: object) -> np.ndarray:
         return self.__array__() == o
 
     def close(self):
@@ -134,3 +292,57 @@ class Array(Buffer):
 
     def destroy(self):
         pass
+
+def shift_indices(indices: Indices, shift: int, apparent_size: int,
+) -> Tuple[Index, ...]:
+    if isinstance(indices, tuple):
+        first, rest = indices[0], indices[1:]
+    else:
+        first, rest = indices, ()
+    return shift_index(first, shift, apparent_size) + rest
+
+
+def shift_index(index: Index, shift: int, size: int,
+) -> Tuple[Index, ...]:
+    """Shifts an array index up by an integer value.
+    """
+    if shift == 0:
+        # TODO: does Ellipsis need to be converted?
+        return (index,)
+    if isinstance(index, int):
+        if index < -shift:
+            raise IndexError(
+                f"Not enough padding ({shift}) to accomodate index ({index})"
+            )
+        return (index + shift,)
+    if isinstance(index, np.ndarray):
+        if np.any(index < -shift):
+            raise IndexError(
+                f"Not enough padding ({shift}) to accomodate index ({index})"
+            )
+        return (index + shift,)
+    if isinstance(index, slice):
+        flipped = index.step is not None and index.step < 0
+        # in case the step is negative, we need to reverse/adjust the limits
+        # limits must be incremented because the upper limit of the slice is
+        # not in the slice
+        # [:] = slice(None, None, None) -> slice(shift, shift+size, None)
+        # [::-1] = slice(None, None, -1) -> slice(shift+size-1, shift-1, -1)
+        # [:3:-1] = slice(None, 3, -1) -> slice(shift+size-1, 3+shift, -1)
+
+        if index.start is not None:
+            start = index.start + shift
+        else:
+            start = shift + size - 1 if flipped else shift
+        
+        if index.stop is not None:
+            stop = index.stop + shift
+        else:
+            stop = shift - 1 if flipped else shift + size
+
+        return (slice(start, stop, index.step),)
+    if index is Ellipsis:
+        # add another Ellipsis, to index any remaining dimensions that an
+        # Ellipsis would have indexed (possible no extra dimensions remain)
+        return (slice(shift, shift + size), Ellipsis)
+    raise ValueError(index)
