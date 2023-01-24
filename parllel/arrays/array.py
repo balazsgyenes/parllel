@@ -43,41 +43,46 @@ class Array:
         apparent_size: Optional[int] = None,
     ) -> None:
 
-        if apparent_size is None:
-            apparent_size = shape[0]
-        if shape[0] % apparent_size != 0:
-            raise ValueError(
-                "The leading dimension of the array must divide evenly into "
-                "the apparent leading dimension."
-            )
-        self.full_size = shape[0] # full leading dimension without padding
-        self.apparent_size = apparent_size
-        self.offset = 0
-        self.shift = self.offset + padding
-
-        if not padding >= 0:
-            raise ValueError("Padding must be non-negative.")
-        self._padding = padding
-
         if not shape:
             raise ValueError("Non-empty shape required.")
 
-        if not shape[0] >= padding:
-            raise ValueError(f"Leading dimension {shape[0]} must be at least "
-                f"as long as padding {padding}")
-        
-        # add padding onto both ends of first dimension
-        padded_shape = (shape[0] + 2 * self._padding,) + shape[1:]
-
-        if not padded_shape:
-            raise ValueError("Non-empty padded_shape required.")
-        self._base_shape = padded_shape
-        self._apparent_shape = padded_shape
-
         dtype = np.dtype(dtype)
         if dtype == np.object_:
-            raise TypeError("Data type should not be object.")
+            raise ValueError("Data type should not be object.")
+
+        if padding < 0:
+            raise ValueError("Padding must be non-negative.")
+        if padding > shape[0]:
+            raise ValueError(
+                f"Padding ({padding}) cannot be greater than leading "
+                f"dimension {shape[0]}."
+            )
+
+        if apparent_size is None:
+            apparent_size = shape[0]
+        if apparent_size > shape[0]:
+            raise ValueError(
+                f"Apparent size {apparent_size} cannot be greater than "
+                f"leading dimension {shape[0]}."
+            )
+        if shape[0] % apparent_size != 0:
+            raise ValueError(
+                f"The leading dimension {shape[0]} must divide evenly into "
+                f"the apparent size {apparent_size}."
+            )
+
+        self.full_shape = shape
         self.dtype = dtype
+        self.padding = padding
+        self.apparent_size = apparent_size
+
+        self.full_size = shape[0] # full leading dimension without padding
+        self.offset = 0
+        self.shift = self.offset + padding
+        
+        # add padding onto both ends of first dimension
+        self._base_shape = (shape[0] + 2 * self.padding,) + shape[1:]
+        self._apparent_shape = (apparent_size,) + shape[1:]
 
         self._buffer_id: int = id(self)
         self._index_history: list[Indices] = []
@@ -91,14 +96,33 @@ class Array:
         # set to the previous value of current_array, or the base_array
         self._previous_array = self._base_array
 
-        # unlike in base class, _current_array is not the same as _base_array
-        # this also fixes _apparent_shape, which still includes the padding
         self._resolve_indexing_history()
+
+    @staticmethod
+    def like(
+        array: Array,
+        shape: Optional[Tuple[int, ...]],
+        dtype: Optional[np.dtype],
+        kind: Optional[str],
+        padding: Optional[int],
+        apparent_size: Optional[int],
+    ) -> Array:
+        shape = shape or array.full_shape
+        dtype = dtype or array.dtype
+        kind = kind or array.kind
+        padding = padding or array.padding
+        # if apparent_size is not the default, inherit it from given array
+        apparent_size = apparent_size or (
+            array.apparent_size
+            if array.apparent_size < array.full_size else
+            None
+        )
+        return Array(shape, dtype, kind, padding, apparent_size)
 
     def _allocate(self) -> None:
         # initialize numpy array
         self._base_array = np.zeros(shape=self._base_shape, dtype=self.dtype)
-        
+
     @property
     def shape(self):
         if self._apparent_shape is None:
@@ -106,10 +130,6 @@ class Array:
 
         return self._apparent_shape
         
-    @property
-    def padding(self) -> int:
-        return self._padding
-
     @property
     def first(self) -> int:
         """The index of the first element in the array, not including padding.
@@ -148,7 +168,7 @@ class Array:
 
     def _resolve_indexing_history(self) -> None:
         array = self._base_array
-        self.shift = shift = self.offset + self._padding
+        self.shift = shift = self.offset + self.padding
 
         if self._index_history:
             # shift only the first indices, leave the rest (if there are more)
@@ -172,21 +192,6 @@ class Array:
         self._current_array = array
         self._apparent_shape = array.shape
     
-    def reset(self) -> None:
-        """Resets array, such after calling `rotate()` once, the offset will
-        be 0. This is useful in the sampler, which calls `rotate()` before
-        every batch.
-        """
-        if self._index_history:
-            raise RuntimeError("Only allowed to call `reset()` on original array")
-        
-        # if apparent size is not smaller, sets offset to 0
-        self.offset = self.full_size - self.apparent_size
-
-        # current array is now invalid, but apparent shape should still be
-        # correct
-        self._current_array = None
-
     def __setitem__(self, location: Indices, value: Any) -> None:
         # TODO: optimize this method to avoid resolving history if location
         # is slice(None) or Ellipsis and history only has one element
@@ -212,25 +217,6 @@ class Array:
             destination = self._base_array
         destination[location] = value
     
-    def rotate(self) -> None:
-
-        if self._index_history:
-            raise RuntimeError("Only allowed to call `rotate()` on original array")
-
-        self.offset += self.apparent_size
-
-        if self._padding and self.offset >= self.full_size:
-            # copy values from end of base array to beginning
-            final_values = slice(-(self._padding * 2), None)
-            next_previous_values = slice(0, self._padding * 2)
-            self._base_array[next_previous_values] = self._base_array[final_values]
-
-        self.offset %= self.full_size
-
-        # current array is now invalid, but apparent shape should still be
-        # correct
-        self._current_array = None
-
     @property
     def full(self) -> Array:
         full: Array = self.__new__(type(self))
@@ -269,6 +255,40 @@ class Array:
         new._current_array = None
         return new
 
+    def reset(self) -> None:
+        """Resets array, such after calling `rotate()` once, the offset will
+        be 0. This is useful in the sampler, which calls `rotate()` before
+        every batch.
+        """
+        if self._index_history:
+            raise RuntimeError("Only allowed to call `reset()` on original array")
+        
+        # if apparent size is not smaller, sets offset to 0
+        self.offset = self.full_size - self.apparent_size
+
+        # current array is now invalid, but apparent shape should still be
+        # correct
+        self._current_array = None
+
+    def rotate(self) -> None:
+
+        if self._index_history:
+            raise RuntimeError("Only allowed to call `rotate()` on original array")
+
+        self.offset += self.apparent_size
+
+        if self.padding and self.offset >= self.full_size:
+            # copy values from end of base array to beginning
+            final_values = slice(-(self.padding * 2), None)
+            next_previous_values = slice(0, self.padding * 2)
+            self._base_array[next_previous_values] = self._base_array[final_values]
+
+        self.offset %= self.full_size
+
+        # current array is now invalid, but apparent shape should still be
+        # correct
+        self._current_array = None
+
     def __array__(self, dtype=None) -> np.ndarray:
         if self._current_array is None:
             self._resolve_indexing_history()
@@ -292,6 +312,7 @@ class Array:
 
     def destroy(self):
         pass
+
 
 def shift_indices(indices: Indices, shift: int, apparent_size: int,
 ) -> Tuple[Index, ...]:
