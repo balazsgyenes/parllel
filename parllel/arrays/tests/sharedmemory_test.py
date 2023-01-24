@@ -4,9 +4,7 @@ import pytest
 import multiprocessing as mp
 import numpy as np
 
-from parllel.arrays.sharedmemory import (SharedMemoryArray,
-    RotatingSharedMemoryArray, LargeSharedMemoryArray)
-from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
+from parllel.arrays import Array
 
 
 @pytest.fixture(params=["fork", "spawn"], scope="module")
@@ -14,25 +12,33 @@ def mp_ctx(request):
     return mp.get_context(request.param)
 
 @pytest.fixture(params=[
-    SharedMemoryArray, RotatingSharedMemoryArray,
-    pytest.param(ManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    pytest.param(RotatingManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    LargeSharedMemoryArray,
-    ], scope="module")
+    Array,
+], scope="module")
 def ArrayClass(request):
+    return request.param
+
+@pytest.fixture(params=[
+    "shared",
+    pytest.param("managed", marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
+    ], scope="module")
+def storage(request):
     return request.param
 
 @pytest.fixture(scope="module")
 def shape():
-    return (4, 4, 4)
+    return (10, 4, 4)
 
 @pytest.fixture(params=[np.float32], scope="module")
 def dtype(request):
     return request.param
 
+@pytest.fixture(params=[0], ids=["padding=0"], scope="module")
+def padding(request):
+    return request.param
+
 @pytest.fixture
-def blank_array(ArrayClass, shape, dtype):
-    array = ArrayClass(shape=shape, dtype=dtype)
+def blank_array(ArrayClass, shape, dtype, storage, padding):
+    array = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=padding)
     yield array
     array.close()
     array.destroy()

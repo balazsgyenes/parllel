@@ -4,44 +4,37 @@ import pytest
 import numpy as np
 
 from parllel.arrays.array import Array
-from parllel.arrays.large import LargeArray
-from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
-from parllel.arrays.rotating import RotatingArray
-from parllel.arrays.sharedmemory import (RotatingSharedMemoryArray,
-    SharedMemoryArray, LargeSharedMemoryArray)
 
 
 @pytest.fixture(params=[
-    Array, RotatingArray,
-    SharedMemoryArray, RotatingSharedMemoryArray,
-    pytest.param(ManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    pytest.param(RotatingManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    LargeArray, LargeSharedMemoryArray,
-    ], scope="module")
+    Array,
+], scope="module")
 def ArrayClass(request):
     return request.param
 
 @pytest.fixture(scope="module")
 def shape():
-    return (4, 4, 4)
+    return (10, 4, 4)
 
 @pytest.fixture(params=[np.float32, np.int32], scope="module")
 def dtype(request):
     return request.param
 
-@pytest.fixture(params=[0, 1], ids=["padding=0", "padding=1"], scope="module")
+@pytest.fixture(params=[
+    "local",
+    "shared",
+    pytest.param("managed", marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
+    ], scope="module")
+def storage(request):
+    return request.param
+
+@pytest.fixture(params=[0, 1, 2], ids=["padding=0", "padding=1", "padding=2"], scope="module")
 def padding(request):
     return request.param
 
 @pytest.fixture
-def blank_array(ArrayClass, shape, dtype, padding):
-    if issubclass(ArrayClass, RotatingArray):
-        # LargeArray and co. are subclasses of RotatingArray as well
-        array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
-    elif padding > 0:
-        pytest.skip("Base Array class does not have padding")
-    else:
-        array = ArrayClass(shape=shape, dtype=dtype)
+def blank_array(ArrayClass, shape, dtype, storage, padding):
+    array = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=padding)
     yield array
     array.close()
     array.destroy()
@@ -62,7 +55,7 @@ class TestArray:
             _ = ArrayClass()
 
     def test_wrong_dtype(self, ArrayClass, shape):
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError):
             _ = ArrayClass(shape=shape, dtype=list)
 
     def test_init(self, blank_array, shape, dtype):
@@ -98,7 +91,7 @@ class TestArray:
         assert np.array_equal(array, np_array)
 
     def test_setitem_reversed_slice(self, array, np_array, dtype):
-        values = np.arange(4, dtype=dtype) * 2  # scale so the values are unique
+        values = np.arange(10, dtype=dtype) * 2  # scale so the values are unique
         array[::-1, 0, 0] = values
         np_array[::-1, 0, 0] = values
         assert np.array_equal(array, np_array)

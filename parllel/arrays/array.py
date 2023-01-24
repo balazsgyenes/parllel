@@ -4,10 +4,10 @@ from typing import Any, Optional, Tuple
 
 import numpy as np
 
-from parllel.buffers import Index, Indices
+from parllel.buffers import Buffer, Index, Indices
 
 
-class Array:
+class Array(Buffer):
     """An object wrapping a numpy array for use in sampling. An Array remembers
     indexing operations used to get subarrays. Math operations are generally
     not supported, use `np.asarray(arr)` to get the underlying numpy array.
