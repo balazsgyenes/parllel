@@ -26,6 +26,7 @@ class Array(Buffer):
 
     def __new__(cls, *args, storage: str = "local", **kwargs):
         # if instantiating a subclass directly, just create that class
+        # TODO: enable public subclasses of Array to also use this mechanism
         if cls != Array or storage == "local":
             return super().__new__(cls)
         # otherwise look up name in dictionary of registered subclasses
@@ -117,6 +118,7 @@ class Array(Buffer):
             if array.apparent_size < array.full_size else
             None
         )
+        # TODO: ensure compatibility for public Array subclasses
         return Array(shape, dtype, storage, padding, apparent_size)
 
     def _allocate(self) -> None:
