@@ -179,13 +179,16 @@ def index_slice(current_slice: slice, index: int) -> int:
         # if index negative, determine index of the end of the array
         if (start := current_slice.stop) is None:
             start = (
-                0  # end=None means we must index from just past the -1th element
+                -1 + step  # end=None means we must index from just past the -1th element
                 if step > 0 else  # end of flipped array is the beginning
-                -1  # end=None means we must index from just before the 0th element
+                0 + step  # end=None means we must index from just before the 0th element
             )
-        # else:
-        #     # correct for case when step does not divide 
-        #     start += start % step
+        else:
+            # corrects for case when step does not divide the distance between
+            # start and stop of slice
+            if (rem := (start - current_slice.start) % step) > 0:
+                # round up to nearest multiple of step
+                start += (step - rem)
     return start + index * step
 
 

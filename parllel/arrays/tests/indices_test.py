@@ -1,4 +1,5 @@
 from itertools import islice
+import math
 from typing import Tuple, Union
 
 
@@ -19,50 +20,51 @@ PROB_INDEX_NEGATIVE = 0.5
 PROB_STEP_NEGATIVE = 0.5
 MAX_STEP = 1
 PROB_SLICE_EL_NONE = 0.2
-def random_index(rng: random.Generator, size: int) -> Union[int, slice]:
-    if rng.random() > PROB_SLICE:
-        # result is integer index
-        index = int(rng.integers(size))
-        return index if rng.random() > PROB_INDEX_NEGATIVE else -index
+def random_int(rng: random.Generator, size: int) -> int:
+    assert size > 0
+    index = int(rng.integers(size))
+    return index if rng.random() > PROB_INDEX_NEGATIVE else -index
+
+def random_slice(rng: random.Generator, size: int) -> slice:
+    if rng.random() > PROB_SLICE_EL_NONE:
+        step = int(rng.integers(1, high=MAX_STEP, endpoint=True))
+        # step = step if rng.random() > PROB_STEP_NEGATIVE else -step
     else:
-        assert size > 0
+        step = None
 
-        # result is slice
-        if rng.random() > PROB_SLICE_EL_NONE:
-            step = int(rng.integers(1, high=MAX_STEP, endpoint=True))
-            # step = step if rng.random() > PROB_STEP_NEGATIVE else -step
+    if step is not None and step < 0:
+        # negative step. flip bounds
+        start = int(rng.integers(size - math.isqrt(size), size - 1, endpoint=True))
+        start = start if rng.random() > PROB_SLICE_EL_NONE else None
+
+        max_stop = start - 1 if start is not None else size - 2
+        if max_stop < 0:
+            # best we can do is a slice of size 1 if the stop is None
+            stop = None
         else:
-            step = None
-
-        if step is not None and step < 0:
-            # negative step. flip bounds
-            start = int(rng.integers(size - int(np.sqrt(size)), size - 1, endpoint=True))
-            start = start if rng.random() > PROB_SLICE_EL_NONE else None
-
-            max_stop = start - 1 if start is not None else size - 2
-            if max_stop < 0:
-                # best we can do is a slice of size 1 if the stop is None
-                stop = None
-            else:
-                stop = int(rng.integers(0, high=max_stop, endpoint=True))
-                stop = stop if rng.random() > PROB_SLICE_EL_NONE else None        
-
-        else:
-            # ensures that min_start is 0 if size==1
-            min_start = int(np.sqrt(size - 1))
-            start = int(rng.integers(min_start, endpoint=True))
-            start = start if rng.random() > PROB_SLICE_EL_NONE else None
-
-            min_stop = start + 1 if start is not None else 1
-            stop = int(rng.integers(min_stop, high=size, endpoint=True))
+            stop = int(rng.integers(0, high=max_stop, endpoint=True))
             stop = stop if rng.random() > PROB_SLICE_EL_NONE else None        
-        
-        return slice(start, stop, step)
+
+    else:
+        # ensures that min_start is 0 if size==1
+        min_start = math.isqrt(size - 1)
+        start = int(rng.integers(min_start, endpoint=True))
+        start = start if rng.random() > PROB_SLICE_EL_NONE else None
+
+        min_stop = start + 1 if start is not None else 1
+        stop = int(rng.integers(min_stop, high=size, endpoint=True))
+        stop = stop if rng.random() > PROB_SLICE_EL_NONE else None        
+    
+    return slice(start, stop, step)
 
 def random_location(rng: random.Generator, shape: Tuple[int, ...],
 ) -> Tuple[Union[int, slice], ...]:
     return tuple(
-        random_index(rng, size)
+        (
+            random_int(rng, size)
+            if rng.random() > PROB_SLICE else
+            random_slice(rng, size)
+        )
         for size in islice(
             shape,
             rng.integers(1, high=len(shape), endpoint=True),
@@ -77,6 +79,10 @@ def shape():
 @pytest.fixture
 def np_array(shape):
     return np.arange(np.prod(shape)).reshape(shape)
+
+@pytest.fixture
+def vector(shape):
+    return np.arange(shape[0]).reshape(shape[:1])
 
 @pytest.fixture(scope="module")
 def rng():
@@ -137,6 +143,24 @@ class TestAddIndices:
             loc = add_locations(loc, loc2)
             
             assert np.array_equal(subarray2, np_array[tuple(loc)])
+
+    def test_index_slice(self, vector: np.ndarray, rng: random.Generator):
+        for _ in range(1000):
+            slice_ = random_slice(rng, vector.shape[0])
+            subvector = vector[slice_]
+            index = random_int(rng, subvector.shape[0])
+            element = subvector[index]
+
+            step = slice_.step or 1
+            slice_ = slice(
+                slice_.start or (0 if step > 0 else -1),
+                slice_.stop,
+                step,
+            )
+            global_index = index_slice(slice_, index)
+            element2 = vector[global_index]
+
+            assert np.array_equal(element, element2)
 
 
 class TestComputeIndices:
