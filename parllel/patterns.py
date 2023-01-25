@@ -49,11 +49,18 @@ def build_cages_and_env_buffers(
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), name="obs", padding=1, storage=storage)
+
     # in case environment creates rewards of shape (1,) or of integer type,
     # force to be correct shape and type
-    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward", storage=storage, shape=(), dtype=np.float32)
-    batch_done = buffer_from_dict_example(done, tuple(batch_spec), name="done", padding=1, storage=storage, shape=(), dtype=bool)
+    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward", shape=(), dtype=np.float32, storage=storage)
+
+    # add padding in case reward normalization is used
+    # TODO: ideally, we only would add padding if we know we want reward
+    # normalization, but how to do this?
+    batch_done = buffer_from_example(done, tuple(batch_spec), shape=(), dtype=bool, storage=storage, padding=1)
+
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), name="envinfo", storage=storage)
+
     batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
     # in discrete problems, integer actions are used as array indices during
@@ -64,7 +71,7 @@ def build_cages_and_env_buffers(
     # pass batch buffers to Cage on creation
     if CageCls is ProcessCage:
         cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
-    
+
     logger.debug(f"Instantiating {batch_spec.B} environments...")
 
     # create cages to manage environments
@@ -78,7 +85,8 @@ def build_cages_and_env_buffers(
 def add_initial_rnn_state(batch_buffer: Samples, agent: Agent) -> Samples:
 
     rnn_state = agent.initial_rnn_state()
-    batch_init_rnn = buffer_from_example(rnn_state, ())
+    storage = batch_buffer.env.done.storage
+    batch_init_rnn = buffer_from_example(rnn_state, (), storage=storage)
     
     batch_agent: AgentSamples = batch_buffer.agent    
 
@@ -105,7 +113,7 @@ def add_bootstrap_value(batch_buffer: Samples) -> Samples:
     )
 
     # remove T dimension, creating an array with only (B,) leading dimensions
-    batch_bootstrap_value = buffer_from_example(batch_agent_info.value[0])
+    batch_bootstrap_value = Array.like(batch_agent_info.value[0])
 
     batch_agent = AgentSamplesClass(
         **batch_agent._asdict(), bootstrap_value=batch_bootstrap_value,
@@ -125,7 +133,7 @@ def add_valid(batch_buffer: Samples) -> Samples:
     )
 
     # allocate new Array objects for valid
-    batch_valid = buffer_from_example(done)
+    batch_valid = Array.like(done)
 
     batch_buffer_env = EnvSamplesClass(
         **batch_buffer_env._asdict(), valid=batch_valid,
@@ -168,9 +176,9 @@ def add_advantage_estimation(
         advantage_shape = value.shape
 
     # allocate new Array objects for advantage and return_
-    batch_advantage = Array.like(shape=advantage_shape, dtype=value.dtype)
+    batch_advantage = Array.like(value, shape=advantage_shape)
     # in algo, return_ must broadcast with value
-    batch_return_ = buffer_from_example(value)
+    batch_return_ = Array.like(value)
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(

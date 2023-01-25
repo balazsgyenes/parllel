@@ -107,7 +107,7 @@ class Array(Buffer):
         padding: Optional[int] = None,
         apparent_size: Optional[int] = None,
     ) -> Array:
-        shape = shape or array.full_shape
+        shape = shape or array.shape  # TODO: non-visible region is ignored. fix?
         dtype = dtype or array.dtype
         storage = storage or array.storage
         padding = padding or array.padding

@@ -10,7 +10,7 @@ from .array import Array
 
 def buffer_from_example(
     example: Buffer,
-    leading_dims: Tuple[int, ...],
+    leading_dims: Tuple[int, ...] = (),
     *,
     force_32bit: Literal[True, "float", "int", False] = True,
     **kwargs,
@@ -31,24 +31,25 @@ def buffer_from_example(
             )
         )
     if isinstance(example, Array):
-        shape = example.shape
-        shape = kwargs.pop("shape", None) or shape  # TODO: do not pop (dict is shared)
+        shape = kwargs.pop("shape", None) or example.shape
         shape = leading_dims + shape
         return Array.like(example, shape=shape, **kwargs)
     else:
         np_example = np.asanyarray(example)  # promote scalars to 0d arrays
-        shape = leading_dims + np_example.shape
-        dtype = np_example.dtype
-        if dtype == np.int64 and force_32bit in {True, "int"}:
-            dtype = np.int32
-        elif dtype == np.float64 and force_32bit in {True, "float"}:
-            dtype = np.float32
+        shape = kwargs.pop("shape", None) or np_example.shape
+        shape = leading_dims + shape
+        if (dtype := kwargs.pop("dtype", None)) is None:
+            dtype = np_example.dtype
+            if dtype == np.int64 and force_32bit in {True, "int"}:
+                dtype = np.int32
+            elif dtype == np.float64 and force_32bit in {True, "float"}:
+                dtype = np.float32
         return Array(shape=shape, dtype=dtype, **kwargs)
 
 
 def buffer_from_dict_example(
     example: Dict,
-    leading_dims: Tuple[int, ...],
+    leading_dims: Tuple[int, ...] = (),
     *,
     name: str,
     force_32bit: Literal[True, "float", "int", False] = True,
@@ -62,4 +63,4 @@ def buffer_from_dict_example(
     # first, convert dictionary to a namedtuple
     example = dict_to_namedtuple(example, name)
 
-    return buffer_from_example(example, leading_dims, force_32bit, **kwargs)
+    return buffer_from_example(example, leading_dims, force_32bit=force_32bit, **kwargs)
