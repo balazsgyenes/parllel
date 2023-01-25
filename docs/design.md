@@ -62,6 +62,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Jax PPO :)
 - Arrays
     - Add `begin` and `end` attributes, where `end` is intended to be used in a slice
+    - Rename `rotate` to something like `next_iteration`
     - **!!** Merge Array and RotatingArray into a single class.
         - Enforce that `-1` is never used to index the last element, i.e. `-1` is never passed to the underlying `ndarray`.
     - SwitchingArray wraps two arrays and switches between them on `rotate`. This is useful for asynchronous sampling, where different parts of the array are simultaneously written to by the sampler and read from by the algorithm.

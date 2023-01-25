@@ -25,9 +25,8 @@ class Array(Buffer):
             cls._subclasses[storage] = cls
 
     def __new__(cls, *args, storage: str = "local", **kwargs):
-        # if instantiating a subclass directly, just create that class
-        # TODO: enable public subclasses of Array to also use this mechanism
-        if cls != Array or storage == "local":
+        # can instantiate a subclass directly by just not passing storage arg
+        if storage == "local" or storage is None:
             return super().__new__(cls)
         # otherwise look up name in dictionary of registered subclasses
         try:
@@ -102,11 +101,11 @@ class Array(Buffer):
     @staticmethod
     def like(
         array: Array,
-        shape: Optional[Tuple[int, ...]],
-        dtype: Optional[np.dtype],
-        storage: Optional[str],
-        padding: Optional[int],
-        apparent_size: Optional[int],
+        shape: Optional[Tuple[int, ...]] = None,
+        dtype: Optional[np.dtype] = None,
+        storage: Optional[str] = None,
+        padding: Optional[int] = None,
+        apparent_size: Optional[int] = None,
     ) -> Array:
         shape = shape or array.full_shape
         dtype = dtype or array.dtype

@@ -2,10 +2,9 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from parllel.arrays import (Array, RotatingArray, SharedMemoryArray,
-    RotatingSharedMemoryArray, buffer_from_example, buffer_from_dict_example)
+from parllel.arrays import Array, buffer_from_example, buffer_from_dict_example
 from parllel.buffers import (Buffer, AgentSamples, EnvSamples, Samples, 
-    NamedArrayTupleClass, NamedTuple, buffer_map)
+    NamedArrayTupleClass, NamedTuple)
 from parllel.cages import Cage, SerialCage, ProcessCage
 from parllel.handlers import Agent
 import parllel.logger as logger
@@ -27,12 +26,10 @@ def build_cages_and_env_buffers(
 
     if parallel:
         CageCls = ProcessCage
-        ArrayCls = SharedMemoryArray
-        RotatingArrayCls = RotatingSharedMemoryArray
+        storage = "shared"
     else:
         CageCls = SerialCage
-        ArrayCls = Array
-        RotatingArrayCls = RotatingArray
+        storage = "local"
 
     cage_kwargs = dict(
         EnvClass=EnvClass,
@@ -51,17 +48,18 @@ def build_cages_and_env_buffers(
     example_cage.close()
 
     # allocate batch buffer based on examples
-    batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), RotatingArrayCls, name="obs", padding=1)
-    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), ArrayCls, name="reward")
-    batch_done = buffer_from_dict_example(done, tuple(batch_spec), RotatingArrayCls, name="done", padding=1)
-    batch_info = buffer_from_dict_example(info, tuple(batch_spec), ArrayCls, name="envinfo")
+    batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), name="obs", padding=1, storage=storage)
+    # in case environment creates rewards of shape (1,) or of integer type,
+    # force to be correct shape and type
+    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward", storage=storage, shape=(), dtype=np.float32)
+    batch_done = buffer_from_dict_example(done, tuple(batch_spec), name="done", padding=1, storage=storage, shape=(), dtype=bool)
+    batch_info = buffer_from_dict_example(info, tuple(batch_spec), name="envinfo", storage=storage)
     batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
-    """In discrete problems, integer actions are used as array indices during
-    optimization. Pytorch requires indices to be 64-bit integers, so we do not
-    convert here.
-    """
-    batch_action = buffer_from_dict_example(action, tuple(batch_spec), ArrayCls, name="action", force_32bit=False)
+    # in discrete problems, integer actions are used as array indices during
+    # optimization. Pytorch requires indices to be 64-bit integers, so we do
+    # force integers to be 32 bit, only floats
+    batch_action = buffer_from_dict_example(action, tuple(batch_spec), name="action", force_32bit="float", storage=storage)
 
     # pass batch buffers to Cage on creation
     if CageCls is ProcessCage:
@@ -79,16 +77,8 @@ def build_cages_and_env_buffers(
 
 def add_initial_rnn_state(batch_buffer: Samples, agent: Agent) -> Samples:
 
-    # get the Array type used for the rewards. reward might be a named tuple,
-    # but the underlying array should be non-rotating
-    # TODO: replace with some sane allocation rules
-    types = buffer_map(type, batch_buffer.env.reward)
-    while isinstance(types, tuple):
-        types = types[0]
-    ArrayCls = types
-
     rnn_state = agent.initial_rnn_state()
-    batch_init_rnn = buffer_from_example(rnn_state, (), ArrayCls)
+    batch_init_rnn = buffer_from_example(rnn_state, ())
     
     batch_agent: AgentSamples = batch_buffer.agent    
 
@@ -178,8 +168,7 @@ def add_advantage_estimation(
         advantage_shape = value.shape
 
     # allocate new Array objects for advantage and return_
-    # TODO: replace type(value) with array_like
-    batch_advantage = type(value)(shape=advantage_shape, dtype=value.dtype)
+    batch_advantage = Array.like(shape=advantage_shape, dtype=value.dtype)
     # in algo, return_ must broadcast with value
     batch_return_ = buffer_from_example(value)
 
@@ -187,7 +176,7 @@ def add_advantage_estimation(
     env_samples = EnvSamplesClass(
         **env_samples._asdict(), advantage=batch_advantage, return_=batch_return_,
     )
-    batch_buffer = batch_buffer._replace(env = env_samples)
+    batch_buffer = batch_buffer._replace(env=env_samples)
 
     # create required transforms and add to list
     if multiagent:
@@ -239,9 +228,11 @@ def add_reward_normalization(
     env_samples: EnvSamples = batch_buffer.env
     reward = env_samples.reward
 
-    if not isinstance(env_samples.done, RotatingArray):
-        raise TypeError("batch_buffer.env.done must be a RotatingArray "
-                        "when using NormalizeRewards")
+    if env_samples.done.padding == 0:
+        raise TypeError(
+            "batch_buffer.env.done must have padding >= 1 when using "
+            "NormalizeRewards"
+        )
 
     # create new NamedArrayTuple for env samples with additional field
     EnvSamplesClass = NamedArrayTupleClass(
@@ -250,10 +241,8 @@ def add_reward_normalization(
     )
 
     # allocate new Array for past discounted returns
-    # TODO: add smarter allocation rules here
-    # TODO: this is currently a LargeArray sometimes
-    RotatingArrayCls = type(env_samples.done)
-    batch_past_return = RotatingArrayCls(shape=reward.shape, dtype=reward.dtype, padding=1)
+    # TODO: overwrite apparent_size with None explicitly
+    batch_past_return = Array.like(reward, padding=1, apparent_size=None)
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(
