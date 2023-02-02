@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import UserDict
+import dataclasses
+from operator import getitem
 from typing import Any
 
 
@@ -42,13 +44,18 @@ class ArrayDict(UserDict):
         if isinstance(key, str):
             return super().__setitem__(key, value)
 
-        is_dict = isinstance(value, (ArrayDict, dict))
+        if isinstance(value, (ArrayDict, dict)):
+            getter = getitem
+        elif dataclasses.is_dataclass(value):
+            getter = getattr
+        else:
+            # don't index into scalars, just assign the same scalar to all
+            # fields
+            getter = lambda obj, field: obj
 
         for field, arr in self.items():
             
-            # don't index into scalars, just assign the same scalar to all
-            # fields
-            subvalue = value[field] if is_dict else value
+            subvalue = getter(value, field)
 
             if arr is not None and subvalue is not None:
                 try:
