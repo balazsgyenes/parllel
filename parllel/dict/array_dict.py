@@ -1,23 +1,42 @@
 from __future__ import annotations
 
-from collections import UserDict
+from collections.abc import MutableMapping
 import dataclasses
 from operator import getitem
-from typing import Any
+from typing import Any, Callable, Generic, Iterator, Iterable, TypeVar
+
+# from parllel.dict.arraylike import ArrayLike
 
 
-class ArrayDict(UserDict):
+LeafType = TypeVar("LeafType")
+
+
+class ArrayDict(MutableMapping, Generic[LeafType]):
+    """A batched dictionary of array-like objects.
+
+    ArrayDict is a container for array-like objects (e.g. np.ndarray,
+    torch.Tensor, parllel Arrays, etc.) that are stored as key-value pairs,
+    where all arrays have leading batch dimensions in common.
+
+    This class is heavily inspired by torch's TensorDict.
+    """
+
+    def __init__(self, items: dict[str, LeafType] | Iterable[tuple[str, LeafType]], /) -> None:
+        # TODO: clean items to ensure only leaf nodes or ArrayDicts
+
+        self._dict = dict(items)
+
     def __getitem__(self, key: Any) -> Any:
         if isinstance(key, str):
-            return super().__getitem__(key)
-        
+            return self._dict[key]
+
         try:
             return ArrayDict(
                 (field, arr[key] if arr is not None else None)
-                for field, arr in self.items()
+                for field, arr in self._dict.items()
             )
         except IndexError as e:
-            for field, arr in self.items():
+            for field, arr in self._dict.items():
                 try:
                     _ = arr[key] if arr is not None else None
                 except IndexError:
@@ -25,26 +44,12 @@ class ArrayDict(UserDict):
                         f"Index error in field '{field}' for index '{key}'"
                     ) from e
 
-    def __getattr__(self, name: str) -> ArrayDict:
-        try:
-            return ArrayAttrDict(name,(
-                (field, getattr(arr, name) if arr is not None else None)
-                for field, arr in self.items()
-            ))
-        except AttributeError as e:
-            for field, arr in self.items():
-                try:
-                    _ = getattr(arr, name) if arr is not None else None
-                except IndexError:
-                    raise IndexError(
-                        f"Attribute error in field '{field}' for attribute '{name}'"
-                    ) from e
-
-    def __setitem__(self, key: str, value: Any) -> None:
+    def __setitem__(self, key: Any, value: Any) -> None:
         if isinstance(key, str):
-            return super().__setitem__(key, value)
+            self._dict[key] = value
+            return
 
-        if isinstance(value, (ArrayDict, dict)):
+        if isinstance(value, MutableMapping):  # i.e. dict, ArrayDict, etc.
             getter = getitem
         elif dataclasses.is_dataclass(value):
             getter = getattr
@@ -53,8 +58,7 @@ class ArrayDict(UserDict):
             # fields
             getter = lambda obj, field: obj
 
-        for field, arr in self.items():
-            
+        for field, arr in self._dict.items():
             subvalue = getter(value, field)
 
             if arr is not None and subvalue is not None:
@@ -65,33 +69,65 @@ class ArrayDict(UserDict):
                         f"Index error in field '{field}' for index '{key}'"
                     ) from e
 
-    # def __setattr__(self, name: str, value: Any) -> None:
-    #     is_dict = isinstance(value, (ArrayDict, dict))
-        
-    #     for field, arr in self.items():
-    #         # don't index into scalars, just assign the same scalar to all
-    #         # fields
-    #         subvalue = value[field] if is_dict else value
+    def __delitem__(self, __key: Any) -> None:
+        if isinstance(__key, str):
+            del self._dict[__key]
+        else:
+            raise IndexError(f"Cannot delete index {__key}")
 
-    #         if arr is not None and subvalue is not None:
-    #             try:
-    #                 setattr(arr, name, subvalue)
-    #             except AttributeError as e:
-    #                 raise AttributeError(
-    #                     f"Attribute error in field {field} for attribute {name}"
-    #                 ) from e
+    def __iter__(self) -> Iterator:
+        return iter(self._dict)
+
+    def __len__(self) -> int:
+        return len(self._dict)
+
+    def __getattr__(self, name: str) -> ArrayAttrDict:
+        try:
+            return ArrayAttrDict(
+                (
+                    (field, getattr(arr, name) if arr is not None else None)
+                    for field, arr in self._dict.items()
+                ),
+                name=name,
+            )
+        except AttributeError as e:
+            for field, arr in self._dict.items():
+                try:
+                    _ = getattr(arr, name) if arr is not None else None
+                except IndexError:
+                    raise IndexError(
+                        f"Attribute error in field '{field}' for attribute '{name}'"
+                    ) from e
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        raise NotImplementedError
+
+    @property
+    def batch_shape(self) -> tuple[int, ...]:
+        raise NotImplementedError
+
+    def apply(self, fn: Callable, **kwargs) -> ArrayDict:
+        items = []
+        for field, arr in self._dict.items():
+            if isinstance(arr, ArrayDict):  # non-leaf node
+                items.append((field, arr.apply(fn, **kwargs)))
+
+            # leaf node
+            else:
+                items.append((field, fn(arr, **kwargs) if arr is not None else None))
+
+        return ArrayDict(items)
 
 
 class ArrayAttrDict(ArrayDict):
-    def __init__(self, name: str, *args, **kwargs):
+    def __init__(self, *args, name: str, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = name
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
-        new_items = []
-
-        for field, method in self.items():
-
+        items = []
+        for field, method in self._dict.items():
             try:
                 result = method(*args, **kwds) if method is not None else None
             except Exception as e:
@@ -104,6 +140,6 @@ class ArrayAttrDict(ArrayDict):
                     f"Exception from calling method '{self.name}' of field '{field}'"
                 ) from e
 
-            new_items.append((field, result))
-        
-        return ArrayDict(new_items)
+            items.append((field, result))
+
+        return ArrayDict(items)
