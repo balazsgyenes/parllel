@@ -1,0 +1,9 @@
+log_dir: ???
+discount: 1.0
+max_steps: null
+min_trajectories: 20
+env:
+    headless: False
+    subprocess: False
+    reward_type: dense
+device: null  # uses the device the model was trained on if possible

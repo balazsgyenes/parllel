@@ -3,14 +3,14 @@ from os import PathLike
 from pathlib import Path
 from typing import Dict
 
+import hydra
 import numpy as np
+from omegaconf import DictConfig, OmegaConf, open_dict
 import torch
 
 from parllel.arrays import Array, RotatingArray, buffer_from_dict_example
 from parllel.buffers import AgentSamples, EnvSamples, buffer_method, Samples
-from parllel.buffers.void import VoidBuffer
-from parllel.cages import Cage, TrajInfo
-from parllel.configuration import merge_dicts
+from parllel.cages import SerialCage, TrajInfo
 from parllel.logger import JSONConfigSerializer
 from parllel.runners import ShowPolicy
 from parllel.samplers import EvalSampler
@@ -28,7 +28,7 @@ from models.atari_lstm_model import AtariLstmPgModel
 @contextmanager
 def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
 
-    TrajInfo.set_discount(config["discount"])
+    TrajInfo.set_discount(config["discount"])  # use the discount provided for evaluation
 
     batch_spec = BatchSpec(
         T=config["max_steps"],
@@ -42,7 +42,7 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
         reset_automatically=True,
     )
 
-    cage = Cage(**cage_kwargs)
+    cage = SerialCage(**cage_kwargs)
 
     # get example output from env
     cage.random_step_async()
@@ -58,12 +58,10 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
     step_env = EnvSamples(step_observation, step_reward, step_done, step_info)
 
     step_action = buffer_from_dict_example(action, (1, 1), Array, name="action")
-    step_agent = AgentSamples(step_action, VoidBuffer())
-
-    step_buffer = Samples(step_agent, step_env)
 
     # instantiate model and agent
-    device = torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu")
+    device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device(device)
     ## cart
     cart_model = AtariLstmPgModel(
         obs_space=obs_space,
@@ -107,7 +105,20 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
     )
     agent = TorchHandler(agent=agent)
 
-    agent.load_model(model_checkpoint_path, config["device"])
+    agent.load_model(model_checkpoint_path, device)
+
+    # write dict into namedarraytuple and read it back out. this ensures the
+    # example is in a standard format (i.e. namedarraytuple).
+    step_env.observation[0] = obs_space.sample()
+    example_obs = step_env.observation[0]
+
+    # get example output from agent
+    _, agent_info = agent.step(example_obs)
+
+    step_agent_info = buffer_from_dict_example(agent_info, (1, 1), Array, name="agentinfo")
+    step_agent = AgentSamples(step_action, step_agent_info)
+
+    step_buffer = Samples(step_agent, step_env)
 
     sampler = EvalSampler(
         max_traj_length=config["max_steps"],
@@ -135,36 +146,23 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
         cage.close()
 
 
-if __name__ == "__main__":
-
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("log_dir", type=Path,
-        help="path to the log directory for the run to show",
-    )
-    args = parser.parse_args()
-
-    eval_config = dict(
-        discount=1.0,
-        max_steps=None,
-        min_trajectories=20,
-        env=dict(
-            headless=False,
-            subprocess=False,
-            reward_type="dense",
-        ),
-        # None uses the device the model was trained on
-        device=None if torch.cuda.is_available() else "cpu",
-    )
-
-    config = JSONConfigSerializer().load(args.log_dir / "config.json")
-
-    config = merge_dicts(config, eval_config)
+@hydra.main(version_base=None, config_path="conf", config_name="show_multiagent_ppo_recurrent")
+def main(config: DictConfig) -> None:
 
     if config["max_steps"] is None:
-        config["max_steps"] = np.iinfo(int).max
+        with open_dict(config):
+            config["max_steps"] = np.iinfo(int).max
 
-    model_checkpoint_path = args.log_dir / "model.pt"
+    training_config = JSONConfigSerializer().load(Path(config["log_dir"]) / "config.json")
+    training_config = OmegaConf.create(training_config)
+
+    config = OmegaConf.merge(training_config, config)
+
+    model_checkpoint_path = Path(config["log_dir"]) / "model.pt"
 
     with build(config, model_checkpoint_path) as runner:
         runner.run()
+
+
+if __name__ == "__main__":
+    main()
