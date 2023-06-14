@@ -5,7 +5,6 @@ defaults:
 parallel: False
 batch_T: 128
 batch_B: 16
-discount: 0.99
 reward_clip_min: -5
 reward_clip_max: 5
 obs_norm_initial_count: 10000

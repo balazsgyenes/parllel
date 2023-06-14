@@ -1,0 +1,22 @@
+defaults:
+  - ppo@algo
+  - _self_
+
+parallel: True
+batch_T: 128
+batch_B: 16
+reward_clip_min: -5
+reward_clip_max: 5
+obs_norm_initial_count: 10000
+max_steps_decorrelate: 50
+env:
+  max_episode_steps: 1000
+device: null
+model:
+    hidden_sizes: [64, 64]
+    hidden_nonlinearity: Tanh
+    mu_nonlinearity: Tanh
+    init_log_std: 0.
+runner:
+    n_steps: 204800  # 100 iterations
+    log_interval_steps: 20480  # log every 10 iterations

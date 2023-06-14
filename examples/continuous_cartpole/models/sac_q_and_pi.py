@@ -18,7 +18,7 @@ class PiMlpModel(nn.Module):
             obs_space: spaces.Box,
             action_space: spaces.Box,
             hidden_sizes: Union[int, List[int], None],
-            hidden_nonlinearity: nn.Module,
+            hidden_nonlinearity: str,
             ):
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
@@ -27,6 +27,8 @@ class PiMlpModel(nn.Module):
         assert isinstance(action_space, spaces.Box)
         assert len(action_space.shape) == 1
         self._action_size = action_size = action_space.shape[0]
+
+        hidden_nonlinearity = getattr(nn, hidden_nonlinearity)
 
         self.mlp = MlpModel(
             input_size=int(np.prod(obs_space.shape)),
@@ -51,7 +53,7 @@ class QMlpModel(nn.Module):
             obs_space: spaces.Box,
             action_space: spaces.Box,
             hidden_sizes: Union[int, List[int], None],
-            hidden_nonlinearity: nn.Module,
+            hidden_nonlinearity: str,
             ):
         """Instantiate neural net according to inputs."""
         super().__init__()
@@ -61,6 +63,8 @@ class QMlpModel(nn.Module):
         assert isinstance(action_space, spaces.Box)
         assert len(action_space.shape) == 1
         action_size = action_space.shape[0]
+
+        hidden_nonlinearity = getattr(nn, hidden_nonlinearity)
 
         self.mlp = MlpModel(
             input_size=int(np.prod(obs_space.shape)) + action_size,

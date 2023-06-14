@@ -1,0 +1,30 @@
+defaults:
+  - sac@algo
+  - _self_
+
+parallel: False
+batch_T: 128
+batch_B: 16
+max_steps_decorrelate: 50
+env:
+  max_episode_steps: 1000
+  reward_type: sparse
+device: null
+algo:
+  replay_length: 2560  # 20 iterations
+  learning_starts: 10000
+  replay_ratio: 64
+  target_update_tau: 0.01
+pi_model:
+    hidden_sizes: [64, 64]
+    hidden_nonlinearity: Tanh
+q_model:
+    hidden_sizes: [64, 64]
+    hidden_nonlinearity: Tanh
+eval_sampler:
+    max_traj_length: 2000
+    min_trajectories: 20
+    n_eval_envs: 16
+runner:
+    n_steps: 204800  # 100 iterations
+    log_interval_steps: 10240  # log every 5 iterations

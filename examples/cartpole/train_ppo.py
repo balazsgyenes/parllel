@@ -40,7 +40,7 @@ def build(config: Dict) -> OnPolicyRunner:
         config["batch_T"],
         config["batch_B"],
     )
-    TrajInfo.set_discount(config["discount"])
+    TrajInfo.set_discount(config["algo"]["discount"])
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -69,8 +69,8 @@ def build(config: Dict) -> OnPolicyRunner:
     )
     distribution = Categorical(dim=action_space.n)
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
-    device = torch.device(device)
     wandb.config.update({"device": device}, allow_val_change=True)
+    device = torch.device(device)
 
     # instantiate model and agent
     agent = CategoricalPgAgent(
@@ -111,7 +111,7 @@ def build(config: Dict) -> OnPolicyRunner:
     batch_buffer, batch_transforms = add_reward_normalization(
         batch_buffer,
         batch_transforms,
-        discount=config["discount"],
+        discount=config["algo"]["discount"],
     )
 
     batch_buffer, batch_transforms = add_reward_clipping(
@@ -125,7 +125,7 @@ def build(config: Dict) -> OnPolicyRunner:
     batch_buffer, batch_transforms = add_advantage_estimation(
         batch_buffer,
         batch_transforms,
-        discount=config["discount"],
+        discount=config["algo"]["discount"],
         gae_lambda=config["algo"]["gae_lambda"],
         normalize=config["algo"]["normalize_advantage"],
     )
@@ -184,7 +184,7 @@ def build(config: Dict) -> OnPolicyRunner:
         buffer_method(batch_buffer, "destroy")
 
 
-@hydra.main(version_base=None, config_path=".", config_name="train_ppo")
+@hydra.main(version_base=None, config_path="conf", config_name="train_ppo")
 def main(config: DictConfig) -> None:
 
     mp.set_start_method("fork")
@@ -192,8 +192,7 @@ def main(config: DictConfig) -> None:
     run = wandb.init(
         anonymous="must", # for this example, send to wandb dummy account
         project="CartPole",
-        group="PPO",
-        tags=["discrete", "state-based", "ppo"],
+        tags=["discrete", "state-based", "ppo", "feedforward"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch
@@ -216,8 +215,7 @@ def main(config: DictConfig) -> None:
     with build(config) as runner:
         runner.run()
 
-    if run is not None:
-        run.finish()
+    run.finish()
 
 
 if __name__ == "__main__":
