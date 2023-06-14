@@ -14,7 +14,7 @@ class CartPoleFfPgModel(nn.Module):
                  obs_space: spaces.Box,
                  action_space: spaces.Discrete,
                  hidden_sizes: Union[int, List[int], None],
-                 hidden_nonlinearity: nn.Module,
+                 hidden_nonlinearity: str,
                  ) -> None:
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
@@ -22,6 +22,8 @@ class CartPoleFfPgModel(nn.Module):
 
         assert isinstance(action_space, spaces.Discrete)
         n_actions = action_space.n
+
+        hidden_nonlinearity = getattr(nn, hidden_nonlinearity)
 
         self.pi = MlpModel(input_size=obs_shape,
                            hidden_sizes=hidden_sizes,

@@ -10,8 +10,8 @@ log_data
 # wandb log folder
 wandb
 
-# cProfile statistics
-*.profile
-
-# for videos of rollouts saved by gym's RecordVideo wrapper
+# videos of rollouts saved by gym's RecordVideo wrapper
 videos
+
+# hydra default log folder
+outputs
