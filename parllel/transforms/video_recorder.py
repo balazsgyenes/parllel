@@ -22,7 +22,6 @@ class RecordVectorizedVideo(BatchTransform):
         output_fps: int = 30,
         tiled_height: Optional[int] = None,
         tiled_width: Optional[int] = None,
-        **kwargs, # ignore additional arguments
     ) -> None:
         self.output_dir = Path(output_dir)
         self.record_every = int(record_every_n_steps)

@@ -140,13 +140,16 @@ def build(config: Dict) -> OnPolicyRunner:
         if logger.log_dir is not None:
             run_name = logger.log_dir.name
         else:
-            run_name = wandb.run.id
+            # user has not initialized parllel logging
+            run_name = datetime.now().strftime('%Y-%m-%d_%H-%M')
+
+        video_config = {**video_config}
+        video_config["output_dir"] = Path(video_config.pop("output_root")) / run_name
 
         video_recorder = RecordVectorizedVideo(
             batch_buffer=batch_buffer,
             buffer_key_to_record="observation",
             env_fps=50, # TODO: grab this from example env metadata
-            output_dir=Path(video_config["output_root"]) / run_name,
             **video_config,
         )
         batch_transforms.append(video_recorder)
