@@ -18,5 +18,5 @@ model:
     mu_nonlinearity: Tanh
     init_log_std: 0.
 runner:
-    n_steps: 204800  # 100 iterations
-    log_interval_steps: 20480  # log every 10 iterations
+  n_steps: 204800  # 100 iterations
+  log_interval_steps: 20480  # log every 10 iterations

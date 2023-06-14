@@ -13,8 +13,8 @@ env:
   max_episode_steps: 1000
 device: null
 model:
-    hidden_sizes: [64, 64]
-    hidden_nonlinearity: Tanh
+  hidden_sizes: [64, 64]
+  hidden_nonlinearity: Tanh
 runner:
-    n_steps: 102400  # 50 iterations
-    log_interval_steps: 10240  # log every 5 iterations
+  n_steps: 102400  # 50 iterations
+  log_interval_steps: 10240  # log every 5 iterations

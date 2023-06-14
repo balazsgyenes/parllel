@@ -26,5 +26,5 @@ eval_sampler:
     min_trajectories: 20
     n_eval_envs: 16
 runner:
-    n_steps: 204800  # 100 iterations
-    log_interval_steps: 10240  # log every 5 iterations
+  n_steps: 204800  # 100 iterations
+  log_interval_steps: 10240  # log every 5 iterations
