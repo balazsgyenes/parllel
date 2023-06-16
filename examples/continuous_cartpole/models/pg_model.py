@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Optional, Union
 
 from gym import spaces
 import torch
@@ -14,8 +14,8 @@ class GaussianCartPoleFfPgModel(nn.Module):
         obs_space: spaces.Box,
         action_space: spaces.Discrete,
         hidden_sizes: Union[int, List[int], None],
-        hidden_nonlinearity: nn.Module,
-        mu_nonlinearity: nn.Module,
+        hidden_nonlinearity: str,
+        mu_nonlinearity: Optional[str],
         init_log_std: float,
     ) -> None:
         super().__init__()
@@ -25,6 +25,8 @@ class GaussianCartPoleFfPgModel(nn.Module):
         assert isinstance(action_space, spaces.Box)
         action_size = action_space.shape[0]
 
+        hidden_nonlinearity = getattr(nn, hidden_nonlinearity)
+
         mu_mlp = MlpModel(
             input_size=obs_shape,
             hidden_sizes=hidden_sizes,
@@ -32,6 +34,7 @@ class GaussianCartPoleFfPgModel(nn.Module):
             hidden_nonlinearity=hidden_nonlinearity,
         )
         if mu_nonlinearity is not None:
+            mu_nonlinearity = getattr(nn, mu_nonlinearity)
             self.mu = nn.Sequential(mu_mlp, mu_nonlinearity())
         else:
             self.mu = mu_mlp

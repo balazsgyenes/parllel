@@ -27,10 +27,10 @@ class AtariLstmPgModel(nn.Module):
             use_maxpool: bool,
             post_conv_hidden_sizes: Union[int, List[int], None],
             post_conv_output_size: Optional[int],
-            post_conv_nonlinearity: torch.nn.Module,
+            post_conv_nonlinearity: str,
             lstm_size: int,
             post_lstm_hidden_sizes: Union[int, List[int], None],
-            post_lstm_nonlinearity: torch.nn.Module,
+            post_lstm_nonlinearity: str,
             ) -> None:
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
@@ -39,6 +39,9 @@ class AtariLstmPgModel(nn.Module):
 
         assert isinstance(action_space, spaces.Discrete)
         n_actions = action_space.n
+
+        post_conv_nonlinearity = getattr(nn, post_conv_nonlinearity)
+        post_lstm_nonlinearity = getattr(nn, post_lstm_nonlinearity)
 
         self.conv = Conv2dHeadModel(
             image_shape=image_shape,

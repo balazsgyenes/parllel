@@ -21,7 +21,7 @@ class CartPoleLstmPgModel(nn.Module):
                  pre_lstm_hidden_sizes: Union[int, List[int], None],
                  lstm_size: int,
                  post_lstm_hidden_sizes: Union[int, List[int], None],
-                 hidden_nonlinearity: nn.Module,
+                 hidden_nonlinearity: str,
                  ) -> None:
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
@@ -29,6 +29,8 @@ class CartPoleLstmPgModel(nn.Module):
 
         assert isinstance(action_space, spaces.Discrete)
         n_actions = action_space.n
+
+        hidden_nonlinearity = getattr(nn, hidden_nonlinearity)
 
         self.fc = MlpModel(
             input_size=obs_shape,

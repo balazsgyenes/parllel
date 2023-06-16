@@ -4,13 +4,15 @@ import multiprocessing as mp
 from pathlib import Path
 from typing import Dict
 
+import hydra
+from omegaconf import DictConfig, OmegaConf
 import torch
+import wandb
 
 from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
     RotatingSharedMemoryArray, buffer_from_example)
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
-from parllel.configuration import add_default_config_fields
 import parllel.logger as logger
 from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
@@ -20,8 +22,7 @@ from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
-from parllel.torch.algos.ppo import (PPO, add_default_ppo_config,
-    build_dataloader_buffer)
+from parllel.torch.algos.ppo import PPO, build_dataloader_buffer
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
@@ -39,7 +40,7 @@ def build(config: Dict) -> OnPolicyRunner:
         config["batch_T"],
         config["batch_B"],
     )
-    TrajInfo.set_discount(config["discount"])
+    TrajInfo.set_discount(config["algo"]["discount"])
 
     if parallel:
         ArrayCls = SharedMemoryArray
@@ -67,7 +68,9 @@ def build(config: Dict) -> OnPolicyRunner:
         **config["model"],
     )
     distribution = Categorical(dim=action_space.n)
-    device = torch.device(config["device"])
+    device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
+    wandb.config.update({"device": device}, allow_val_change=True)
+    device = torch.device(device)
 
     # instantiate model and agent
     agent = CategoricalPgAgent(
@@ -108,7 +111,7 @@ def build(config: Dict) -> OnPolicyRunner:
     batch_buffer, batch_transforms = add_reward_normalization(
         batch_buffer,
         batch_transforms,
-        discount=config["discount"],
+        discount=config["algo"]["discount"],
     )
 
     batch_buffer, batch_transforms = add_reward_clipping(
@@ -122,9 +125,9 @@ def build(config: Dict) -> OnPolicyRunner:
     batch_buffer, batch_transforms = add_advantage_estimation(
         batch_buffer,
         batch_transforms,
-        discount=config["discount"],
-        gae_lambda=config["gae_lambda"],
-        normalize=config["normalize_advantage"],
+        discount=config["algo"]["discount"],
+        gae_lambda=config["algo"]["gae_lambda"],
+        normalize=config["algo"]["normalize_advantage"],
     )
 
     sampler = BasicSampler(
@@ -143,14 +146,13 @@ def build(config: Dict) -> OnPolicyRunner:
     dataloader = BatchedDataLoader(
         buffer=dataloader_buffer,
         sampler_batch_spec=batch_spec,
-        # TODO: every time we abstract, the config becomes flatter and more smeared out
-        n_batches=config["minibatches"],
+        n_batches=config["algo"]["minibatches"],
     )
 
     optimizer = torch.optim.Adam(
         agent.model.parameters(),
-        lr=config["learning_rate"],
-        **config["optimizer"],
+        lr=config["algo"]["learning_rate"],
+        **config.get("optimizer", {}),
     )
     
     # create algorithm
@@ -182,56 +184,19 @@ def build(config: Dict) -> OnPolicyRunner:
         buffer_method(batch_buffer, "destroy")
 
 
-if __name__ == "__main__":
+@hydra.main(version_base=None, config_path="conf", config_name="train_ppo")
+def main(config: DictConfig) -> None:
+
     mp.set_start_method("fork")
 
-    config = dict(
-        parallel=False,
-        batch_T=128,
-        batch_B=16,
-        discount=0.99,
-        learning_rate=0.001,
-        gae_lambda=0.95,
-        reward_clip_min=-5,
-        reward_clip_max=5,
-        obs_norm_initial_count=10000,
-        normalize_advantage=True,
-        max_steps_decorrelate=50,
-        env=dict(
-            max_episode_steps=1000,
-        ),
-        device="cuda:0" if torch.cuda.is_available() else "cpu",
-        model=dict(
-            hidden_sizes=[64, 64],
-            hidden_nonlinearity=torch.nn.Tanh,
-        ),
-        runner=dict(
-            n_steps=50 * 16 * 128,
-            log_interval_steps=5 * 16 * 128,
-        ),
+    run = wandb.init(
+        anonymous="must", # for this example, send to wandb dummy account
+        project="CartPole",
+        tags=["discrete", "state-based", "ppo", "feedforward"],
+        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
+        sync_tensorboard=True,  # auto-upload any values logged to tensorboard
+        save_code=True,  # save script used to start training, git commit, and patch
     )
-
-    config = add_default_ppo_config(config)
-    config = add_default_config_fields(config)
-
-    # default values if wandb is not installed (or not used)
-    run = None
-    run_id = datetime.now().strftime('%Y-%m-%d_%H-%M')
-
-    try:
-        import wandb
-        run = wandb.init(
-            anonymous="must", # for this example, send to wandb dummy account
-            project="CartPole",
-            group="PPO",
-            tags=["discrete", "state-based", "ppo"],
-            config=config,
-            sync_tensorboard=True,  # auto-upload any values logged to tensorboard
-            save_code=True,  # save script used to start training, git commit, and patch
-        )
-        run_id = run.id
-    except ImportError:
-        pass
 
     logger.init(
         wandb_run=run,
@@ -242,7 +207,7 @@ if __name__ == "__main__":
             "txt": "log.txt",
             # "csv": "progress.csv",
         },
-        config=config,
+        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         model_save_path="model.pt",
         # verbosity=Verbosity.DEBUG,
     )
@@ -250,5 +215,8 @@ if __name__ == "__main__":
     with build(config) as runner:
         runner.run()
 
-    if run is not None:
-        run.finish()
+    run.finish()
+
+
+if __name__ == "__main__":
+    main()

@@ -50,6 +50,7 @@ class PPO(Algorithm):
         value_clipping_mode: str,
         value_clip: Optional[float] = None,
         kl_divergence_limit: float = np.inf,
+        **kwargs,  # ignore additional arguments
     ) -> None:
         """Saves input settings."""
         self.agent = agent
@@ -199,24 +200,6 @@ class PPO(Algorithm):
             self.algo_log_info["explained_variance"].append(explained_var)
 
         return loss
-
-
-def add_default_ppo_config(config: Dict) -> Dict:
-    defaults = dict(
-        learning_rate_scheduler = None,
-        value_loss_coeff = 1.,
-        entropy_loss_coeff = 0.01,
-        clip_grad_norm = 1.,
-        epochs = 4,
-        ratio_clip = 0.1,
-        value_clipping_mode = "none",
-    )
-    config["algo"] = defaults | config.get("algo", {})
-
-    config["minibatches"] = config.get("minibatches", 4)
-    config["learning_rate"] = config.get("learning_rate", 0.001)
-
-    return config
 
 
 def build_dataloader_buffer(
