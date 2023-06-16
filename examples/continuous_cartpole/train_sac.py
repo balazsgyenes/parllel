@@ -5,7 +5,10 @@ import multiprocessing as mp
 from pathlib import Path
 from typing import Dict
 
+import hydra
+from omegaconf import DictConfig, OmegaConf
 import torch
+import wandb
 
 from parllel.arrays import buffer_from_example
 from parllel.arrays import buffer_from_dict_example
@@ -15,7 +18,6 @@ from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.buffers import EnvSamples
 from parllel.cages import TrajInfo
 from parllel.cages import SerialCage, ProcessCage
-from parllel.configuration import add_default_config_fields
 import parllel.logger as logger
 from parllel.logger import Verbosity
 from parllel.patterns import (build_cages_and_env_buffers, build_eval_sampler)
@@ -23,7 +25,7 @@ from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.sac_agent import SacAgent
-from parllel.torch.algos.sac import SAC, add_default_sac_config, SamplesForLoss
+from parllel.torch.algos.sac import SAC, SamplesForLoss
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.torch.handler import TorchHandler
 from parllel.torch.utils import torchify_buffer
@@ -41,9 +43,9 @@ def build(config: Dict) -> OffPolicyRunner:
         config["batch_T"],
         config["batch_B"],
     )
-    TrajInfo.set_discount(config["discount"])
+    TrajInfo.set_discount(config["algo"]["discount"])
 
-    replay_buffer_dims = (config["replay_length"], batch_spec.B)
+    replay_buffer_dims = (config["algo"]["replay_length"], batch_spec.B)
 
     EnvClass = build_cartpole
     env_kwargs = config["env"]
@@ -123,7 +125,9 @@ def build(config: Dict) -> OffPolicyRunner:
         dim=action_space.shape[0],
         scale=action_space.high[0],
     )
-    device = torch.device(config["device"])
+    device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
+    wandb.config.update({"device": device}, allow_val_change=True)
+    device = torch.device(device)
 
     # instantiate model and agent
     agent = SacAgent(
@@ -132,7 +136,7 @@ def build(config: Dict) -> OffPolicyRunner:
         observation_space=obs_space,
         action_space=action_space,
         device=device,
-        **config["agent"],
+        learning_starts=config["algo"]["learning_starts"],
     )
     agent = TorchHandler(agent=agent)
 
@@ -173,8 +177,8 @@ def build(config: Dict) -> OffPolicyRunner:
     replay_buffer = ReplayBuffer(
         buffer=replay_buffer,
         sampler_batch_spec=batch_spec,
-        size_T=config["replay_length"],
-        replay_batch_size=config["batch_size"],
+        size_T=config["algo"]["replay_length"],
+        replay_batch_size=config["algo"]["batch_size"],
         newest_n_samples_invalid=0,
         oldest_n_samples_invalid=1,
     )
@@ -182,16 +186,16 @@ def build(config: Dict) -> OffPolicyRunner:
     optimizers = {
         "pi": torch.optim.Adam(
             agent.model["pi"].parameters(),
-            lr=config["learning_rate"],
-            **config["optimizer"],
+            lr=config["algo"]["learning_rate"],
+            **config.get("optimizer", {}),
         ),
         "q": torch.optim.Adam(
             itertools.chain(
                 agent.model["q1"].parameters(),
                 agent.model["q2"].parameters(),
             ),
-            lr=config["learning_rate"],
-            **config["optimizer"],
+            lr=config["algo"]["learning_rate"],
+            **config.get("optimizer", {}),
         ),
     }
     
@@ -201,7 +205,6 @@ def build(config: Dict) -> OffPolicyRunner:
         agent=agent,
         replay_buffer=replay_buffer,
         optimizers=optimizers,
-        discount=config["discount"],
         **config["algo"],
     )
 
@@ -244,63 +247,39 @@ def build(config: Dict) -> OffPolicyRunner:
         buffer_method(batch_buffer, "destroy")
     
 
-if __name__ == "__main__":
+@hydra.main(version_base=None, config_path="conf", config_name="train_sac")
+def main(config: DictConfig) -> None:
+
     mp.set_start_method("fork")
 
-    config = dict(
-        parallel=False,
-        batch_T=128,
-        batch_B=16,
-        discount=0.99,
-        learning_rate=0.001,
-        max_steps_decorrelate=50,
-        env=dict(
-            max_episode_steps=1000,
-            reward_type="sparse",
-        ),
-        device="cuda:0" if torch.cuda.is_available() else "cpu",
-        pi_model=dict(
-            hidden_sizes=[64, 64],
-            hidden_nonlinearity=torch.nn.Tanh,
-        ),
-        q_model=dict(
-            hidden_sizes=[64, 64],
-            hidden_nonlinearity=torch.nn.Tanh,
-        ),
-        agent=dict(
-            learning_starts=1e4,
-        ),
-        replay_length=20 * 128,
-        algo=dict(
-            learning_starts=int(1e4),
-            replay_ratio=64,
-            target_update_tau=0.01
-        ),
-        eval_sampler=dict(
-            max_traj_length=2000,
-            min_trajectories=20,
-            n_eval_envs=16,
-        ),
-        runner=dict(
-            n_steps=100 * 16 * 128,
-            log_interval_steps=5 * 16 * 128,
-        ),
+    run = wandb.init(
+        anonymous="must", # for this example, send to wandb dummy account
+        project="CartPole",
+        tags=["continuous", "state-based", "sac", "feedforward"],
+        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
+        sync_tensorboard=True,  # auto-upload any values logged to tensorboard
+        save_code=True,  # save script used to start training, git commit, and patch
     )
 
-    config = add_default_sac_config(config)
-    config = add_default_config_fields(config)
-
     logger.init(
+        wandb_run=run,
+        # this log_dir is used if wandb is disabled (using `wandb disabled`)
         log_dir=Path(f"log_data/cartpole-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
         output_files={
             "txt": "log.txt",
             # "csv": "progress.csv",
         },
-        config=config,
+        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         model_save_path="model.pt",
         # verbosity=Verbosity.DEBUG,
     )
 
     with build(config) as runner:
         runner.run()
+
+    run.finish()
+
+
+if __name__ == "__main__":
+    main()

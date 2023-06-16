@@ -32,6 +32,7 @@ class SAC(Algorithm):
         target_update_interval: int,  # 1000 for hard update, 1 for soft.
         ent_coeff: float,
         clip_grad_norm: float,
+        **kwargs,  # ignore additional arguments
     ):
         """Save input arguments."""
         self.agent = agent
@@ -150,20 +151,3 @@ class SAC(Algorithm):
 
         self.algo_log_info["actor_loss"].append(pi_loss.item())
         self.algo_log_info["q1_grad_norm"].append(pi_grad_norm.item())
-
-
-def add_default_sac_config(config: Dict) -> Dict:
-    defaults = dict(
-        learning_starts=0,
-        replay_ratio=256,
-        target_update_tau=0.005,
-        target_update_interval=1,
-        ent_coeff=1e-5,
-        clip_grad_norm=1e9,
-    )
-    config["algo"] = defaults | config.get("algo", {})
-
-    config["batch_size"] = config.get("batch_size", 256)
-    config["discount"] = config.get("discount", 0.99)
-
-    return config
