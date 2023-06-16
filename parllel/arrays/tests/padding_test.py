@@ -3,8 +3,9 @@ import functools
 import pytest
 import numpy as np
 
-from parllel.arrays.array import Array, shift_index
+from parllel.arrays.array import shift_index
 
+# reuse fixtures from array_test
 from array_test import ArrayClass, shape, dtype, storage, blank_array, np_array
 
 

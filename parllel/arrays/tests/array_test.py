@@ -69,70 +69,69 @@ class TestArrayCreation:
         assert array.storage == storage
         assert array.padding == padding
 
-    def test_calling_subclass(self, shape, dtype, padding):
+    def test_calling_subclass(self, ArrayClass, shape, dtype, storage, padding):
         if storage == "shared":
             ArrayClass = SharedMemoryArray
         elif storage == "managed":
             ArrayClass = ManagedMemoryArray
-        else:
-            ArrayClass = Array
 
         array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
         assert array.shape == shape
         assert array.dtype == dtype
+        assert array.storage == storage
         assert array.padding == padding
 
-    def test_array_like(self):
+    def test_array_like(self, ArrayClass):
         template = Array(shape=(10, 4), dtype=np.float32)
         
-        array = Array.like(template, shape=(20, 4))
+        array = ArrayClass.like(template, shape=(20, 4))
         assert array.shape == (20, 4)
         assert array.dtype == np.float32
         assert array.apparent_size == 20
         assert array.full_shape == (20, 4)
         assert array.full_size == 20
 
-        array = Array.like(template, dtype=np.int32)
+        array = ArrayClass.like(template, dtype=np.int32)
         assert array.shape == (10, 4)
         assert array.dtype == np.int32
 
-        array = Array.like(template, storage="shared")
+        array = ArrayClass.like(template, storage="shared")
         assert array.storage == "shared"
         array.close()
         array.destroy()
 
-        array = Array.like(template, padding=1)
+        array = ArrayClass.like(template, padding=1)
         assert array.padding == 1
 
-        array = Array.like(template, apparent_size=5)
+        array = ArrayClass.like(template, apparent_size=5)
         assert array.shape == (5, 4)
         assert array.apparent_size == 5
         assert array.full_shape == (10, 4)
         assert array.full_size == 10
 
-    def test_array_like_windowed(self):
+    def test_array_like_windowed(self, ArrayClass):
         template = Array(shape=(10, 4), dtype=np.float32, apparent_size=5)
 
-        array = Array.like(template, shape=(20, 4))
+        array = ArrayClass.like(template, shape=(20, 4))
         assert array.shape == (5, 4)
         assert array.dtype == np.float32
         assert array.apparent_size == 5
         assert array.full_shape == (20, 4)
         assert array.full_size == 20
 
-        array = Array.like(template, dtype=np.int32)
+        array = ArrayClass.like(template, dtype=np.int32)
         assert array.shape == (5, 4)
         assert array.dtype == np.int32
 
-        array = Array.like(template, storage="shared")
+        array = ArrayClass.like(template, storage="shared")
         assert array.storage == "shared"
         array.close()
         array.destroy()
 
-        array = Array.like(template, padding=1)
+        array = ArrayClass.like(template, padding=1)
         assert array.padding == 1
 
-        array = Array.like(template, apparent_size=2)
+        array = ArrayClass.like(template, apparent_size=2)
         assert array.shape == (2, 4)
         assert array.apparent_size == 2
         assert array.full_shape == (10, 4)
