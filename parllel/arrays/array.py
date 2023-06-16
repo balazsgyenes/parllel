@@ -42,6 +42,7 @@ class Array(Buffer):
         *,
         storage: str = "local",  # consumed by __new__
         padding: int = 0,
+        # TODO: replace apparent_size with full_size
         apparent_size: Optional[int] = None,
     ) -> None:
 
@@ -109,14 +110,12 @@ class Array(Buffer):
         padding: Optional[int] = None,
         apparent_size: Optional[int] = None,
     ) -> Array:
-        """Creates an Array with the same shape and type as a given Array
-        (similar to numpy's zeros_like function). If the template array has
-        the same apparent shape as its full shape, overriding shape changes
-        both.
+        """Creates an Array with the same (apparent) shape and type as a given
+        Array (similar to numpy's zeros_like function). If the template array
+        has the same apparent shape as its full shape, overriding shape
+        changes both.
         """
-        # TODO: side effect of using full shape instead of apparent shape is
-        # that subarrays are treated as the base array
-        shape = shape if shape is not None else array.full_shape
+        shape = shape if shape is not None else array.shape
         dtype = dtype or array.dtype
         storage = storage or array.storage
         padding = padding if padding is not None else array.padding

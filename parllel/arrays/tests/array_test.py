@@ -131,11 +131,11 @@ class TestArrayCreation:
         array = ArrayClass.like(template, padding=1)
         assert array.padding == 1
 
-        array = ArrayClass.like(template, apparent_size=2)
-        assert array.shape == (2, 4)
-        assert array.apparent_size == 2
-        assert array.full_shape == (10, 4)
-        assert array.full_size == 10
+        array = ArrayClass.like(template, apparent_size=1)
+        assert array.shape == (1, 4)
+        assert array.apparent_size == 1
+        assert array.full_shape == (5, 4)
+        assert array.full_size == 5
 
 
 class TestArray:

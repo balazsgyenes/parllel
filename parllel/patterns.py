@@ -113,11 +113,7 @@ def add_bootstrap_value(batch_buffer: Samples) -> Samples:
     )
 
     # Create an array with only (B,) leading dimension
-    # TODO: this function call isn't intuitive because shape must be explicitly given
-    batch_bootstrap_value = Array.like(
-        batch_agent_info.value,
-        shape=(batch_agent_info.value.shape[1],),
-    )
+    batch_bootstrap_value = Array.like(batch_agent_info.value[0])
 
     batch_agent = AgentSamplesClass(
         **batch_agent._asdict(), bootstrap_value=batch_bootstrap_value,
@@ -253,8 +249,7 @@ def add_reward_normalization(
     )
 
     # allocate new Array for past discounted returns
-    # strip invisible region, if any, by setting shape to apparent shape
-    batch_past_return = Array.like(reward, shape=reward.shape, padding=1)
+    batch_past_return = Array.like(reward, padding=1)
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(
