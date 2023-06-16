@@ -112,8 +112,12 @@ def add_bootstrap_value(batch_buffer: Samples) -> Samples:
         fields = batch_agent._fields + ("bootstrap_value",)
     )
 
-    # remove T dimension, creating an array with only (B,) leading dimensions
-    batch_bootstrap_value = Array.like(batch_agent_info.value[0])
+    # Create an array with only (B,) leading dimension
+    # TODO: this function call isn't intuitive because shape must be explicitly given
+    batch_bootstrap_value = Array.like(
+        batch_agent_info.value,
+        shape=(batch_agent_info.value.shape[1],),
+    )
 
     batch_agent = AgentSamplesClass(
         **batch_agent._asdict(), bootstrap_value=batch_bootstrap_value,

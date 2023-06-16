@@ -114,6 +114,8 @@ class Array(Buffer):
         the same apparent shape as its full shape, overriding shape changes
         both.
         """
+        # TODO: side effect of using full shape instead of apparent shape is
+        # that subarrays are treated as the base array
         shape = shape if shape is not None else array.full_shape
         dtype = dtype or array.dtype
         storage = storage or array.storage
