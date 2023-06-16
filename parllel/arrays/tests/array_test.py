@@ -3,7 +3,7 @@ import functools
 import pytest
 import numpy as np
 
-from parllel.arrays.array import Array
+from parllel.arrays import Array, SharedMemoryArray, ManagedMemoryArray
 
 
 @pytest.fixture(params=[
@@ -49,15 +49,97 @@ def array(blank_array, np_array):
     return blank_array
 
 
-class TestArray:
+class TestArrayCreation:
     def test_no_args(self, ArrayClass):
         with pytest.raises(TypeError):
             _ = ArrayClass()
+
+    def test_empty_shape(self, ArrayClass, dtype):
+        with pytest.raises(ValueError):
+            _ = ArrayClass(shape=(), dtype=dtype)
 
     def test_wrong_dtype(self, ArrayClass, shape):
         with pytest.raises(ValueError):
             _ = ArrayClass(shape=shape, dtype=list)
 
+    def test_calling_array(self, ArrayClass, shape, dtype, storage, padding):
+        array = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=padding)
+        assert array.shape == shape
+        assert array.dtype == dtype
+        assert array.storage == storage
+        assert array.padding == padding
+
+    def test_calling_subclass(self, shape, dtype, padding):
+        if storage == "shared":
+            ArrayClass = SharedMemoryArray
+        elif storage == "managed":
+            ArrayClass = ManagedMemoryArray
+        else:
+            ArrayClass = Array
+
+        array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
+        assert array.shape == shape
+        assert array.dtype == dtype
+        assert array.padding == padding
+
+    def test_array_like(self):
+        template = Array(shape=(10, 4), dtype=np.float32)
+        
+        array = Array.like(template, shape=(20, 4))
+        assert array.shape == (20, 4)
+        assert array.dtype == np.float32
+        assert array.apparent_size == 20
+        assert array.full_shape == (20, 4)
+        assert array.full_size == 20
+
+        array = Array.like(template, dtype=np.int32)
+        assert array.shape == (10, 4)
+        assert array.dtype == np.int32
+
+        array = Array.like(template, storage="shared")
+        assert array.storage == "shared"
+        array.close()
+        array.destroy()
+
+        array = Array.like(template, padding=1)
+        assert array.padding == 1
+
+        array = Array.like(template, apparent_size=5)
+        assert array.shape == (5, 4)
+        assert array.apparent_size == 5
+        assert array.full_shape == (10, 4)
+        assert array.full_size == 10
+
+    def test_array_like_windowed(self):
+        template = Array(shape=(10, 4), dtype=np.float32, apparent_size=5)
+
+        array = Array.like(template, shape=(20, 4))
+        assert array.shape == (5, 4)
+        assert array.dtype == np.float32
+        assert array.apparent_size == 5
+        assert array.full_shape == (20, 4)
+        assert array.full_size == 20
+
+        array = Array.like(template, dtype=np.int32)
+        assert array.shape == (5, 4)
+        assert array.dtype == np.int32
+
+        array = Array.like(template, storage="shared")
+        assert array.storage == "shared"
+        array.close()
+        array.destroy()
+
+        array = Array.like(template, padding=1)
+        assert array.padding == 1
+
+        array = Array.like(template, apparent_size=2)
+        assert array.shape == (2, 4)
+        assert array.apparent_size == 2
+        assert array.full_shape == (10, 4)
+        assert array.full_size == 10
+
+
+class TestArray:
     def test_init(self, blank_array, shape, dtype):
         assert np.array_equal(blank_array, np.zeros(shape, dtype))
         assert blank_array.dtype == dtype

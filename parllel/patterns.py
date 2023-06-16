@@ -249,8 +249,8 @@ def add_reward_normalization(
     )
 
     # allocate new Array for past discounted returns
-    # TODO: overwrite apparent_size with None explicitly
-    batch_past_return = Array.like(reward, padding=1, apparent_size=None)
+    # strip invisible region, if any, by setting shape to apparent shape
+    batch_past_return = Array.like(reward, shape=reward.shape, padding=1)
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(

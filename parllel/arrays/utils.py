@@ -31,12 +31,14 @@ def buffer_from_example(
             )
         )
     if isinstance(example, Array):
-        shape = kwargs.pop("shape", None) or example.shape
+        shape = kwargs.pop("shape", None)
+        shape = shape if shape is not None else example.shape
         shape = leading_dims + shape
         return Array.like(example, shape=shape, **kwargs)
     else:
         np_example = np.asanyarray(example)  # promote scalars to 0d arrays
-        shape = kwargs.pop("shape", None) or np_example.shape
+        shape = kwargs.pop("shape", None)
+        shape = shape if shape is not None else np_example.shape
         shape = leading_dims + shape
         if (dtype := kwargs.pop("dtype", None)) is None:
             dtype = np_example.dtype

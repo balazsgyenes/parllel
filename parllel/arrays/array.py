@@ -26,6 +26,7 @@ class Array(Buffer):
 
     def __new__(cls, *args, storage: str = "local", **kwargs):
         # can instantiate a subclass directly by just not passing storage arg
+        # e.g. SharedMemoryArray(shape=(4,4), dtype=np.float32)
         if storage == "local" or storage is None:
             return super().__new__(cls)
         # otherwise look up name in dictionary of registered subclasses
@@ -38,7 +39,8 @@ class Array(Buffer):
     def __init__(self,
         shape: Tuple[int, ...],
         dtype: np.dtype,
-        storage: str = "local",
+        *,
+        storage: str = "local",  # consumed by __new__
         padding: int = 0,
         apparent_size: Optional[int] = None,
     ) -> None:
@@ -98,8 +100,8 @@ class Array(Buffer):
 
         self._resolve_indexing_history()
 
-    @staticmethod
-    def like(
+    @classmethod
+    def like(cls,
         array: Array,
         shape: Optional[Tuple[int, ...]] = None,
         dtype: Optional[np.dtype] = None,
@@ -107,18 +109,28 @@ class Array(Buffer):
         padding: Optional[int] = None,
         apparent_size: Optional[int] = None,
     ) -> Array:
-        shape = shape or array.shape  # TODO: non-visible region is ignored. fix?
+        """Creates an Array with the same shape and type as a given Array
+        (similar to numpy's zeros_like function). If the template array has
+        the same apparent shape as its full shape, overriding shape changes
+        both.
+        """
+        shape = shape if shape is not None else array.full_shape
         dtype = dtype or array.dtype
         storage = storage or array.storage
-        padding = padding or array.padding
+        padding = padding if padding is not None else array.padding
         # if apparent_size is not the default, inherit it from given array
-        apparent_size = apparent_size or (
+        apparent_size = apparent_size if apparent_size is not None else (
             array.apparent_size
             if array.apparent_size < array.full_size else
             None
         )
-        # TODO: ensure compatibility for public Array subclasses
-        return Array(shape, dtype, storage, padding, apparent_size)
+        return cls(
+            shape,
+            dtype,
+            storage=storage,
+            padding=padding,
+            apparent_size=apparent_size,
+        )
 
     def _allocate(self) -> None:
         # initialize numpy array
@@ -257,9 +269,9 @@ class Array(Buffer):
         return new
 
     def reset(self) -> None:
-        """Resets array, such after calling `rotate()` once, the offset will
-        be 0. This is useful in the sampler, which calls `rotate()` before
-        every batch.
+        """Resets array, such that the offset will be 0 after the next time
+        that `rotate()` is called. This is useful in the sampler, which calls
+        `rotate()` before every batch.
         """
         if self._index_history:
             raise RuntimeError("Only allowed to call `reset()` on original array")
