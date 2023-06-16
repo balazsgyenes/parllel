@@ -2,8 +2,7 @@ import pytest
 
 import numpy as np
 
-from parllel.arrays import (Array, RotatingArray, buffer_from_example,
-    buffer_from_dict_example)
+from parllel.arrays import Array, buffer_from_example, buffer_from_dict_example
 from parllel.buffers import (AgentSamples, EnvSamples, NamedArrayTuple,
     NamedArrayTupleClass, Samples, buffer_method, buffer_asarray)
 from parllel.cages import SerialCage, MultiAgentTrajInfo, TrajInfo
@@ -69,16 +68,11 @@ def batch_buffer(action_space, observation_space, batch_spec, envs, agent, get_b
     agent_info = agent.get_agent_info()
 
     # allocate batch buffer based on examples
-    batch_observation = buffer_from_dict_example(obs, tuple(batch_spec),
-        RotatingArray, name="obs", padding=1)
-    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec),
-        Array, name="reward")
-    batch_done = buffer_from_dict_example(done, tuple(batch_spec),
-        Array, name="done")
-    batch_info = buffer_from_dict_example(info, tuple(batch_spec),
-        Array, name="envinfo")
-    batch_valid = buffer_from_dict_example(done, tuple(batch_spec),
-        RotatingArray, name="valid")
+    batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), name="obs", padding=1)
+    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward")
+    batch_done = buffer_from_example(done, tuple(batch_spec))
+    batch_info = buffer_from_dict_example(info, tuple(batch_spec), name="envinfo")
+    batch_valid = buffer_from_example(done, tuple(batch_spec), padding=1)
 
     EnvSamplesWValid = NamedArrayTupleClass(
         typename = EnvSamples._typename,
@@ -87,25 +81,21 @@ def batch_buffer(action_space, observation_space, batch_spec, envs, agent, get_b
 
     batch_env = EnvSamplesWValid(batch_observation, batch_reward,
         batch_done, batch_info, batch_valid)
-    batch_action = buffer_from_dict_example(action,
-        tuple(batch_spec), Array, name="action")
-    batch_agent_info = buffer_from_example(agent_info,
-        tuple(batch_spec), Array, name="agentinfo")
+    batch_action = buffer_from_dict_example(action, tuple(batch_spec), name="action")
+    batch_agent_info = buffer_from_example(agent_info, tuple(batch_spec))
 
     AgentSamplesWRnnState = NamedArrayTupleClass(
         typename = AgentSamples._typename,
         fields = AgentSamples._fields + ("initial_rnn_state",)
     )
-    batch_init_rnn = buffer_from_example(np.array(0, np.float32),
-            (batch_spec.B,), Array)
+    batch_init_rnn = Array(shape=(batch_spec.B,), dtype=np.float32)
 
     if get_bootstrap:
         AgentSamplesWBootstrap = NamedArrayTupleClass(
             typename = AgentSamplesWRnnState._typename,
             fields = AgentSamplesWRnnState._fields + ("bootstrap_value",)
         )
-        batch_bootstrap_value = buffer_from_example(np.array(0, np.float32),
-            (batch_spec.B,), Array)
+        batch_bootstrap_value = Array(shape=(batch_spec.B,), dtype=np.float32)
 
         batch_agent = AgentSamplesWBootstrap(batch_action, batch_agent_info,
             batch_init_rnn, batch_bootstrap_value)

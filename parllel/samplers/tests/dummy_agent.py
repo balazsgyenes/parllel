@@ -4,7 +4,7 @@ import gym
 import numpy as np
 from numpy import random
 
-from parllel.arrays import Array, RotatingArray, buffer_from_dict_example, buffer_from_example
+from parllel.arrays import Array, buffer_from_dict_example
 from parllel.buffers import Buffer, NamedTupleClass, buffer_asarray, buffer_method
 from parllel.handlers import Agent, AgentStep
 from parllel.buffers import AgentSamples
@@ -21,27 +21,26 @@ class DummyAgent(Agent):
         self.batch_spec = batch_spec
         self.recurrent = recurrent
 
-        self.states = buffer_from_example(np.array(0, dtype=np.float32),
-            (n_batches * batch_spec.T, batch_spec.B), RotatingArray)
+        self.states = Array(shape=(n_batches * batch_spec.T, batch_spec.B), dtype=np.float32, padding=1)
 
         self._step_ctr = 0
         batch_action = buffer_from_dict_example(self.action_space.sample(),
-            (n_batches * batch_spec.T, batch_spec.B), Array, name="action")
+            (n_batches * batch_spec.T, batch_spec.B), name="action")
         batch_info = buffer_from_dict_example(
             {
                 "observation": self.observation_space.sample(),
                 "previous_state": np.array(0, dtype=np.float32),
             },
-            (n_batches * batch_spec.T, batch_spec.B), Array, name="agentinfo")
+            (n_batches * batch_spec.T, batch_spec.B), name="agentinfo")
         self.samples = AgentSamples(batch_action, batch_info)
-        self.values = buffer_from_example(np.array(0, dtype=np.float32),
-            (n_batches, batch_spec.B), Array)
-        self.resets = buffer_from_example(True,
-            (n_batches * batch_spec.T, batch_spec.B), RotatingArray, padding=1)
+        self.values = Array(shape=(n_batches, batch_spec.B), dtype=np.float32)
+        self.resets = Array(shape=(n_batches * batch_spec.T, batch_spec.B), dtype=np.bool_, padding=1)
 
         if self.recurrent:
-            self.init_rnn_states = buffer_from_example(np.array(0, dtype=np.float32),
-            (n_batches, batch_spec.B), Array)
+            self.init_rnn_states = Array(
+                shape=(n_batches, batch_spec.B),
+                dtype=np.float32
+            )
 
         self.rng = random.default_rng()
 
