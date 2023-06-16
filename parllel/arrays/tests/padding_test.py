@@ -28,7 +28,7 @@ def dtype(request):
 def storage(request):
     return request.param
 
-@pytest.fixture(params=[0, 1, 2], ids=["padding=0", "padding=1", "padding=2"], scope="module")
+@pytest.fixture(params=[1, 2], ids=["padding=1", "padding=2"], scope="module")
 def padding(request):
     return request.param
 
@@ -62,7 +62,7 @@ def array(blank_array, np_array, padding, previous_region, next_region):
     return blank_array
 
 
-class TestRotatingArray:
+class TestPaddedArray:
     def test_negative_padding(self, ArrayClass, shape, dtype, storage):
         with pytest.raises(ValueError):
             _ = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=-1)

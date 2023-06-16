@@ -300,7 +300,22 @@ class Array(Buffer):
         return array
 
     def __repr__(self) -> str:
-        return repr(self.__array__())
+        prefix = type(self).__name__ + "("
+        suffix = (
+            f", storage={self.storage}"
+            f", dtype={self.dtype.name}"
+            ")"
+        )
+        return (
+            prefix +
+            np.array2string(
+                self.__array__(),
+                separator=",",
+                prefix=prefix,
+                suffix=suffix
+            ) +
+            suffix
+        )
 
     def __bool__(self) -> bool:
         return bool(self.__array__())

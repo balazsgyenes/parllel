@@ -207,7 +207,7 @@ class TestArray:
             (slice(None), slice(None, None, 2)),
         )
 
-    def test_array_reconstruction(self, array, np_array, ArrayClass, shape, dtype):
+    def test_array_reconstruction(self, array):
         subarray1 = array
         subarray1 = subarray1[3]
         subarray1 = subarray1[:]
