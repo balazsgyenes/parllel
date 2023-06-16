@@ -5,43 +5,12 @@ import numpy as np
 
 from parllel.arrays.array import Array, shift_index
 
+from array_test import ArrayClass, shape, dtype, storage, blank_array, np_array
 
-@pytest.fixture(params=[
-    Array,
-], scope="module")
-def ArrayClass(request):
-    return request.param
-
-@pytest.fixture(scope="module")
-def shape():
-    return (10, 4, 4)
-
-@pytest.fixture(params=[np.float32, np.int32], scope="module")
-def dtype(request):
-    return request.param
-
-@pytest.fixture(params=[
-    "local",
-    "shared",
-    pytest.param("managed", marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    ], scope="module")
-def storage(request):
-    return request.param
 
 @pytest.fixture(params=[1, 2], ids=["padding=1", "padding=2"], scope="module")
 def padding(request):
     return request.param
-
-@pytest.fixture
-def blank_array(ArrayClass, shape, dtype, storage, padding):
-    array = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=padding)
-    yield array
-    array.close()
-    array.destroy()
-
-@pytest.fixture
-def np_array(shape, dtype):
-    return np.arange(np.prod(shape), dtype=dtype).reshape(shape)
 
 @pytest.fixture
 def previous_region(np_array, padding):
