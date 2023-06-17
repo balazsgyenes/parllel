@@ -42,8 +42,7 @@ class Array(Buffer):
         *,
         storage: str = "local",  # consumed by __new__
         padding: int = 0,
-        # TODO: replace apparent_size with full_size
-        apparent_size: Optional[int] = None,
+        full_size: Optional[int] = None,
     ) -> None:
 
         if not shape:
@@ -61,31 +60,31 @@ class Array(Buffer):
                 f"dimension {shape[0]}."
             )
 
-        if apparent_size is None:
-            apparent_size = shape[0]
-        if apparent_size > shape[0]:
+        if full_size is None:
+            full_size = shape[0]
+        if full_size < shape[0]:
             raise ValueError(
-                f"Apparent size {apparent_size} cannot be greater than "
+                f"Full size ({full_size}) cannot be less than "
                 f"leading dimension {shape[0]}."
             )
-        if shape[0] % apparent_size != 0:
+        if full_size % shape[0] != 0:
             raise ValueError(
-                f"The leading dimension {shape[0]} must divide evenly into "
-                f"the apparent size {apparent_size}."
+                f"The leading dimension {shape[0]} must divide the full "
+                f"size ({full_size}) evenly."
             )
 
-        self.full_shape = shape
+        self.full_shape = (full_size,) + shape[1:]
         self.dtype = dtype
         self.padding = padding
-        self.apparent_size = apparent_size
+        self.base_size = shape[0]
 
-        self.full_size = shape[0] # full leading dimension without padding
+        self.full_size = full_size
         self.offset = 0
         self.shift = self.offset + padding
         
         # add padding onto both ends of first dimension
-        self._base_shape = (shape[0] + 2 * self.padding,) + shape[1:]
-        self._apparent_shape = (apparent_size,) + shape[1:]
+        self._base_shape = (full_size + 2 * self.padding,) + shape[1:]
+        self._apparent_shape = shape
 
         self._buffer_id: int = id(self)
         self._index_history: list[Indices] = []
@@ -103,26 +102,28 @@ class Array(Buffer):
 
     @classmethod
     def like(cls,
-        array: Array,
+        template: Array,
         shape: Optional[Tuple[int, ...]] = None,
         dtype: Optional[np.dtype] = None,
         storage: Optional[str] = None,
         padding: Optional[int] = None,
-        apparent_size: Optional[int] = None,
+        full_size: Optional[int] = None,
+        inherit_full_size: bool = False,
     ) -> Array:
-        """Creates an Array with the same (apparent) shape and type as a given
-        Array (similar to numpy's zeros_like function). If the template array
-        has the same apparent shape as its full shape, overriding shape
-        changes both.
+        """Creates an Array with the same shape and type as a given Array
+        (similar to numpy's zeros_like function). By default, the full size of
+        the created Array is just the apparent size of the template. To set it
+        to another value, either pass it manually or set the
+        `inherit_full_size` flag to True to use the template's full size.
         """
-        shape = shape if shape is not None else array.shape
-        dtype = dtype or array.dtype
-        storage = storage or array.storage
-        padding = padding if padding is not None else array.padding
-        # if apparent_size is not the default, inherit it from given array
-        apparent_size = apparent_size if apparent_size is not None else (
-            array.apparent_size
-            if array.apparent_size < array.full_size else
+        shape = shape if shape is not None else template.shape
+        dtype = dtype or template.dtype
+        storage = storage or template.storage
+        padding = padding if padding is not None else template.padding
+        # only inherit full_size from template if full_size is not the default and flag set to true
+        full_size = full_size if full_size is not None else (
+            template.full_size
+            if (inherit_full_size and template.full_size > template.base_size) else
             None
         )
         return cls(
@@ -130,7 +131,7 @@ class Array(Buffer):
             dtype,
             storage=storage,
             padding=padding,
-            apparent_size=apparent_size,
+            full_size=full_size,
         )
 
     def _allocate(self) -> None:
@@ -189,12 +190,12 @@ class Array(Buffer):
             index_history = [shift_indices(
                 self._index_history[0],
                 shift,
-                self.apparent_size,
+                self.base_size,
             )] + self._index_history[1:]
         else:
             # even if the array was never indexed, only this slice of the array
             # should be returned by __array__
-            index_history = [slice(shift, shift + self.apparent_size)]
+            index_history = [slice(shift, shift + self.base_size)]
 
         # if index history has only 1 element, this has no effect
         array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
@@ -222,12 +223,12 @@ class Array(Buffer):
                 location = self._index_history[-1]
                 # indices must be shifted if they were the first indices
                 if len(self._index_history) == 1:
-                    location = shift_indices(location, self.shift, self.apparent_size)
+                    location = shift_indices(location, self.shift, self.base_size)
                 destination = self._previous_array
             else:
                 destination = self._current_array
         else:
-            location = shift_indices(location, self.shift, self.apparent_size)
+            location = shift_indices(location, self.shift, self.base_size)
             destination = self._base_array
         destination[location] = value
     
@@ -236,7 +237,7 @@ class Array(Buffer):
         full: Array = self.__new__(type(self))
         full.__dict__.update(self.__dict__)
 
-        full.apparent_size = full.full_size
+        full.base_size = full.full_size
         full.offset = 0
 
         full._index_history = []
@@ -278,7 +279,7 @@ class Array(Buffer):
             raise RuntimeError("Only allowed to call `reset()` on original array")
         
         # if apparent size is not smaller, sets offset to 0
-        self.offset = self.full_size - self.apparent_size
+        self.offset = self.full_size - self.base_size
 
         # current array is now invalid, but apparent shape should still be
         # correct
@@ -289,7 +290,7 @@ class Array(Buffer):
         if self._index_history:
             raise RuntimeError("Only allowed to call `rotate()` on original array")
 
-        self.offset += self.apparent_size
+        self.offset += self.base_size
 
         if self.padding and self.offset >= self.full_size:
             # copy values from end of base array to beginning
@@ -343,13 +344,13 @@ class Array(Buffer):
         pass
 
 
-def shift_indices(indices: Indices, shift: int, apparent_size: int,
+def shift_indices(indices: Indices, shift: int, size: int,
 ) -> Tuple[Index, ...]:
     if isinstance(indices, tuple):
         first, rest = indices[0], indices[1:]
     else:
         first, rest = indices, ()
-    return shift_index(first, shift, apparent_size) + rest
+    return shift_index(first, shift, size) + rest
 
 
 def shift_index(index: Index, shift: int, size: int,

@@ -86,8 +86,42 @@ class TestArrayCreation:
         
         array = ArrayClass.like(template, shape=(20, 4))
         assert array.shape == (20, 4)
+        assert array.base_size == 20
         assert array.dtype == np.float32
-        assert array.apparent_size == 20
+        assert array.full.shape == (20, 4)
+        assert array.full_size == 20
+
+        array = ArrayClass.like(template, dtype=np.int32)
+        assert array.shape == (10, 4)
+        assert array.dtype == np.int32
+
+        array = ArrayClass.like(template, storage="shared")
+        assert array.storage == "shared"
+        array.close()
+        array.destroy()
+
+        array = ArrayClass.like(template, padding=1)
+        assert array.padding == 1
+
+        array = ArrayClass.like(template, full_size=20)
+        assert array.shape == (10, 4)
+        assert array.base_size == 10
+        assert array.full.shape == (20, 4)
+        assert array.full_size == 20
+
+    def test_array_like_windowed(self, ArrayClass):
+        template = Array(shape=(10, 4), dtype=np.float32, full_size=20)
+
+        array = ArrayClass.like(template, shape=(5, 4))
+        assert array.shape == (5, 4)
+        assert array.dtype == np.float32
+        assert array.base_size == 5
+        assert array.full_shape == (5, 4)
+        assert array.full_size == 5
+
+        array = ArrayClass.like(template, shape=(5, 4), inherit_full_size=True)
+        assert array.shape == (5, 4)
+        assert array.base_size == 5
         assert array.full_shape == (20, 4)
         assert array.full_size == 20
 
@@ -103,39 +137,11 @@ class TestArrayCreation:
         array = ArrayClass.like(template, padding=1)
         assert array.padding == 1
 
-        array = ArrayClass.like(template, apparent_size=5)
-        assert array.shape == (5, 4)
-        assert array.apparent_size == 5
-        assert array.full_shape == (10, 4)
-        assert array.full_size == 10
-
-    def test_array_like_windowed(self, ArrayClass):
-        template = Array(shape=(10, 4), dtype=np.float32, apparent_size=5)
-
-        array = ArrayClass.like(template, shape=(20, 4))
-        assert array.shape == (5, 4)
-        assert array.dtype == np.float32
-        assert array.apparent_size == 5
-        assert array.full_shape == (20, 4)
-        assert array.full_size == 20
-
-        array = ArrayClass.like(template, dtype=np.int32)
-        assert array.shape == (5, 4)
-        assert array.dtype == np.int32
-
-        array = ArrayClass.like(template, storage="shared")
-        assert array.storage == "shared"
-        array.close()
-        array.destroy()
-
-        array = ArrayClass.like(template, padding=1)
-        assert array.padding == 1
-
-        array = ArrayClass.like(template, apparent_size=1)
-        assert array.shape == (1, 4)
-        assert array.apparent_size == 1
-        assert array.full_shape == (5, 4)
-        assert array.full_size == 5
+        array = ArrayClass.like(template, full_size=40)
+        assert array.shape == (10, 4)
+        assert array.base_size == 10
+        assert array.full_shape == (40, 4)
+        assert array.full_size == 40
 
 
 class TestArray:
