@@ -133,6 +133,7 @@ class TestPaddedArray:
 
     def test_array_reconstruction(self, array):
         # same as Array test, just start with negative index here
+        # TODO: compare arrays with np_array
         subarray1 = array
         subarray1 = subarray1[subarray1.first - 1:]
         subarray1 = subarray1[:]

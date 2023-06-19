@@ -305,6 +305,7 @@ class TestArray:
         )
 
     def test_array_reconstruction(self, array):
+        # TODO: compare arrays with np_array
         subarray1 = array
         subarray1 = subarray1[3]
         subarray1 = subarray1[:]
