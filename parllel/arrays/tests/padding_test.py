@@ -6,7 +6,7 @@ import numpy as np
 from parllel.arrays.array import shift_index
 
 # reuse fixtures from array_test
-from array_test import ArrayClass, shape, dtype, storage, blank_array, np_array
+from array_test import ArrayClass, shape, dtype, storage, full_size, blank_array, np_array
 
 
 @pytest.fixture(params=[1, 2], ids=["padding=1", "padding=2"], scope="module")
@@ -72,7 +72,9 @@ class TestPaddedArray:
         assert np.array_equal(array[first - padding : 0], previous_region)
         assert np.array_equal(array[last + 1 : last + padding + 1], next_region)
 
-    def test_setitem_beyond_last(self, blank_array, padding):
+    def test_setitem_beyond_last(self, blank_array, padding, shape, full_size):
+        if full_size is not None and full_size > shape[0]:
+            pytest.skip()
         with pytest.raises(IndexError):
             blank_array[blank_array.last + padding + 1] = 1
 
@@ -104,11 +106,10 @@ class TestPaddedArray:
         first = array.first
         last = array.last
         # elements just before last have been moved into padding
-        assert np.array_equal(array[first - padding:first], array[last - padding + 1:])
+        assert np.array_equal(array[first - padding:first], np_array[last - padding + 1:])
         # elements just after last have been moved to the beginning
         assert np.array_equal(array[:padding], next_region)
-        # the rest of the array body is unaffected
-        assert np.array_equal(array[padding:], np_array[padding:])
+        # the state of the rest of the Array is undefined until written to
 
     def test_indexhistory(self, array):
         assert array.index_history == ()
@@ -156,19 +157,31 @@ class TestIndexShifting:
         assert shift_index(0, 1, size=10) == (1,)
         assert shift_index(-1, 2, size=10) == (1,)
         assert shift_index(-2, 2, size=10) == (0,)
+        
+        # test shift=0
+        assert shift_index(0, 0, size=10) == (0,)
+        assert shift_index(5, 0, size=10) == (5,)
 
     def test_shift_index_too_negative(self):
         with pytest.raises(IndexError):
             _ = shift_index(-2, 1, size=10)
 
-    def test_shift_slice_new(self):
+        with pytest.raises(IndexError):
+            _ = shift_index(np.array([-1, 0, -2]), 1, size=10)
+
+    def test_shift_slice(self):
         assert shift_index(slice(1, 5, 2), 2, size=10) == (slice(3, 7, 2),)
         assert shift_index(slice(None, None, 2), 1, size=10) == (slice(1, 11, 2),)
         assert shift_index(slice(None, 5), 1, size=10) == (slice(1, 6, None),)
         assert shift_index(slice(None, 5, 1), 1, size=10) == (slice(1, 6, 1),)
         assert shift_index(slice(2, None, 2), 2, size=10) == (slice(4, 12, 2),)
+        
+        # test shift=0
+        assert shift_index(slice(None, 5, 1), 0, size=10) == (slice(0, 5, 1),)
+        assert shift_index(slice(2, None, 2), 0, size=10) == (slice(2, 10, 2),)
+        assert shift_index(slice(None, None, 2), 0, size=10) == (slice(0, 10, 2),)
 
-    def test_shift_reversed_slice_new(self):
+    def test_shift_reversed_slice(self):
         assert shift_index(slice(4, 1, -1), 2, size=10) == (slice(6, 3, -1),)
         assert shift_index(slice(None, None, -1), 1, size=10) == (slice(10, 0, -1),)
         assert shift_index(slice(None, None, -1), 2, size=10) == (slice(11, 1, -1),)
@@ -176,6 +189,14 @@ class TestIndexShifting:
         assert shift_index(slice(5, None, -2), 1, size=10) == (slice(6, 0, -2),)
         assert shift_index(slice(6, None, -3), 2, size=10) == (slice(8, 1, -3),)
 
-    def test_shift_ellipsis_new(self):
+        # test shift=0
+        assert shift_index(slice(None, 3, -1), 0, size=10) == (slice(9, 3, -1),)
+        assert shift_index(slice(5, None, -2), 0, size=10) == (slice(5, None, -2),)
+        assert shift_index(slice(None, None, -1), 0, size=10) == (slice(9, None, -1),)
+
+    def test_shift_ellipsis(self):
         assert shift_index(..., 1, size=10) == (slice(1, 11), Ellipsis)
         assert shift_index(..., 2, size=10) == (slice(2, 12), Ellipsis)
+
+        # test shift=0
+        assert shift_index(..., 0, size=10) == (slice(0, 10), Ellipsis)

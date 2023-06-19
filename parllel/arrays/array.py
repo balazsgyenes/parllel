@@ -357,9 +357,6 @@ def shift_index(index: Index, shift: int, size: int,
 ) -> Tuple[Index, ...]:
     """Shifts an array index up by an integer value.
     """
-    if shift == 0:
-        # TODO: does Ellipsis need to be converted?
-        return (index,)
     if isinstance(index, int):
         if index < -shift:
             raise IndexError(
@@ -390,6 +387,9 @@ def shift_index(index: Index, shift: int, size: int,
             stop = index.stop + shift
         else:
             stop = shift - 1 if flipped else shift + size
+            # only way to represent slice that ends at beginning of array is
+            # stop=None, since e.g. stop=-1 means stop at the last element
+            stop = stop if stop >= 0 else None
 
         return (slice(start, stop, index.step),)
     if index is Ellipsis:

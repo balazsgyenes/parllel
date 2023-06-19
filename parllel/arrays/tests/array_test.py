@@ -32,9 +32,19 @@ def storage(request):
 def padding(request):
     return request.param
 
+@pytest.fixture(params=[None, 10, 20], ids=["default_size", "1X_size", "2X_size"], scope="module")
+def full_size(request):
+    return request.param
+
 @pytest.fixture
-def blank_array(ArrayClass, shape, dtype, storage, padding):
-    array = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=padding)
+def blank_array(ArrayClass, shape, dtype, storage, padding, full_size):
+    array = ArrayClass(
+        shape=shape,
+        dtype=dtype,
+        storage=storage,
+        padding=padding,
+        full_size=full_size,
+    )
     yield array
     array.close()
     array.destroy()

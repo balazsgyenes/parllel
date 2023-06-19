@@ -6,6 +6,8 @@ import numpy as np
 
 from parllel.arrays import Array
 
+from array_test import blank_array, np_array, array
+
 
 @pytest.fixture(params=["fork", "spawn"], scope="module")
 def mp_ctx(request):
@@ -17,13 +19,6 @@ def mp_ctx(request):
 def ArrayClass(request):
     return request.param
 
-@pytest.fixture(params=[
-    "shared",
-    pytest.param("managed", marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    ], scope="module")
-def storage(request):
-    return request.param
-
 @pytest.fixture(scope="module")
 def shape():
     return (10, 4, 4)
@@ -32,25 +27,20 @@ def shape():
 def dtype(request):
     return request.param
 
+@pytest.fixture(params=[
+    "shared",
+    pytest.param("managed", marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
+    ], scope="module")
+def storage(request):
+    return request.param
+
 @pytest.fixture(params=[0], ids=["padding=0"], scope="module")
 def padding(request):
     return request.param
 
-@pytest.fixture
-def blank_array(ArrayClass, shape, dtype, storage, padding):
-    array = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=padding)
-    yield array
-    array.close()
-    array.destroy()
-
-@pytest.fixture
-def np_array(shape, dtype):
-    return np.arange(np.prod(shape), dtype=dtype).reshape(shape)
-
-@pytest.fixture
-def array(blank_array, np_array):
-    blank_array[:] = np_array
-    return blank_array
+@pytest.fixture(params=[None], ids=["default_size"], scope="module")
+def full_size(request):
+    return request.param
 
 
 def get_array_shape(pipe, array):
