@@ -306,21 +306,21 @@ def build_eval_sampler(
 ) -> EvalSampler:
 
     # allocate a step buffer with space for a single step
-    # RotatingArrays are preserved
-    # TODO: replace with array_like when it's done
-    simple_batch_agent = AgentSamples(
-        action=samples_buffer.agent.action,
-        agent_info=samples_buffer.agent.agent_info,
-    )
+    # first, collect only the elements needed for evaluation
     step_buffer = Samples(
-        agent=buffer_from_example(simple_batch_agent[0], (1,)),
+        agent=AgentSamples(
+            action=samples_buffer.agent.action,
+            agent_info=samples_buffer.agent.agent_info,
+        ),
         env=EnvSamples(
-            observation=buffer_from_example(samples_buffer.env.observation[0], (1,), padding=1),
-            reward=buffer_from_example(samples_buffer.env.reward[0], (1,)),
-            done=buffer_from_example(samples_buffer.env.done[0], (1,)),
-            env_info=buffer_from_example(samples_buffer.env.env_info[0], (1,)),
+            observation=samples_buffer.env.observation,
+            reward=samples_buffer.env.reward,
+            done=samples_buffer.env.done,
+            env_info=samples_buffer.env.env_info,
         ),
     )
+    # create a new buffer with leading dimensions (1, B_eval)
+    step_buffer = buffer_from_example(step_buffer[0, 0], (1, n_eval_envs))
 
     eval_cage_kwargs = dict(
         EnvClass=EnvClass,
