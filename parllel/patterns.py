@@ -22,6 +22,7 @@ def build_cages_and_env_buffers(
     reset_automatically: bool,
     batch_spec: BatchSpec,
     parallel: bool,
+    full_size: Optional[int] = None,
 ) -> Tuple[List[Cage], Buffer, Buffer]:
 
     if parallel:
@@ -47,26 +48,31 @@ def build_cages_and_env_buffers(
 
     example_cage.close()
 
+    if full_size is not None:
+        logger.debug(f"Allocating replay buffer of size {batch_spec.B * full_size}")
+    else:
+        logger.debug("Allocating batch buffer.")
+
     # allocate batch buffer based on examples
-    batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), name="obs", storage=storage, padding=1)
+    batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), name="obs", storage=storage, padding=1, full_size=full_size)
 
     # in case environment creates rewards of shape (1,) or of integer type,
     # force to be correct shape and type
-    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward", shape=(), dtype=np.float32, storage=storage)
+    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward", shape=(), dtype=np.float32, storage=storage, full_size=full_size)
 
     # add padding in case reward normalization is used
     # TODO: ideally, we only would add padding if we know we want reward
     # normalization, but how to do this?
-    batch_done = buffer_from_example(done, tuple(batch_spec), shape=(), dtype=bool, storage=storage, padding=1)
+    batch_done = buffer_from_example(done, tuple(batch_spec), shape=(), dtype=bool, storage=storage, padding=1, full_size=full_size)
 
     batch_info = buffer_from_dict_example(info, tuple(batch_spec), name="envinfo", storage=storage)
 
     batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
     # in discrete problems, integer actions are used as array indices during
-    # optimization. Pytorch requires indices to be 64-bit integers, so we do
-    # force integers to be 32 bit, only floats
-    batch_action = buffer_from_dict_example(action, tuple(batch_spec), name="action", force_32bit="float", storage=storage)
+    # optimization. Pytorch requires indices to be 64-bit integers, so we
+    # force actions to be 32 bits only if they are floats
+    batch_action = buffer_from_dict_example(action, tuple(batch_spec), name="action", force_32bit="float", storage=storage, full_size=full_size)
 
     # pass batch buffers to Cage on creation
     if CageCls is ProcessCage:

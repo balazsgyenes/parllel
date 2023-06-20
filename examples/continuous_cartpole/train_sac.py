@@ -7,15 +7,12 @@ from typing import Dict
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
-import numpy as np
 import torch
 import wandb
 
-from parllel.arrays import buffer_from_example, buffer_from_dict_example
+from parllel.arrays import buffer_from_example
 from parllel.buffers import AgentSamples, buffer_method, Samples
-from parllel.buffers import EnvSamples
 from parllel.cages import TrajInfo
-from parllel.cages import SerialCage, ProcessCage
 import parllel.logger as logger
 from parllel.logger import Verbosity
 from parllel.patterns import (build_cages_and_env_buffers, build_eval_sampler)
@@ -43,53 +40,15 @@ def build(config: Dict) -> OffPolicyRunner:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    replay_buffer_dims = (config["algo"]["replay_length"], batch_spec.B)
-
-    EnvClass = build_cartpole
-    env_kwargs = config["env"]
-    TrajInfoClass = TrajInfo
-    reset_automatically = True
-    batch_spec = batch_spec
-    parallel = parallel
-
-    if parallel:
-        CageCls = ProcessCage
-        storage = "shared"
-    else:
-        CageCls = SerialCage
-        storage = "local"
-
-    cage_kwargs = dict(
-        EnvClass=EnvClass,
-        env_kwargs=env_kwargs,
-        TrajInfoClass=TrajInfoClass,
-        reset_automatically=reset_automatically,
+    cages, batch_action, batch_env = build_cages_and_env_buffers(
+        EnvClass=build_cartpole,
+        env_kwargs=config["env"],
+        TrajInfoClass=TrajInfo,
+        reset_automatically=True,
+        batch_spec=batch_spec,
+        parallel=parallel,
+        full_size=config["algo"]["replay_length"],
     )
-
-    # create example env
-    example_cage = CageCls(**cage_kwargs)
-
-    # get example output from env
-    example_cage.random_step_async()
-    action, obs, reward, done, info = example_cage.await_step()
-
-    example_cage.close()
-
-    # allocate batch buffer based on examples
-    batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), name="obs", storage=storage, padding=1, full_size=config["algo"]["replay_length"])
-    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward", shape=(), dtype=np.float32, storage=storage, full_size=config["algo"]["replay_length"])
-    batch_done = buffer_from_example(done, tuple(batch_spec), shape=(), dtype=bool, storage=storage, padding=1, full_size=config["algo"]["replay_length"])
-    batch_info = buffer_from_dict_example(info, tuple(batch_spec), name="envinfo", storage=storage)
-    batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
-
-    batch_action = buffer_from_dict_example(action, tuple(batch_spec), name="action", force_32bit=True, storage=storage, full_size=config["algo"]["replay_length"])
-
-    # pass batch buffers to Cage on creation
-    if CageCls is ProcessCage:
-        cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
-
-    # create cages to manage environments
-    cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
     spaces = cages[0].spaces
     obs_space, action_space = spaces.observation, spaces.action
@@ -143,7 +102,8 @@ def build(config: Dict) -> OffPolicyRunner:
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), storage=storage, full_size=config["algo"]["replay_length"])
+    storage = "shared" if parallel else "local"
+    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), storage=storage)
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 
