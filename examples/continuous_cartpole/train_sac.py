@@ -7,13 +7,11 @@ from typing import Dict
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
+import numpy as np
 import torch
 import wandb
 
-from parllel.arrays import buffer_from_example
-from parllel.arrays import buffer_from_dict_example
-from parllel.arrays.large import LargeArray
-from parllel.arrays.sharedmemory import LargeSharedMemoryArray
+from parllel.arrays import buffer_from_example, buffer_from_dict_example
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.buffers import EnvSamples
 from parllel.cages import TrajInfo
@@ -56,10 +54,10 @@ def build(config: Dict) -> OffPolicyRunner:
 
     if parallel:
         CageCls = ProcessCage
-        LargeArrayCls = LargeSharedMemoryArray
+        storage = "shared"
     else:
         CageCls = SerialCage
-        LargeArrayCls = LargeArray
+        storage = "local"
 
     cage_kwargs = dict(
         EnvClass=EnvClass,
@@ -78,22 +76,18 @@ def build(config: Dict) -> OffPolicyRunner:
     example_cage.close()
 
     # allocate batch buffer based on examples
-    batch_observation = buffer_from_dict_example(obs, replay_buffer_dims, LargeArrayCls, name="obs", padding=1, apparent_size=batch_spec.T)
-    batch_reward = buffer_from_dict_example(reward, replay_buffer_dims, LargeArrayCls, name="reward", apparent_size=batch_spec.T)
-    batch_done = buffer_from_dict_example(done, replay_buffer_dims, LargeArrayCls, name="done", padding=1, apparent_size=batch_spec.T)
-    batch_info = buffer_from_dict_example(info, tuple(batch_spec), LargeArrayCls, name="envinfo")
+    batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), name="obs", storage=storage, padding=1, full_size=config["algo"]["replay_length"])
+    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward", shape=(), dtype=np.float32, storage=storage, full_size=config["algo"]["replay_length"])
+    batch_done = buffer_from_example(done, tuple(batch_spec), shape=(), dtype=bool, storage=storage, padding=1, full_size=config["algo"]["replay_length"])
+    batch_info = buffer_from_dict_example(info, tuple(batch_spec), name="envinfo", storage=storage)
     batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
 
-    """In discrete problems, integer actions are used as array indices during
-    optimization. Pytorch requires indices to be 64-bit integers, so we do not
-    convert here.
-    """
-    batch_action = buffer_from_dict_example(action, replay_buffer_dims, LargeArrayCls, name="action", force_32bit=False, apparent_size=batch_spec.T)
+    batch_action = buffer_from_dict_example(action, tuple(batch_spec), name="action", force_32bit=True, storage=storage, full_size=config["algo"]["replay_length"])
 
     # pass batch buffers to Cage on creation
     if CageCls is ProcessCage:
         cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
-    
+
     # create cages to manage environments
     cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
@@ -149,7 +143,7 @@ def build(config: Dict) -> OffPolicyRunner:
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), LargeArrayCls)
+    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), storage=storage, full_size=config["algo"]["replay_length"])
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 

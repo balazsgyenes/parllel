@@ -48,7 +48,7 @@ def build_cages_and_env_buffers(
     example_cage.close()
 
     # allocate batch buffer based on examples
-    batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), name="obs", padding=1, storage=storage)
+    batch_observation = buffer_from_dict_example(obs, tuple(batch_spec), name="obs", storage=storage, padding=1)
 
     # in case environment creates rewards of shape (1,) or of integer type,
     # force to be correct shape and type
