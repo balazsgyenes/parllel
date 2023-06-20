@@ -3,40 +3,15 @@ import functools
 import pytest
 import numpy as np
 
-from parllel.arrays.large import LargeArray, shift_index as new_shift_index
-from parllel.arrays.managedmemory import RotatingManagedMemoryArray
-from parllel.arrays.rotating import RotatingArray, shift_index
-from parllel.arrays.sharedmemory import RotatingSharedMemoryArray, LargeSharedMemoryArray
+from parllel.arrays.array import shift_index
 
+# reuse fixtures from array_test
+from array_test import ArrayClass, shape, dtype, storage, full_size, blank_array, np_array
 
-@pytest.fixture(params=[
-    RotatingArray,
-    RotatingSharedMemoryArray,
-    pytest.param(RotatingManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    LargeArray, LargeSharedMemoryArray,
-    ], scope="module")
-def ArrayClass(request):
-    return request.param
-
-@pytest.fixture(scope="module")
-def shape():
-    return (10, 4, 4)
-
-@pytest.fixture(params=[np.float32, np.int32], scope="module")
-def dtype(request):
-    return request.param
 
 @pytest.fixture(params=[1, 2], ids=["padding=1", "padding=2"], scope="module")
 def padding(request):
     return request.param
-
-@pytest.fixture
-def blank_array(ArrayClass, shape, dtype, padding):
-    return ArrayClass(shape=shape, dtype=dtype, padding=padding)
-
-@pytest.fixture
-def np_array(shape, dtype):
-    return np.arange(np.prod(shape), dtype=dtype).reshape(shape)
 
 @pytest.fixture
 def previous_region(np_array, padding):
@@ -57,10 +32,10 @@ def array(blank_array, np_array, padding, previous_region, next_region):
     return blank_array
 
 
-class TestRotatingArray:
-    def test_negative_padding(self, ArrayClass, shape, dtype, padding):
+class TestPaddedArray:
+    def test_negative_padding(self, ArrayClass, shape, dtype, storage):
         with pytest.raises(ValueError):
-            _ = ArrayClass(shape=shape, dtype=dtype, padding=-padding)
+            _ = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=-1)
 
     def test_init(self, blank_array, shape, dtype):
         assert blank_array.shape == shape
@@ -97,7 +72,9 @@ class TestRotatingArray:
         assert np.array_equal(array[first - padding : 0], previous_region)
         assert np.array_equal(array[last + 1 : last + padding + 1], next_region)
 
-    def test_setitem_beyond_last(self, blank_array, padding):
+    def test_setitem_beyond_last(self, blank_array, padding, shape, full_size):
+        if full_size is not None and full_size > shape[0]:
+            pytest.skip()
         with pytest.raises(IndexError):
             blank_array[blank_array.last + padding + 1] = 1
 
@@ -129,11 +106,10 @@ class TestRotatingArray:
         first = array.first
         last = array.last
         # elements just before last have been moved into padding
-        assert np.array_equal(array[first - padding:first], array[last - padding + 1:])
+        assert np.array_equal(array[first - padding:first], np_array[last - padding + 1:])
         # elements just after last have been moved to the beginning
         assert np.array_equal(array[:padding], next_region)
-        # the rest of the array body is unaffected
-        assert np.array_equal(array[padding:], np_array[padding:])
+        # the state of the rest of the Array is undefined until written to
 
     def test_indexhistory(self, array):
         assert array.index_history == ()
@@ -157,6 +133,7 @@ class TestRotatingArray:
 
     def test_array_reconstruction(self, array):
         # same as Array test, just start with negative index here
+        # TODO: compare arrays with np_array
         subarray1 = array
         subarray1 = subarray1[subarray1.first - 1:]
         subarray1 = subarray1[:]
@@ -175,59 +152,52 @@ class TestRotatingArray:
             in zip(subarray1.index_history, subarray2.index_history))
 
 
-@pytest.fixture(params=[
-    pytest.param(shift_index, id="shift_index"),
-    pytest.param(functools.partial(new_shift_index, size=10), id="new_shift_index"),
-], scope="module")
-def index_shifter(request):
-    return request.param
-
-
 class TestIndexShifting:
-    def test_shift_integer(self, index_shifter):
-        assert index_shifter(4, 2) == (6,)
-        assert index_shifter(0, 1) == (1,)
-        assert index_shifter(-1, 2) == (1,)
-        assert index_shifter(-2, 2) == (0,)
+    def test_shift_integer(self):
+        assert shift_index(4, 2, size=10) == (6,)
+        assert shift_index(0, 1, size=10) == (1,)
+        assert shift_index(-1, 2, size=10) == (1,)
+        assert shift_index(-2, 2, size=10) == (0,)
+        
+        # test shift=0
+        assert shift_index(0, 0, size=10) == (0,)
+        assert shift_index(5, 0, size=10) == (5,)
 
-    def test_shift_index_too_negative(self, index_shifter):
+    def test_shift_index_too_negative(self):
         with pytest.raises(IndexError):
-            _ = index_shifter(-2, 1)
+            _ = shift_index(-2, 1, size=10)
+
+        with pytest.raises(IndexError):
+            _ = shift_index(np.array([-1, 0, -2]), 1, size=10)
 
     def test_shift_slice(self):
-        assert shift_index(slice(1, 5, 2), 2) == (slice(3, 7, 2),)
-        assert shift_index(slice(None, None, 2), 1) == (slice(1, -1, 2),)
-        assert shift_index(slice(None, 5), 1) == (slice(1, 6, None),)
-        assert shift_index(slice(None, 5, 1), 1) == (slice(1, 6, 1),)
-        assert shift_index(slice(2, None, 2), 2) == (slice(4, -2, 2),)
-
-    def test_shift_slice_new(self):
-        assert new_shift_index(slice(1, 5, 2), 2, size=10) == (slice(3, 7, 2),)
-        assert new_shift_index(slice(None, None, 2), 1, size=10) == (slice(1, 11, 2),)
-        assert new_shift_index(slice(None, 5), 1, size=10) == (slice(1, 6, None),)
-        assert new_shift_index(slice(None, 5, 1), 1, size=10) == (slice(1, 6, 1),)
-        assert new_shift_index(slice(2, None, 2), 2, size=10) == (slice(4, 12, 2),)
+        assert shift_index(slice(1, 5, 2), 2, size=10) == (slice(3, 7, 2),)
+        assert shift_index(slice(None, None, 2), 1, size=10) == (slice(1, 11, 2),)
+        assert shift_index(slice(None, 5), 1, size=10) == (slice(1, 6, None),)
+        assert shift_index(slice(None, 5, 1), 1, size=10) == (slice(1, 6, 1),)
+        assert shift_index(slice(2, None, 2), 2, size=10) == (slice(4, 12, 2),)
+        
+        # test shift=0
+        assert shift_index(slice(None, 5, 1), 0, size=10) == (slice(0, 5, 1),)
+        assert shift_index(slice(2, None, 2), 0, size=10) == (slice(2, 10, 2),)
+        assert shift_index(slice(None, None, 2), 0, size=10) == (slice(0, 10, 2),)
 
     def test_shift_reversed_slice(self):
-        assert shift_index(slice(4, 1, -1), 2) == (slice(6, 3, -1),)
-        assert shift_index(slice(None, None, -1), 1) == (slice(-2, 0, -1),)
-        assert shift_index(slice(None, None, -1), 2) == (slice(-3, 1, -1),)
-        assert shift_index(slice(None, 3, -1), 1) == (slice(-2, 4, -1),)
-        assert shift_index(slice(5, None, -2), 1) == (slice(6, 0, -2),)
-        assert shift_index(slice(6, None, -3), 2) == (slice(8, 1, -3),)
+        assert shift_index(slice(4, 1, -1), 2, size=10) == (slice(6, 3, -1),)
+        assert shift_index(slice(None, None, -1), 1, size=10) == (slice(10, 0, -1),)
+        assert shift_index(slice(None, None, -1), 2, size=10) == (slice(11, 1, -1),)
+        assert shift_index(slice(None, 3, -1), 1, size=10) == (slice(10, 4, -1),)
+        assert shift_index(slice(5, None, -2), 1, size=10) == (slice(6, 0, -2),)
+        assert shift_index(slice(6, None, -3), 2, size=10) == (slice(8, 1, -3),)
 
-    def test_shift_reversed_slice_new(self):
-        assert new_shift_index(slice(4, 1, -1), 2, size=10) == (slice(6, 3, -1),)
-        assert new_shift_index(slice(None, None, -1), 1, size=10) == (slice(10, 0, -1),)
-        assert new_shift_index(slice(None, None, -1), 2, size=10) == (slice(11, 1, -1),)
-        assert new_shift_index(slice(None, 3, -1), 1, size=10) == (slice(10, 4, -1),)
-        assert new_shift_index(slice(5, None, -2), 1, size=10) == (slice(6, 0, -2),)
-        assert new_shift_index(slice(6, None, -3), 2, size=10) == (slice(8, 1, -3),)
+        # test shift=0
+        assert shift_index(slice(None, 3, -1), 0, size=10) == (slice(9, 3, -1),)
+        assert shift_index(slice(5, None, -2), 0, size=10) == (slice(5, None, -2),)
+        assert shift_index(slice(None, None, -1), 0, size=10) == (slice(9, None, -1),)
 
     def test_shift_ellipsis(self):
-        assert shift_index(..., 1) == (slice(1, -1), Ellipsis)
-        assert shift_index(..., 2) == (slice(2, -2), Ellipsis)
+        assert shift_index(..., 1, size=10) == (slice(1, 11), Ellipsis)
+        assert shift_index(..., 2, size=10) == (slice(2, 12), Ellipsis)
 
-    def test_shift_ellipsis_new(self):
-        assert new_shift_index(..., 1, size=10) == (slice(1, 11), Ellipsis)
-        assert new_shift_index(..., 2, size=10) == (slice(2, 12), Ellipsis)
+        # test shift=0
+        assert shift_index(..., 0, size=10) == (slice(0, 10), Ellipsis)

@@ -8,7 +8,7 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf, open_dict
 import torch
 
-from parllel.arrays import Array, RotatingArray, buffer_from_dict_example
+from parllel.arrays import buffer_from_example, buffer_from_dict_example
 from parllel.buffers import AgentSamples, EnvSamples, buffer_method, Samples
 from parllel.cages import SerialCage, TrajInfo
 from parllel.logger import JSONConfigSerializer
@@ -51,13 +51,13 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
     obs_space, action_space = cage.spaces.observation, cage.spaces.action
 
     # allocate batch buffer based on examples
-    step_observation = buffer_from_dict_example(obs, (1, 1), RotatingArray, name="obs", padding=1)
-    step_reward = buffer_from_dict_example(reward, (1, 1), Array, name="reward")
-    step_done = buffer_from_dict_example(done, (1, 1), RotatingArray, name="done", padding=1)
-    step_info = buffer_from_dict_example(info, (1, 1), Array, name="envinfo")
+    step_observation = buffer_from_dict_example(obs, (1, 1), name="obs", padding=1)
+    step_reward = buffer_from_dict_example(reward, (1, 1), name="reward")
+    step_done = buffer_from_dict_example(done, (1, 1), name="done", padding=1)
+    step_info = buffer_from_dict_example(info, (1, 1), name="envinfo")
     step_env = EnvSamples(step_observation, step_reward, step_done, step_info)
 
-    step_action = buffer_from_dict_example(action, (1, 1), Array, name="action")
+    step_action = buffer_from_dict_example(action, (1, 1), name="action")
 
     # instantiate model and agent
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -115,7 +115,7 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
     # get example output from agent
     _, agent_info = agent.step(example_obs)
 
-    step_agent_info = buffer_from_dict_example(agent_info, (1, 1), Array, name="agentinfo")
+    step_agent_info = buffer_from_example(agent_info, (1, 1))
     step_agent = AgentSamples(step_action, step_agent_info)
 
     step_buffer = Samples(step_agent, step_env)

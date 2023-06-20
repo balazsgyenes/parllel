@@ -9,8 +9,7 @@ from omegaconf import DictConfig, OmegaConf
 import torch
 import wandb
 
-from parllel.arrays import (Array, RotatingArray, SharedMemoryArray, 
-    RotatingSharedMemoryArray, buffer_from_example)
+from parllel.arrays import buffer_from_example
 from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
 import parllel.logger as logger
@@ -41,13 +40,6 @@ def build(config: Dict) -> OnPolicyRunner:
         config["batch_B"],
     )
     TrajInfo.set_discount(config["algo"]["discount"])
-
-    if parallel:
-        ArrayCls = SharedMemoryArray
-        RotatingArrayCls = RotatingSharedMemoryArray
-    else:
-        ArrayCls = Array
-        RotatingArrayCls = RotatingArray
 
     cages, batch_action, batch_env = build_cages_and_env_buffers(
         EnvClass=build_cartpole,
@@ -91,7 +83,8 @@ def build(config: Dict) -> OnPolicyRunner:
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), ArrayCls)
+    storage = "shared" if parallel else "local"
+    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), storage=storage)
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 

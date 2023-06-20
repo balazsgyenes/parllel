@@ -4,13 +4,14 @@ from typing import Dict
 import numpy as np
 
 from .array import Array
-from .rotating import RotatingArray
 
 
-class ManagedMemoryArray(Array):
+class ManagedMemoryArray(Array, storage="managed"):
     """An array in OS shared memory that can be shared between processes at any
     time.
     """
+    storage = "managed"
+
     def _allocate(self) -> None:
         # allocate array in OS shared memory
         size = int(np.prod(self._base_shape))
@@ -59,7 +60,3 @@ class ManagedMemoryArray(Array):
         # unlink must be called once and only once to release shared memory
         # TODO: make sure this called properly
         self._raw_array.unlink()
-
-
-class RotatingManagedMemoryArray(RotatingArray, ManagedMemoryArray):
-    pass
