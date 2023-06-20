@@ -75,17 +75,7 @@ def buffer_replace(buffer: Buffer, other_buffer: Buffer) -> Buffer:
 
 
 def buffer_rotate(buffer: Union[Buffer, tuple]) -> Buffer:
-    if isinstance(buffer, tuple): # non-leaf node
-        contents = tuple(buffer_rotate(elem) for elem in buffer)
-        if isinstance(buffer, NamedTuple): 
-            return buffer._make(contents)
-        # buffer is a tuple
-        return contents
-
-    # leaf node
-    if hasattr(buffer, "rotate"):
-        buffer.rotate()
-    return buffer
+    return buffer_method(buffer, "rotate")
 
 
 def buffer_asarray(buffer: Buffer) -> Buffer[NDArray]:

@@ -318,6 +318,7 @@ class Array(Buffer):
         suffix = (
             f", storage={self.storage}"
             f", dtype={self.dtype.name}"
+            f", padding={self.padding}"
             ")"
         )
         return (
