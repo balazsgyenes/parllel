@@ -62,12 +62,8 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Jax PPO :)
 - Arrays
     - Add `begin` and `end` attributes, where `end` is intended to be used in a slice
-    - **!!** Merge Array and RotatingArray into a single class.
-        - Enforce that `-1` is never used to index the last element, i.e. `-1` is never passed to the underlying `ndarray`.
-    - **!!** Organize Array class hierarchy.
-        - Use `init_subclass` hook to register subclasses and organize them by e.g. memory type. Add `__new__` method that chooses between subclasses based on arguments.
-        - Maybe add method to return arguments required to create a duplicate `Array`.
-        - Maybe add `array_like` method to create a clone of the given array with the option to override certain parameters (e.g. shape, dtype, memory).
+    - Rename `rotate` to something like `next_iteration`
+    - Enforce that `-1` is never used to index the last element, i.e. `-1` is never passed to the underlying `ndarray`.
     - SwitchingArray wraps two arrays and switches between them on `rotate`. This is useful for asynchronous sampling, where different parts of the array are simultaneously written to by the sampler and read from by the algorithm.
         - Overloading `rotate` is useful because the batch buffer is already rotated before each batch.
         - SwitchingRotatingArray needs to add 4x padding or maybe we should just allocate 2 arrays.
@@ -77,7 +73,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
         - `Array` already abstracts indexing items of arrays, where for numpy arrays this results in a copy. Add support for indexing Array with an array or list of integers without copying (this also results in a copy when used on numpy arrays)
         - Array equality check verifies that buffer ids and (internal) current_indices are the same (because indices in standard form should be equivalent). This allows the `SynchronizedProcessCage` to check whether the expected array slice was passed.
 - Buffers
-    - **!!** In `buffer_from_[dict_]example`, remove support for creating from `Array` example. Move features for cleaning up example and forcing 32 bit types into `buffer_from_example`. Instead, add `array_like` and `rotating_array_like` for explicitly creating an Array object of the desired memory type.
     - `buffer_get_attr` and `buffer_set_attr`
     - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
 - Cages:

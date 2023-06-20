@@ -3,45 +3,48 @@ import functools
 import pytest
 import numpy as np
 
-from parllel.arrays.array import Array
-from parllel.arrays.large import LargeArray
-from parllel.arrays.managedmemory import ManagedMemoryArray, RotatingManagedMemoryArray
-from parllel.arrays.rotating import RotatingArray
-from parllel.arrays.sharedmemory import (RotatingSharedMemoryArray,
-    SharedMemoryArray, LargeSharedMemoryArray)
+from parllel.arrays import Array, SharedMemoryArray, ManagedMemoryArray
 
 
 @pytest.fixture(params=[
-    Array, RotatingArray,
-    SharedMemoryArray, RotatingSharedMemoryArray,
-    pytest.param(ManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    pytest.param(RotatingManagedMemoryArray, marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    LargeArray, LargeSharedMemoryArray,
-    ], scope="module")
+    Array,
+], scope="module")
 def ArrayClass(request):
     return request.param
 
 @pytest.fixture(scope="module")
 def shape():
-    return (4, 4, 4)
+    return (10, 4, 4)
 
 @pytest.fixture(params=[np.float32, np.int32], scope="module")
 def dtype(request):
     return request.param
 
-@pytest.fixture(params=[0, 1], ids=["padding=0", "padding=1"], scope="module")
+@pytest.fixture(params=[
+    "local",
+    "shared",
+    pytest.param("managed", marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
+    ], scope="module")
+def storage(request):
+    return request.param
+
+@pytest.fixture(params=[0, 1, 2], ids=["padding=0", "padding=1", "padding=2"], scope="module")
 def padding(request):
     return request.param
 
+@pytest.fixture(params=[None, 10, 20], ids=["default_size", "1X_size", "2X_size"], scope="module")
+def full_size(request):
+    return request.param
+
 @pytest.fixture
-def blank_array(ArrayClass, shape, dtype, padding):
-    if issubclass(ArrayClass, RotatingArray):
-        # LargeArray and co. are subclasses of RotatingArray as well
-        array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
-    elif padding > 0:
-        pytest.skip("Base Array class does not have padding")
-    else:
-        array = ArrayClass(shape=shape, dtype=dtype)
+def blank_array(ArrayClass, shape, dtype, storage, padding, full_size):
+    array = ArrayClass(
+        shape=shape,
+        dtype=dtype,
+        storage=storage,
+        padding=padding,
+        full_size=full_size,
+    )
     yield array
     array.close()
     array.destroy()
@@ -56,15 +59,102 @@ def array(blank_array, np_array):
     return blank_array
 
 
-class TestArray:
+class TestArrayCreation:
     def test_no_args(self, ArrayClass):
         with pytest.raises(TypeError):
             _ = ArrayClass()
 
+    def test_empty_shape(self, ArrayClass, dtype):
+        with pytest.raises(ValueError):
+            _ = ArrayClass(shape=(), dtype=dtype)
+
     def test_wrong_dtype(self, ArrayClass, shape):
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError):
             _ = ArrayClass(shape=shape, dtype=list)
 
+    def test_calling_array(self, ArrayClass, shape, dtype, storage, padding):
+        array = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=padding)
+        assert array.shape == shape
+        assert array.dtype == dtype
+        assert array.storage == storage
+        assert array.padding == padding
+
+    def test_calling_subclass(self, ArrayClass, shape, dtype, storage, padding):
+        if storage == "shared":
+            ArrayClass = SharedMemoryArray
+        elif storage == "managed":
+            ArrayClass = ManagedMemoryArray
+
+        array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
+        assert array.shape == shape
+        assert array.dtype == dtype
+        assert array.storage == storage
+        assert array.padding == padding
+
+    def test_array_like(self, ArrayClass):
+        template = Array(shape=(10, 4), dtype=np.float32)
+        
+        array = ArrayClass.like(template, shape=(20, 4))
+        assert array.shape == (20, 4)
+        assert array.base_size == 20
+        assert array.dtype == np.float32
+        assert array.full.shape == (20, 4)
+        assert array.full_size == 20
+
+        array = ArrayClass.like(template, dtype=np.int32)
+        assert array.shape == (10, 4)
+        assert array.dtype == np.int32
+
+        array = ArrayClass.like(template, storage="shared")
+        assert array.storage == "shared"
+        array.close()
+        array.destroy()
+
+        array = ArrayClass.like(template, padding=1)
+        assert array.padding == 1
+
+        array = ArrayClass.like(template, full_size=20)
+        assert array.shape == (10, 4)
+        assert array.base_size == 10
+        assert array.full.shape == (20, 4)
+        assert array.full_size == 20
+
+    def test_array_like_windowed(self, ArrayClass):
+        template = Array(shape=(10, 4), dtype=np.float32, full_size=20)
+
+        array = ArrayClass.like(template, shape=(5, 4))
+        assert array.shape == (5, 4)
+        assert array.dtype == np.float32
+        assert array.base_size == 5
+        assert array.full_shape == (5, 4)
+        assert array.full_size == 5
+
+        array = ArrayClass.like(template, shape=(5, 4), inherit_full_size=True)
+        assert array.shape == (5, 4)
+        assert array.base_size == 5
+        assert array.full_shape == (20, 4)
+        assert array.full_size == 20
+
+        array = ArrayClass.like(template, dtype=np.int32)
+        assert array.shape == (10, 4)
+        assert array.dtype == np.int32
+
+        array = ArrayClass.like(template, storage="shared")
+        assert array.storage == "shared"
+        array.close()
+        array.destroy()
+
+        array = ArrayClass.like(template, padding=1)
+        assert array.padding == 1
+
+        array = ArrayClass.like(template, full_size=40)
+        assert array.shape == (10, 4)
+        assert array.base_size == 10
+        assert array.full_shape == (40, 4)
+        assert array.full_size == 40
+
+
+class TestArray:
     def test_init(self, blank_array, shape, dtype):
         assert np.array_equal(blank_array, np.zeros(shape, dtype))
         assert blank_array.dtype == dtype
@@ -98,7 +188,7 @@ class TestArray:
         assert np.array_equal(array, np_array)
 
     def test_setitem_reversed_slice(self, array, np_array, dtype):
-        values = np.arange(4, dtype=dtype) * 2  # scale so the values are unique
+        values = np.arange(10, dtype=dtype) * 2  # scale so the values are unique
         array[::-1, 0, 0] = values
         np_array[::-1, 0, 0] = values
         assert np.array_equal(array, np_array)
@@ -214,7 +304,8 @@ class TestArray:
             (slice(None), slice(None, None, 2)),
         )
 
-    def test_array_reconstruction(self, array, np_array, ArrayClass, shape, dtype):
+    def test_array_reconstruction(self, array):
+        # TODO: compare arrays with np_array
         subarray1 = array
         subarray1 = subarray1[3]
         subarray1 = subarray1[:]
