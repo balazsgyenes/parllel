@@ -108,7 +108,16 @@ def prob_step_negative(request):
     return request.param
 
 @pytest.fixture(
-    params=[1, 3],
+    params=[
+        1,
+        pytest.param(3,
+            marks=pytest.mark.xfail(
+                reason="Indexing a slice having step>1 with a negative index "
+                "requires knowing the size of the indexed dimension, because "
+                "the end point of the indexed array is ambiguous."
+            )
+        ),
+    ],
     ids=["max_step=1", "max_step=3"],
     scope="module",
 )
@@ -160,8 +169,8 @@ class TestAddIndices:
     def test_add_locations(self, np_array: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float):
         for _ in range(200):
             loc1 = random_location(rng, np_array.shape, max_step, prob_step_negative)
-            loc1_cleaned = add_locations([], loc1)
             subarray1 = np_array[loc1]
+            loc1_cleaned = add_locations([], loc1)  # clean location
 
             assert np.array_equal(subarray1, np_array[tuple(loc1_cleaned)])
 
@@ -169,54 +178,60 @@ class TestAddIndices:
                 continue  # if we have indexed a single element already, skip
             
             loc2 = random_location(rng, subarray1.shape, max_step, prob_step_negative)
-            joined_loc = add_locations(loc1_cleaned, loc2)
             subarray2 = subarray1[loc2]
+            joined_loc = add_locations(loc1_cleaned, loc2)
             
             assert np.array_equal(subarray2, np_array[tuple(joined_loc)])
 
     def test_index_slice(self, vector: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float):
         for _ in range(1000):
-            start_slice = random_slice(rng, vector.shape[0], max_step, prob_step_negative)
-            subvector = vector[start_slice]
-            index = random_int(rng, subvector.shape[0])
-            element = subvector[index]
+            loc1 = random_slice(rng, vector.shape[0], max_step, prob_step_negative)
+            subvector = vector[loc1]
+            loc1_cleaned = add_indices(slice(None), loc1)  # clean slice
 
-            start_slice = add_indices(slice(None), start_slice)  # clean slice
-            global_index = index_slice(start_slice, index)
-            element2 = vector[global_index]
+            assert np.array_equal(subvector, vector[loc1_cleaned])
 
-            assert np.array_equal(element, element2)
+            loc2 = random_int(rng, subvector.shape[0])
+            element = subvector[loc2]
+            joined_loc = index_slice(loc1_cleaned, loc2)
+
+            assert np.array_equal(element, vector[joined_loc])
 
     def test_add_slices(self, vector: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float):
         for _ in range(1000):
-            start_slice = random_slice(rng, vector.shape[0], max_step, prob_step_negative)
-            subvector = vector[start_slice]
-            new_slice = random_slice(rng, subvector.shape[0], max_step, prob_step_negative)
-            subsubvector = subvector[new_slice]
+            loc1 = random_slice(rng, vector.shape[0], max_step, prob_step_negative)
+            subvector = vector[loc1]
+            loc1_cleaned = add_indices(slice(None), loc1)  # clean slice
 
-            start_slice = add_indices(slice(None), start_slice)  # clean slice
-            joined_slice = add_indices(start_slice, new_slice)
-            subsubvector2 = vector[joined_slice]
+            assert np.array_equal(subvector, vector[loc1_cleaned])
 
-            assert np.array_equal(subsubvector, subsubvector2)
+            loc2 = random_slice(rng, subvector.shape[0], max_step, prob_step_negative)
+            subsubvector = subvector[loc2]
+            joined_loc = add_indices(loc1_cleaned, loc2)
+
+            assert np.array_equal(subsubvector, vector[joined_loc])
 
 
 class TestComputeIndices:
     @pytest.mark.parametrize("indices", [
         pytest.param(
             (slice(None, None, 2), 2, slice(1)),
-            id="slices"
+            id="slice"
         ),
         pytest.param(
-            (slice(2, None, -1), slice(2), slice(2, None)),
-            id="negative step"
+            (slice(10, None, -1), slice(2), slice(2, None)),
+            id="step=-1"
         ),
         pytest.param(
             (slice(3), slice(None, None, 2), slice(2, None)),
-            id="step > 1"
+            id="step>1"
         ),
         pytest.param(
-            (0, 1, 2),
+            (slice(10, None, -2), slice(2), slice(2, None)),
+            id="step<-1"
+        ),
+        pytest.param(
+            (0, 1, 2, 3),
             id="element",
             marks=pytest.mark.xfail(reason="Indexing a scalar results in a copy")
         ),
