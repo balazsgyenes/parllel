@@ -269,9 +269,9 @@ class TestArray:
         assert np.array_equal(array, np_array[2, 1:3, ::2])
 
     def test_getitem_consecutively(self, array, np_array):
+        array = array[:]
         array = array[1:3]
         array = array[0, 0:3]
-        array = array[:]
         array = array[:, ::-1]
         assert array.shape == (3, 4)
         assert np.asarray(array).shape == (3, 4)
