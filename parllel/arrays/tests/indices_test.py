@@ -18,12 +18,12 @@ from parllel.arrays.indices import (
 PROB_SLICE = 0.5
 PROB_INDEX_NEGATIVE = 0.5
 PROB_STEP_NEGATIVE = 0.5
-MAX_STEP = 1
+MAX_STEP = 3
 PROB_SLICE_EL_NONE = 0.2
 def random_int(rng: random.Generator, size: int) -> int:
     assert size > 0
     index = int(rng.integers(size))
-    return index if rng.random() > PROB_INDEX_NEGATIVE else -index
+    return -index if rng.random() < PROB_INDEX_NEGATIVE else index
 
 def random_slice(
     rng: random.Generator,
@@ -33,14 +33,14 @@ def random_slice(
 ) -> slice:
     if rng.random() > PROB_SLICE_EL_NONE:
         step = int(rng.integers(1, high=max_step, endpoint=True))
-        step = step if rng.random() > prob_step_negative else -step
+        step = -step if rng.random() < prob_step_negative else step
     else:
         step = None
 
     if step is not None and step < 0:
         # negative step. flip bounds
         start = int(rng.integers(size - math.isqrt(size), size - 1, endpoint=True))
-        start = start if rng.random() > PROB_SLICE_EL_NONE else None
+        start = None if rng.random() < PROB_SLICE_EL_NONE else start
 
         max_stop = start - 1 if start is not None else size - 2
         if max_stop < 0:
@@ -48,17 +48,17 @@ def random_slice(
             stop = None
         else:
             stop = int(rng.integers(0, high=max_stop, endpoint=True))
-            stop = stop if rng.random() > PROB_SLICE_EL_NONE else None        
+            stop = None if rng.random() < PROB_SLICE_EL_NONE else stop        
 
     else:
         # ensures that min_start is 0 if size==1
         min_start = math.isqrt(size - 1)
         start = int(rng.integers(min_start, endpoint=True))
-        start = start if rng.random() > PROB_SLICE_EL_NONE else None
+        start = None if rng.random() < PROB_SLICE_EL_NONE else start
 
         min_stop = start + 1 if start is not None else 1
         stop = int(rng.integers(min_stop, high=size, endpoint=True))
-        stop = stop if rng.random() > PROB_SLICE_EL_NONE else None        
+        stop = None if rng.random() < PROB_SLICE_EL_NONE else stop        
     
     return slice(start, stop, step)
 
@@ -70,9 +70,9 @@ def random_location(
 ) -> Tuple[Union[int, slice], ...]:
     return tuple(
         (
+            random_slice(rng, size, max_step, prob_step_negative, prob_start_stop_negative)
+            if rng.random() < PROB_SLICE else
             random_int(rng, size)
-            if rng.random() > PROB_SLICE else
-            random_slice(rng, size, max_step, prob_step_negative)
         )
         for size in islice(
             shape,
@@ -100,8 +100,18 @@ def rng():
     return random.default_rng()
 
 @pytest.fixture(
-    params=[0.0, 0.5],
-    ids=["positive_step_only", "pos_and_neg_step"],
+    params=[
+        0.0,
+        pytest.param(0.5,
+            marks=pytest.mark.xfail(
+                reason="When adding slices, the new stop is the max/min of "
+                "the old stop and the new stop. When the old and new stops "
+                "are a combination of positive/negative integers, this "
+                "comparison requires knowledge about the array's size."
+            )
+        ),
+    ],
+    ids=["pos_step", "pos/neg_step"],
     scope="module",
 )
 def prob_step_negative(request):

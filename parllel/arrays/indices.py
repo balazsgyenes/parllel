@@ -132,43 +132,51 @@ def add_indices(current_index: slice, new_index: IndexType) -> IndexType:
         if isinstance(new_index, int):
             return index_slice(current_index, new_index)
 
-        # no op if indexed with the trivial slice
-        elif new_index != slice(None):  # new_index: slice
-
+        elif new_index == slice(None):
+            # no op if indexed with the trivial slice
+            return current_index
+        
+        else:  # new_index: slice
             step = current_index.step
-            # translate new_index.start into "world coordinates"
-            start = index_slice(
-                current_index,
-                new_index.start if new_index.start is not None else (
-                    0 if step > 0 else -1
-                ),
+            new_step = new_index.step if new_index.step is not None else 1
+
+            new_start = new_index.start if new_index.start is not None else (
+                0 if new_step > 0 else -1
             )
+            # translate new_index.start into "world coordinates"
+            new_start = index_slice(current_index, new_start)
             
             if (new_stop := new_index.stop) is not None:
                 # translate new_stop into "world coordinates"
                 new_stop = index_slice(current_index, new_stop)
 
-                stop = (
+                new_stop = (
                     (
-                        min(curr_stop, new_stop)
+                        # TODO: these comparisons cannot be done for mixed
+                        # positive/negative indices
+                        min(stop, new_stop)
                         if step > 0 else
-                        max(curr_stop, new_stop)
+                        max(stop, new_stop)
                     )
-                    if (curr_stop := current_index.stop) is not None else
+                    if (stop := current_index.stop) is not None else
                     new_stop
                 )
             else:
-                # current_index.stop might be None, that's okay
-                # TODO: needs to be flipped if new_step is negative
-                stop = current_index.stop
-
+                if new_step > 0:
+                    # current_index.stop might be None, that's okay
+                    new_stop = current_index.stop
+                else:
+                    new_stop = current_index.start
+                    if new_stop is not None:
+                        new_stop += np.sign(step * new_step)  # extend new_stop one unit away from body of range
+                        if new_stop < 0:
+                            # if the new_stop is the beginning of array, set to None instead of -1
+                            new_stop = None
+            
             # update step by multiplying new step onto it
-            if (new_step := new_index.step) is not None:
-                step *= new_step
-
-            return slice(start, stop, step)
-
-        return current_index
+            new_step = step * new_step
+            
+            return slice(new_start, new_stop, new_step)
 
 
 def index_slice(current_slice: slice, index: int) -> int:
