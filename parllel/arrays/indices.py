@@ -1,3 +1,4 @@
+import math
 from typing import Sequence, TypeVar
 
 import numpy as np
@@ -182,25 +183,39 @@ def add_indices(current_index: slice, new_index: IndexType) -> IndexType:
             return slice(new_start, new_stop, new_step)
 
 
-def index_slice(current_slice: slice, index: int) -> int:
+def index_slice(current_slice: slice, index: int, size: int) -> int:
     step = current_slice.step
     if index >= 0:
         start = current_slice.start
     else:
-        # if index negative, determine index of the end of the array
-        if (start := current_slice.stop) is None:
-            start = (
-                -1 + step  # end=None means we must index from just past the -1th element
-                if step > 0 else  # end of flipped array is the beginning
-                0 + step  # end=None means we must index from just before the 0th element
-            )
-        else:
-            # corrects for case when step does not divide the distance between
-            # start and stop of slice
-            if (rem := (start - current_slice.start) % step) > 0:
-                # round up to nearest multiple of step
-                start += (step - rem)
+        # if the index is negative, the start is the end of the slice, or the
+        # end of the array
+        if (stop := current_slice.stop) is None:
+            stop = size if step > 0 else -1
+        
+        # correction if step does not evenly divide into size of array
+        # find effective end of slice by counting from start of slice
+        start = current_slice.start + step * math.ceil((stop - current_slice.start) / step)
+
     return start + index * step
+
+
+def clean_slice(s: slice, size: int) -> slice:
+    """Return a slice in standard form, with:
+        - start, a positive integer
+        - stop, a positive integer or None
+        - step, an integer
+
+    We leave the stop as potentially being None, because there is no other way
+    to represent at the beginning of the array when the step is negative.
+    A slice with stop=-1 has a different interpretation.
+    """
+    step = s.step or 1
+    if (start := s.start) is None:
+        start = 0 if step > 0 else -1
+    start = start % size if start < 0 else start
+    stop = stop % size if (stop := s.stop) is not None and stop < 0 else stop
+    return slice(start, stop, step)
 
 
 def shape_from_indices(base_shape: tuple[int, ...], indices: Sequence[Index]):

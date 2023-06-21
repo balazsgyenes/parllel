@@ -8,7 +8,7 @@ import numpy.random as random
 import pytest
 
 from parllel.arrays.indices import (
-    add_locations, add_indices, index_slice,
+    add_locations, add_indices, index_slice, clean_slice,
     compute_indices,
     predict_copy_on_index,
     shape_from_indices,
@@ -223,17 +223,24 @@ class TestAddIndices:
             
             assert np.array_equal(subarray2, np_array[tuple(joined_loc)])
 
-    def test_index_slice(self, vector: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float, prob_start_stop_negative: float):
+    def test_index_slice(self,
+        vector: np.ndarray,
+        shape: tuple[int, ...],
+        rng: random.Generator,
+        max_step: int,
+        prob_step_negative: float,
+        prob_start_stop_negative: float,
+    ):
         for _ in range(1000):
-            loc1 = random_slice(rng, vector.shape[0], max_step, prob_step_negative, prob_start_stop_negative)
+            loc1 = random_slice(rng, shape[0], max_step, prob_step_negative, prob_start_stop_negative)
             subvector = vector[loc1]
-            loc1_cleaned = add_indices(slice(None), loc1)  # clean slice
+            loc1_cleaned = clean_slice(loc1, shape[0])
 
             assert np.array_equal(subvector, vector[loc1_cleaned])
 
             loc2 = random_int(rng, subvector.shape[0])
             element = subvector[loc2]
-            joined_loc = index_slice(loc1_cleaned, loc2)
+            joined_loc = index_slice(loc1_cleaned, loc2, shape[0])
 
             assert np.array_equal(element, vector[joined_loc])
 
