@@ -29,6 +29,7 @@ def random_slice(
     rng: random.Generator,
     size: int,
     max_step: int = MAX_STEP,
+    prob_start_stop_negative: float = PROB_INDEX_NEGATIVE,
     prob_step_negative: float = PROB_STEP_NEGATIVE,
 ) -> slice:
     if rng.random() > PROB_SLICE_EL_NONE:
@@ -60,12 +61,23 @@ def random_slice(
         stop = int(rng.integers(min_stop, high=size, endpoint=True))
         stop = None if rng.random() < PROB_SLICE_EL_NONE else stop        
     
+    start = start - size if (
+        rng.random() < prob_start_stop_negative and
+        start is not None
+    ) else start
+    stop = stop - size if (
+        rng.random() < prob_start_stop_negative and 
+        stop is not None and 
+        stop < size  # if stop==size, cannot be converted to negative index
+    ) else stop
+
     return slice(start, stop, step)
 
 def random_location(
     rng: random.Generator,
     shape: Tuple[int, ...],
     max_step: int = MAX_STEP,
+    prob_start_stop_negative: float = PROB_INDEX_NEGATIVE,
     prob_step_negative: float = PROB_STEP_NEGATIVE,
 ) -> Tuple[Union[int, slice], ...]:
     return tuple(
@@ -102,13 +114,31 @@ def rng():
 @pytest.fixture(
     params=[
         0.0,
+        pytest.param(0.3,
+            # marks=pytest.mark.xfail(
+            #     reason="When adding slices, the new stop is the max/min of "
+            #     "the old stop and the new stop. When the old and new stops "
+            #     "are a combination of positive/negative integers, this "
+            #     "comparison requires knowledge about the array's size."
+            # ),
+        ),
+    ],
+    ids=["pos_point", "pos/neg_point"],
+    scope="module",
+)
+def prob_start_stop_negative(request):
+    return request.param
+
+@pytest.fixture(
+    params=[
+        0.0,
         pytest.param(0.5,
-            marks=pytest.mark.xfail(
-                reason="When adding slices, the new stop is the max/min of "
-                "the old stop and the new stop. When the old and new stops "
-                "are a combination of positive/negative integers, this "
-                "comparison requires knowledge about the array's size."
-            )
+            # marks=pytest.mark.xfail(
+            #     reason="When adding slices, the new stop is the max/min of "
+            #     "the old stop and the new stop. When the old and new stops "
+            #     "are a combination of positive/negative integers, this "
+            #     "comparison requires knowledge about the array's size."
+            # ),
         ),
     ],
     ids=["pos_step", "pos/neg_step"],
@@ -121,11 +151,11 @@ def prob_step_negative(request):
     params=[
         1,
         pytest.param(3,
-            marks=pytest.mark.xfail(
-                reason="Indexing a slice having step>1 with a negative index "
-                "requires knowing the size of the indexed dimension, because "
-                "the end point of the indexed array is ambiguous."
-            )
+            # marks=pytest.mark.xfail(
+            #     reason="Indexing a slice having step>1 with a negative index "
+            #     "requires knowing the size of the indexed dimension, because "
+            #     "the end point of the indexed array is ambiguous."
+            # ),
         ),
     ],
     ids=["max_step=1", "max_step=3"],
@@ -176,9 +206,9 @@ class TestAddIndices:
 
         assert np.array_equal(subarray, np_array[tuple(curr_indices)])
 
-    def test_add_locations(self, np_array: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float):
-        for _ in range(200):
-            loc1 = random_location(rng, np_array.shape, max_step, prob_step_negative)
+    def test_add_locations(self, np_array: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float, prob_start_stop_negative: float):
+        for _ in range(500):
+            loc1 = random_location(rng, np_array.shape, max_step, prob_step_negative, prob_start_stop_negative)
             subarray1 = np_array[loc1]
             loc1_cleaned = add_locations([], loc1)  # clean location
 
@@ -187,15 +217,15 @@ class TestAddIndices:
             if not subarray1.shape:
                 continue  # if we have indexed a single element already, skip
             
-            loc2 = random_location(rng, subarray1.shape, max_step, prob_step_negative)
+            loc2 = random_location(rng, subarray1.shape, max_step, prob_step_negative, prob_start_stop_negative)
             subarray2 = subarray1[loc2]
             joined_loc = add_locations(loc1_cleaned, loc2)
             
             assert np.array_equal(subarray2, np_array[tuple(joined_loc)])
 
-    def test_index_slice(self, vector: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float):
+    def test_index_slice(self, vector: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float, prob_start_stop_negative: float):
         for _ in range(1000):
-            loc1 = random_slice(rng, vector.shape[0], max_step, prob_step_negative)
+            loc1 = random_slice(rng, vector.shape[0], max_step, prob_step_negative, prob_start_stop_negative)
             subvector = vector[loc1]
             loc1_cleaned = add_indices(slice(None), loc1)  # clean slice
 
@@ -207,15 +237,39 @@ class TestAddIndices:
 
             assert np.array_equal(element, vector[joined_loc])
 
-    def test_add_slices(self, vector: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float):
+    @pytest.mark.parametrize("loc1,loc2", [
+        (
+            slice(18, 7, -1),
+            slice(8, None, -1),
+        ),
+        (
+            slice(16, None, -1),
+            slice(2, 17, 1),
+        )
+    ], ids=[
+        "None stop onto negative step",
+        "Numerical stop lands on -1 index",
+    ])
+    def test_add_slices_special_cases(self, vector: np.ndarray, loc1: slice, loc2: slice):
+        subvector = vector[loc1]
+        loc1_cleaned = add_indices(slice(None), loc1)  # clean slice
+
+        assert np.array_equal(subvector, vector[loc1_cleaned])
+
+        subsubvector = subvector[loc2]
+        joined_loc = add_indices(loc1_cleaned, loc2)
+
+        assert np.array_equal(subsubvector, vector[joined_loc])
+
+    def test_add_slices(self, vector: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float, prob_start_stop_negative: float):
         for _ in range(1000):
-            loc1 = random_slice(rng, vector.shape[0], max_step, prob_step_negative)
+            loc1 = random_slice(rng, vector.shape[0], max_step, prob_step_negative, prob_start_stop_negative)
             subvector = vector[loc1]
             loc1_cleaned = add_indices(slice(None), loc1)  # clean slice
 
             assert np.array_equal(subvector, vector[loc1_cleaned])
 
-            loc2 = random_slice(rng, subvector.shape[0], max_step, prob_step_negative)
+            loc2 = random_slice(rng, subvector.shape[0], max_step, prob_step_negative, prob_start_stop_negative)
             subsubvector = subvector[loc2]
             joined_loc = add_indices(loc1_cleaned, loc2)
 

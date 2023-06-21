@@ -75,6 +75,8 @@ def add_locations(current_location: list[Index], new_location: Indices):
     - it may be faster to create a jitclass for Index which represents either
         int, slice, or Ellipsis, and can then be passed to jitted functions
     """
+    current_location = list(current_location)
+
     if isinstance(new_location, tuple):
         new_location = list(new_location)
     else:
@@ -161,6 +163,7 @@ def add_indices(current_index: slice, new_index: IndexType) -> IndexType:
                     if (stop := current_index.stop) is not None else
                     new_stop
                 )
+                new_stop = None if new_stop < 0 else new_stop  # set to None instead of -1
             else:
                 if new_step > 0:
                     # current_index.stop might be None, that's okay
