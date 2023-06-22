@@ -1,12 +1,11 @@
-from typing import List, Sequence, Tuple, TypeVar
+from typing import Sequence, TypeVar
 
 import numpy as np
-from nptyping import NDArray
 
 from parllel.buffers.buffer import Index, Indices
 
 
-def compute_indices(base_array: NDArray, current_array: NDArray):
+def compute_indices(base_array: np.ndarray, current_array: np.ndarray):
     current_pointer = current_array.__array_interface__["data"][0]
     base_pointer = base_array.__array_interface__["data"][0]
     offset = current_pointer - base_pointer
@@ -54,12 +53,12 @@ def compute_indices(base_array: NDArray, current_array: NDArray):
     return tuple(current_indices)
 
 
-def predict_copy_on_index(shape: Tuple[int, ...], new_location: Indices):
+def predict_copy_on_index(shape: tuple[int, ...], new_location: Indices):
     return (len(new_location) == len(shape) and 
         all(isinstance(index, int) for index in new_location))
 
 
-def add_locations(current_location: List[Index], new_location: Indices):
+def add_locations(current_location: list[Index], new_location: Indices):
     """Takes an indexing location, the current indices of the subarray relative
     to the base array, and the base array's shape, and returns the next indices
     of the subarray relative to the base array after indexing.
@@ -119,15 +118,13 @@ def add_indices(current_index: slice, new_index: IndexType) -> IndexType:
         # new_index must be cleaned, and then overwrites current_index
         if isinstance(new_index, slice):
             step = new_index.step or 1
+            if (start := new_index.start) is None:
+                start = 0 if step > 0 else -1
             # we leave the stop as potentially being None because:
-            # 1. we do not know the length of this dimension
+            # 1. we do not know the size of this dimension
             # 2. there is no way to represent an endpoint of None with a
             # negative step, even if we know the size
-            new_index = slice(
-                new_index.start or (0 if step > 0 else -1),
-                new_index.stop,
-                step,
-            )
+            new_index = slice(start, new_index.stop, step)
         return new_index
     else:
         # this dimension has been indexed with a non-trivial slice
@@ -140,9 +137,12 @@ def add_indices(current_index: slice, new_index: IndexType) -> IndexType:
 
             step = current_index.step
             # translate new_index.start into "world coordinates"
-            start = index_slice(current_index, new_index.start or (
-                0 if step > 0 else -1
-            ))
+            start = index_slice(
+                current_index,
+                new_index.start if new_index.start is not None else (
+                    0 if step > 0 else -1
+                ),
+            )
             
             if (new_stop := new_index.stop) is not None:
                 # translate new_stop into "world coordinates"
@@ -192,7 +192,7 @@ def index_slice(current_slice: slice, index: int) -> int:
     return start + index * step
 
 
-def shape_from_indices(base_shape: Tuple[int, ...], indices: Sequence[Index]):
+def shape_from_indices(base_shape: tuple[int, ...], indices: Sequence[Index]):
     """Calculates the expected shape of a numpy array of `base_shape` when
     indexed with `indices`. Assumes that all indices are in standard form, i.e.
     for slices, start/stop are positive integers and step is non-zero integer,

@@ -25,10 +25,15 @@ def random_int(rng: random.Generator, size: int) -> int:
     index = int(rng.integers(size))
     return index if rng.random() > PROB_INDEX_NEGATIVE else -index
 
-def random_slice(rng: random.Generator, size: int) -> slice:
+def random_slice(
+    rng: random.Generator,
+    size: int,
+    max_step: int = MAX_STEP,
+    prob_step_negative: float = PROB_STEP_NEGATIVE,
+) -> slice:
     if rng.random() > PROB_SLICE_EL_NONE:
-        step = int(rng.integers(1, high=MAX_STEP, endpoint=True))
-        # step = step if rng.random() > PROB_STEP_NEGATIVE else -step
+        step = int(rng.integers(1, high=max_step, endpoint=True))
+        step = step if rng.random() > prob_step_negative else -step
     else:
         step = None
 
@@ -57,13 +62,17 @@ def random_slice(rng: random.Generator, size: int) -> slice:
     
     return slice(start, stop, step)
 
-def random_location(rng: random.Generator, shape: Tuple[int, ...],
+def random_location(
+    rng: random.Generator,
+    shape: Tuple[int, ...],
+    max_step: int = MAX_STEP,
+    prob_step_negative: float = PROB_STEP_NEGATIVE,
 ) -> Tuple[Union[int, slice], ...]:
     return tuple(
         (
             random_int(rng, size)
             if rng.random() > PROB_SLICE else
-            random_slice(rng, size)
+            random_slice(rng, size, max_step, prob_step_negative)
         )
         for size in islice(
             shape,
@@ -72,9 +81,11 @@ def random_location(rng: random.Generator, shape: Tuple[int, ...],
     )
 
 
-@pytest.fixture(scope="module")
-def shape():
-    return (20, 20, 20, 20)
+@pytest.fixture(params=[
+    (20, 20, 20, 20)
+], scope="module")
+def shape(request):
+    return request.param
 
 @pytest.fixture
 def np_array(shape):
@@ -87,6 +98,22 @@ def vector(shape):
 @pytest.fixture(scope="module")
 def rng():
     return random.default_rng()
+
+@pytest.fixture(
+    params=[0.0, 0.5],
+    ids=["positive_step_only", "pos_and_neg_step"],
+    scope="module",
+)
+def prob_step_negative(request):
+    return request.param
+
+@pytest.fixture(
+    params=[1, 3],
+    ids=["max_step=1", "max_step=3"],
+    scope="module",
+)
+def max_step(request):
+    return request.param
 
 
 class TestAddIndices:
@@ -120,7 +147,7 @@ class TestAddIndices:
             ], id="negative step ending at None",
         ),
     ])
-    def test_explicit_cases(self, np_array, index_history):
+    def test_add_locations_special_cases(self, np_array, index_history):
         subarray = np_array
         curr_indices = [slice(None) for _ in np_array.shape]
 
@@ -130,37 +157,48 @@ class TestAddIndices:
 
         assert np.array_equal(subarray, np_array[tuple(curr_indices)])
 
-    def test_random_cases(self, np_array: np.ndarray, rng: random.Generator):
-        for _ in range(500):
-            loc1 = random_location(rng, np_array.shape)
+    def test_add_locations(self, np_array: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float):
+        for _ in range(200):
+            loc1 = random_location(rng, np_array.shape, max_step, prob_step_negative)
+            loc1_cleaned = add_locations([], loc1)
             subarray1 = np_array[loc1]
+
+            assert np.array_equal(subarray1, np_array[tuple(loc1_cleaned)])
+
             if not subarray1.shape:
                 continue  # if we have indexed a single element already, skip
-            loc2 = random_location(rng, subarray1.shape)
-            subarray2 = subarray1[loc2]
-
-            loc = add_locations([], loc1)
-            loc = add_locations(loc, loc2)
             
-            assert np.array_equal(subarray2, np_array[tuple(loc)])
+            loc2 = random_location(rng, subarray1.shape, max_step, prob_step_negative)
+            joined_loc = add_locations(loc1_cleaned, loc2)
+            subarray2 = subarray1[loc2]
+            
+            assert np.array_equal(subarray2, np_array[tuple(joined_loc)])
 
-    def test_index_slice(self, vector: np.ndarray, rng: random.Generator):
+    def test_index_slice(self, vector: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float):
         for _ in range(1000):
-            slice_ = random_slice(rng, vector.shape[0])
-            subvector = vector[slice_]
+            start_slice = random_slice(rng, vector.shape[0], max_step, prob_step_negative)
+            subvector = vector[start_slice]
             index = random_int(rng, subvector.shape[0])
             element = subvector[index]
 
-            step = slice_.step or 1
-            slice_ = slice(
-                slice_.start or (0 if step > 0 else -1),
-                slice_.stop,
-                step,
-            )
-            global_index = index_slice(slice_, index)
+            start_slice = add_indices(slice(None), start_slice)  # clean slice
+            global_index = index_slice(start_slice, index)
             element2 = vector[global_index]
 
             assert np.array_equal(element, element2)
+
+    def test_add_slices(self, vector: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float):
+        for _ in range(1000):
+            start_slice = random_slice(rng, vector.shape[0], max_step, prob_step_negative)
+            subvector = vector[start_slice]
+            new_slice = random_slice(rng, subvector.shape[0], max_step, prob_step_negative)
+            subsubvector = subvector[new_slice]
+
+            start_slice = add_indices(slice(None), start_slice)  # clean slice
+            joined_slice = add_indices(start_slice, new_slice)
+            subsubvector2 = vector[joined_slice]
+
+            assert np.array_equal(subsubvector, subsubvector2)
 
 
 class TestComputeIndices:
