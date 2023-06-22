@@ -29,7 +29,7 @@ from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
 from envs.dummy import build_dummy
-# from models.model import CartPoleFfPgModel
+from models.pointnet_pg_model import PointNetPgModel
 
 
 @contextmanager
@@ -73,6 +73,9 @@ def build(config: Dict) -> OnPolicyRunner:
     example_cage.random_step_async()
     action, obs, reward, done, info = example_cage.await_step()
 
+    spaces = example_cage.spaces
+    obs_space, action_space = spaces.observation, spaces.action
+
     example_cage.close()
 
     if full_size is not None:
@@ -87,8 +90,9 @@ def build(config: Dict) -> OnPolicyRunner:
     elif dtype == np.int64:
         dtype = np.int32
     batch_observation = JaggedArray(
-        shape=tuple(batch_spec) + np_obs.shape,
+        shape=(obs_space.max_num_points,) + obs_space.shape,
         dtype=dtype,
+        batch_size=tuple(batch_spec),
         storage=storage,
         padding=1,
         full_size=full_size,
@@ -129,7 +133,7 @@ def build(config: Dict) -> OnPolicyRunner:
     obs_space, action_space = spaces.observation, spaces.action
 
     # instantiate model and agent
-    model = CartPoleFfPgModel(
+    model = PointNetPgModel(
         obs_space=obs_space,
         action_space=action_space,
         **config["model"],
