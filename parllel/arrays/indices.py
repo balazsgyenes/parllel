@@ -183,24 +183,27 @@ def add_indices(current_index: slice, new_index: IndexType) -> IndexType:
             return slice(new_start, new_stop, new_step)
 
 
-def index_slice(current_slice: slice, index: int, size: int) -> int:
-    step = current_slice.step
+def index_slice(slice_: slice, index: int, size: int) -> int:
+    """Compute the index of the element that would be returned if a vector was
+    first indexed with a slice and then an integer. The slice must be given in
+    standard form.
+    """
+    step = slice_.step
     if index >= 0:
-        start = current_slice.start
+        zero = slice_.start
     else:
         # if the index is negative, the start is the end of the slice, or the
         # end of the array
-        if (stop := current_slice.stop) is None:
-            stop = size if step > 0 else -1
-        
+        start, stop, step = slice_.indices(size)
+
         # correction if step does not evenly divide into size of array
         # find effective end of slice by counting from start of slice
-        start = current_slice.start + step * math.ceil((stop - current_slice.start) / step)
+        zero = start + step * math.ceil((stop - start) / step)
 
-    return start + index * step
+    return zero + index * step
 
 
-def clean_slice(s: slice, size: int) -> slice:
+def clean_slice(slice_: slice, size: int) -> slice:
     """Return a slice in standard form, with:
         - start, a positive integer
         - stop, a positive integer or None
@@ -210,11 +213,8 @@ def clean_slice(s: slice, size: int) -> slice:
     to represent at the beginning of the array when the step is negative.
     A slice with stop=-1 has a different interpretation.
     """
-    step = s.step or 1
-    if (start := s.start) is None:
-        start = 0 if step > 0 else -1
-    start = start % size if start < 0 else start
-    stop = stop % size if (stop := s.stop) is not None and stop < 0 else stop
+    start, stop, step = slice_.indices(size)
+    stop = None if stop < 0 else stop
     return slice(start, stop, step)
 
 
