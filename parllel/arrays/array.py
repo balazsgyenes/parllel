@@ -1,6 +1,6 @@
 from __future__ import annotations # full returns another Array
 from functools import reduce
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Union
 
 import numpy as np
 
@@ -312,6 +312,9 @@ class Array(Buffer):
         if dtype is not None:
             array = array.astype(dtype, copy=False)
         return array
+
+    def __buffer__(self) -> Union[dict[str, np.ndarray], np.ndarray]:
+        return self.__array__()
 
     def __repr__(self) -> str:
         prefix = type(self).__name__ + "("

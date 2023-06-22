@@ -1,5 +1,5 @@
 import itertools
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import numpy as np
 
@@ -151,7 +151,7 @@ class JaggedArray(Array):
                 raise NotImplementedError
 
         array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
-        current_ptrs = np.asarray(current_ptrs)
+        current_ptrs = np.cumsum(current_ptrs)
         assert array.shape[0] == current_ptrs[-1]
         current_ptrs[1:] = current_ptrs[:-1]
         current_ptrs[0] = 0
@@ -162,9 +162,12 @@ class JaggedArray(Array):
         self._current_ptrs = current_ptrs  # save for consumption by __buffer__
         return array
 
-    def __buffer__(self) -> dict:
+    def __buffer__(self) -> Union[dict[str, np.ndarray], np.ndarray]:
         data = self.__array__()
-        return data, self._current_ptrs
+        return {
+            "data": data,
+            "ptr": self._current_ptrs,  # updated during execution of __array__
+        }
 
 
 def slice_to_list(slice_: slice, size: int) -> list[int]:

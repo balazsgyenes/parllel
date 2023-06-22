@@ -1,3 +1,5 @@
+import functools
+
 import pytest
 import numpy as np
 import numpy.random as random
@@ -63,6 +65,14 @@ def blank_array(ArrayClass, max_points, feature_shape, dtype, batch_size, storag
 def rng():
     return random.default_rng()
 
+@pytest.fixture(scope="module")
+def graph_generator(rng, max_points, feature_shape, dtype):
+    return functools.partial(random_graph,
+        rng=rng,
+        max_num_points=max_points,
+        feature_shape=feature_shape,
+        dtype=dtype,
+    )
 
 def random_graph(
     rng: random.Generator,
@@ -77,10 +87,35 @@ def random_graph(
 
 
 class TestJaggedArray:
-    def test_write_single_graph(self, blank_array, rng, max_points, feature_shape, dtype):
-        graph = random_graph(rng, max_points, feature_shape, dtype)
+    def test_write_single_graph(self, blank_array, graph_generator):
+        graph = graph_generator()
+        loc = (0, 4)
+        blank_array[loc] = graph
+        assert np.array_equal(blank_array[loc], graph)
 
-        blank_array[0, 4] = graph
-    
-        assert np.array_equal(blank_array[0, 4], graph)
+    def test_write_single_graph_negative_batch_index(self, blank_array, graph_generator):
+        graph = graph_generator()
+        loc = (0, -4)
+        blank_array[loc] = graph
+        assert np.array_equal(blank_array[loc], graph)
 
+    def test_write_consecutive_graphs(self, blank_array, graph_generator):
+        graph1 = graph_generator()
+        graph2 = graph_generator()
+
+        blank_array[0, 3] = graph1
+        blank_array[1, 3] = graph2
+
+        assert np.array_equal(blank_array[0, 3], graph1)
+        assert np.array_equal(blank_array[1, 3], graph2)
+
+    def test_write_parallel_graphs(self, blank_array, graph_generator):
+        graph1 = graph_generator()
+        graph2 = graph_generator()
+
+        blank_array[0, 1] = graph1
+        blank_array[0, 2] = graph2
+
+        assert np.array_equal(blank_array[0, 1], graph1)
+        assert np.array_equal(blank_array[0, 2], graph2)
+        assert np.array_equal(blank_array[0, 1:3], np.concatenate((graph1, graph2)))
