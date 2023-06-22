@@ -68,17 +68,19 @@ def random_graph(
     rng: random.Generator,
     max_num_points: int,
     feature_shape: tuple[int, ...],
+    dtype: np.dtype,
     mean: float = MEAN,
     std: float = STD,
 ) -> np.ndarray:
     n_points = rng.integers(max_num_points)
-    return rng.normal(loc=mean, scale=std, size=(n_points,) + feature_shape)
+    return rng.normal(loc=mean, scale=std, size=(n_points,) + feature_shape).astype(dtype)
 
 
 class TestJaggedArray:
-    def test_write_single_graph(self, blank_array, rng, max_points, feature_shape):
-        graph = random_graph(rng, max_points, feature_shape)
+    def test_write_single_graph(self, blank_array, rng, max_points, feature_shape, dtype):
+        graph = random_graph(rng, max_points, feature_shape, dtype)
 
         blank_array[0, 4] = graph
     
-        assert np.array_equal(blank_array[0, 4].__array__(), graph)
+        assert np.array_equal(blank_array[0, 4], graph)
+

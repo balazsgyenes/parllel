@@ -11,6 +11,11 @@ from .indices import add_locations, add_indices, shape_from_indices
 
 
 class JaggedArray(Array):
+    """
+    
+    # TODO: ensure that index_lib can handle np_arrays as indices
+    # TODO: maybe create a repr that doesn't call __array__, as this can be expensive
+    """
     def __init__(self,
         shape: tuple[int, ...],
         dtype: np.dtype,
@@ -25,7 +30,11 @@ class JaggedArray(Array):
             batch_size = (1,)
         self.batch_size = batch_size
 
+        dtype = np.dtype(dtype)
+        if dtype == np.object_:
+            raise ValueError("Data type should not be object.")
         self.dtype = dtype
+
         self.padding = padding
         self.offset = padding
 
@@ -42,7 +51,10 @@ class JaggedArray(Array):
 
         self._allocate()
 
+        self._current_array = None
+
         # TODO: move this into allocate()
+        # TODO: add final element along T dimension for signaling end of data
         self._ptr = np.zeros(shape=batch_size, dtype=np.int64)
 
         self._resolve_indexing_history()
@@ -88,17 +100,19 @@ class JaggedArray(Array):
             # find next available slot
             cursor = np.argmin(ptrs[1:])
 
+            # TODO: if the minimum value of ptrs[1:] is not 0, the array is full
+            # handle this either by dropping input, wrapping, or extending array
+
             if cursor != t_loc:
                 raise IndexError(
                     "JaggedArray requires consecutive writes. The next "
                     f"available slot is at {cursor}, not {t_loc}."
                 )
-            cursor += 1
 
             # write to that location
-            ptrs[cursor] = ptrs[cursor - 1] + value.shape[0]
+            ptrs[t_loc + 1] = ptrs[t_loc] + value.shape[0]
 
-            n_slice = slice(ptrs[cursor - 1], ptrs[cursor])
+            n_slice = slice(ptrs[t_loc], ptrs[t_loc + 1])
             n_loc = add_indices(n_slice, feature_locs[0])
 
             real_loc = batch_loc + (n_loc,) + feature_locs[1:]
@@ -109,37 +123,48 @@ class JaggedArray(Array):
         if self._apparent_shape is None:
             self._resolve_indexing_history()
         
-        (t_loc, *batch_loc), feature_loc = self._current_location[:len(self.batch_size)], self._current_location[len(self.batch_size):]
+        current_location = tuple(self._current_location)
+        batch_locs, feature_locs = current_location[:len(self.batch_size)], current_location[len(self.batch_size):]
+        t_locs, b_locs = batch_locs[0], batch_locs[1:]
 
-        # lengths = self._cum_lengths[:, batch_loc]
+        # create a list of graphs to be concatenated into one large "batch"
+        graphs = []
+        current_ptrs = []
 
-        if isinstance(t_loc, int):
-            end = self._cum_lengths[t_loc, batch_loc]
-            start = self._cum_lengths[t_loc - 1, batch_loc] if t_loc > 0 else 0
+        # loop over all batch locations except the T dimension
+        b_locs = (
+            (loc,) if isinstance(loc, int) else slice_to_list(loc, size)
+            for loc, size
+            in zip(b_locs, self._apparent_base_shape)
+        )
+        for b_loc in itertools.product(*b_locs):
+            if isinstance(t_locs, int):
+                ptrs = self._ptr[(slice(None),) + b_loc]
+                n_slice = slice(ptrs[t_locs], ptrs[t_locs + 1])
+                n_loc = add_indices(n_slice, feature_locs[0])
+                real_loc = b_loc + (n_loc,) + feature_locs[1:]
+                graph = self._base_array[real_loc]
+                graphs.append(graph)
+                current_ptrs.append(graph.shape[0])
 
-            # TODO: check that end > 0 to ensure that the desired graph has been written
+            else:  # t_locs: slice
+                raise NotImplementedError
 
-            # get indices of nodes within desired graph
-            n_index = (
-                self._current_location[len(self.batch_size)]
-                if len(self._current_location) > len(self.batch_size) else
-                slice(None)
-            )
-
-            # convert to global node index across all graphs
-            n_index = add_indices(slice(start, end), n_index)
-
-            array = self._base_array
-            array = np.asarray(array)  # promote scalars to 0d arrays
-        else:
-            pass
+        array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
+        current_ptrs = np.asarray(current_ptrs)
+        assert array.shape[0] == current_ptrs[-1]
+        current_ptrs[1:] = current_ptrs[:-1]
+        current_ptrs[0] = 0
 
         if dtype is not None:
             array = array.astype(dtype, copy=False)
+
+        self._current_ptrs = current_ptrs  # save for consumption by __buffer__
         return array
 
     def __buffer__(self) -> dict:
         data = self.__array__()
+        return data, self._current_ptrs
 
 
 def slice_to_list(slice_: slice, size: int) -> list[int]:
