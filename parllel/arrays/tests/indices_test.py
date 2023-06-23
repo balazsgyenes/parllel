@@ -1,12 +1,12 @@
 from itertools import islice
 import math
-from typing import Tuple, Union
 
 
 import numpy as np
 import numpy.random as random
 import pytest
 
+from parllel.buffers.buffer import Indices
 from parllel.arrays.indices import (
     add_locations, add_indices, index_slice, clean_slice,
     compute_indices,
@@ -75,11 +75,11 @@ def random_slice(
 
 def random_location(
     rng: random.Generator,
-    shape: Tuple[int, ...],
+    shape: tuple[int, ...],
     max_step: int = MAX_STEP,
     prob_start_stop_negative: float = PROB_INDEX_NEGATIVE,
     prob_step_negative: float = PROB_STEP_NEGATIVE,
-) -> Tuple[Union[int, slice], ...]:
+) -> Indices:
     return tuple(
         (
             random_slice(rng, size, max_step, prob_step_negative, prob_start_stop_negative)
@@ -196,21 +196,30 @@ class TestAddIndices:
             ], id="negative step ending at None",
         ),
     ])
-    def test_add_locations_special_cases(self, np_array, index_history):
+    def test_add_locations_named_cases(self,
+        np_array: np.ndarray,
+        index_history: list[Indices],
+    ):
         subarray = np_array
         curr_indices = [slice(None) for _ in np_array.shape]
 
         for indices in index_history:
             subarray = subarray[indices]
-            curr_indices = add_locations(curr_indices, indices)
+            curr_indices = add_locations(curr_indices, indices, np_array.shape)
 
         assert np.array_equal(subarray, np_array[tuple(curr_indices)])
 
-    def test_add_locations(self, np_array: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float, prob_start_stop_negative: float):
+    def test_add_locations(self,
+        np_array: np.ndarray,
+        rng: random.Generator,
+        max_step: int,
+        prob_step_negative: float,
+        prob_start_stop_negative: float,
+    ):
         for _ in range(500):
             loc1 = random_location(rng, np_array.shape, max_step, prob_step_negative, prob_start_stop_negative)
             subarray1 = np_array[loc1]
-            loc1_cleaned = add_locations([], loc1)  # clean location
+            loc1_cleaned = add_locations([slice(None) for _ in np_array.shape], loc1, np_array.shape)  # clean location
 
             assert np.array_equal(subarray1, np_array[tuple(loc1_cleaned)])
 
@@ -219,7 +228,7 @@ class TestAddIndices:
             
             loc2 = random_location(rng, subarray1.shape, max_step, prob_step_negative, prob_start_stop_negative)
             subarray2 = subarray1[loc2]
-            joined_loc = add_locations(loc1_cleaned, loc2)
+            joined_loc = add_locations(loc1_cleaned, loc2, np_array.shape)
             
             assert np.array_equal(subarray2, np_array[tuple(joined_loc)])
 
@@ -257,28 +266,40 @@ class TestAddIndices:
         "None stop onto negative step",
         "Numerical stop lands on -1 index",
     ])
-    def test_add_slices_special_cases(self, vector: np.ndarray, loc1: slice, loc2: slice):
+    def test_add_slices_named_cases(self,
+        vector: np.ndarray,
+        shape: tuple[int, ...],
+        loc1: slice,
+        loc2: slice,
+    ):
         subvector = vector[loc1]
-        loc1_cleaned = add_indices(slice(None), loc1)  # clean slice
+        loc1_cleaned = clean_slice(loc1, shape[0])
 
         assert np.array_equal(subvector, vector[loc1_cleaned])
 
         subsubvector = subvector[loc2]
-        joined_loc = add_indices(loc1_cleaned, loc2)
+        joined_loc = add_indices(loc1_cleaned, loc2, shape[0])
 
         assert np.array_equal(subsubvector, vector[joined_loc])
 
-    def test_add_slices(self, vector: np.ndarray, rng: random.Generator, max_step: int, prob_step_negative: float, prob_start_stop_negative: float):
+    def test_add_slices(self,
+        vector: np.ndarray,
+        shape: tuple[int, ...],
+        rng: random.Generator,
+        max_step: int,
+        prob_step_negative: float,
+        prob_start_stop_negative: float,
+    ):
         for _ in range(1000):
-            loc1 = random_slice(rng, vector.shape[0], max_step, prob_step_negative, prob_start_stop_negative)
+            loc1 = random_slice(rng, shape[0], max_step, prob_step_negative, prob_start_stop_negative)
             subvector = vector[loc1]
-            loc1_cleaned = add_indices(slice(None), loc1)  # clean slice
+            loc1_cleaned = clean_slice(loc1, shape[0])
 
             assert np.array_equal(subvector, vector[loc1_cleaned])
 
             loc2 = random_slice(rng, subvector.shape[0], max_step, prob_step_negative, prob_start_stop_negative)
             subsubvector = subvector[loc2]
-            joined_loc = add_indices(loc1_cleaned, loc2)
+            joined_loc = add_indices(loc1_cleaned, loc2, shape[0])
 
             assert np.array_equal(subsubvector, vector[joined_loc])
 
@@ -307,7 +328,7 @@ class TestComputeIndices:
             marks=pytest.mark.xfail(reason="Indexing a scalar results in a copy")
         ),
     ])
-    def test_single_index_op(self, np_array, indices):
+    def test_single_index_op(self, np_array: np.ndarray, indices: list[Indices]):
         np_subarray = np_array[indices]
         indices = compute_indices(np_array, np_subarray)
         assert np.array_equal(np_subarray, np_array[indices])

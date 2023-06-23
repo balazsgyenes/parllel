@@ -59,7 +59,7 @@ def predict_copy_on_index(shape: tuple[int, ...], new_location: Indices):
         all(isinstance(index, int) for index in new_location))
 
 
-def add_locations(current_location: list[Index], new_location: Indices):
+def add_locations(current_location: Sequence[Index], new_location: Indices, base_shape: tuple[int, ...]):
     """Takes an indexing location, the current indices of the subarray relative
     to the base array, and the base array's shape, and returns the next indices
     of the subarray relative to the base array after indexing.
@@ -76,7 +76,7 @@ def add_locations(current_location: list[Index], new_location: Indices):
     - it may be faster to create a jitclass for Index which represents either
         int, slice, or Ellipsis, and can then be passed to jitted functions
     """
-    current_location = list(current_location)
+    current_location = list(current_location)  # create a copy to prevent modifying inputs
 
     if isinstance(new_location, tuple):
         new_location = list(new_location)
@@ -91,49 +91,53 @@ def add_locations(current_location: list[Index], new_location: Indices):
         new_location[i:i+1] = [slice(None)] * (len(current_location) - len(new_location) + 1)
 
     i = 0
-    for dim, current_index in enumerate(current_location):
+    for dim, (current_index, size) in enumerate(zip(current_location, base_shape)):
         if isinstance(current_index, int):
             # this dimension has already been indexed with an integer, it
             # cannot be indexed further
             continue
 
-        current_location[dim] = add_indices(current_index, new_location[i])
+        current_location[dim] = add_indices(current_index, new_location[i], size)
 
         i += 1  # consider next new_index on next loop iteration
         if i == len(new_location):
             # new_location exhausted
             break
     else:
-        # if new_location has not been exhausted, just add the remaining
-        # elements to current_indices after cleaning them
-        current_location.extend(
-            add_indices(slice(None), new_index)
-            for new_index in new_location[i:]
+        # if new_location has not been exhausted, too many indices
+        raise IndexError(
+            f"Too many indices for array: array is {len(base_shape)}-dimensional, "
+            f"but {len(new_location)} were indexed."
         )
 
     return current_location
 
 
 IndexType = TypeVar("IndexType", int, slice)
-def add_indices(current_index: slice, new_index: IndexType) -> IndexType:
+def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexType:
     if current_index == slice(None):
         # this dimension has not yet been indexed at all
         # new_index must be cleaned, and then overwrites current_index
         if isinstance(new_index, slice):
-            step = new_index.step or 1
-            if (start := new_index.start) is None:
-                start = 0 if step > 0 else -1
-            # we leave the stop as potentially being None because:
-            # 1. we do not know the size of this dimension
-            # 2. there is no way to represent an endpoint of None with a
-            # negative step, even if we know the size
-            new_index = slice(start, new_index.stop, step)
-        return new_index
+            return clean_slice(new_index, size)
+        elif not (-size <= new_index < size):
+            raise IndexError(
+                f"Index {new_index} is out of bounds for axis with size "
+                f"{size}."
+            )
+        else:
+            return new_index % size  # convert negative indices to positive
     else:
         # this dimension has been indexed with a non-trivial slice
         # add new_index to existing slice
         if isinstance(new_index, int):
-            return index_slice(current_index, new_index)
+            index = index_slice(current_index, new_index, size)
+            if not (-size <= new_index < size):
+                raise IndexError(
+                    f"Index {new_index} is out of bounds for axis with size "
+                    f"{size}."
+                )
+            return index
 
         elif new_index == slice(None):
             # no op if indexed with the trivial slice
@@ -147,11 +151,11 @@ def add_indices(current_index: slice, new_index: IndexType) -> IndexType:
                 0 if new_step > 0 else -1
             )
             # translate new_index.start into "world coordinates"
-            new_start = index_slice(current_index, new_start)
+            new_start = index_slice(current_index, new_start, size)
             
             if (new_stop := new_index.stop) is not None:
                 # translate new_stop into "world coordinates"
-                new_stop = index_slice(current_index, new_stop)
+                new_stop = index_slice(current_index, new_stop, size)
 
                 new_stop = (
                     (
