@@ -1,10 +1,10 @@
 import itertools
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import numpy as np
 
 from parllel.arrays.array import Array
-from parllel.buffers import Index, Indices
+from parllel.buffers import Buffer, Index, Indices
 
 from .array import Array
 from .indices import add_locations, add_indices, shape_from_indices
@@ -70,6 +70,7 @@ class JaggedArray(Array):
         
         # TODO: if current location is a single graph, set real size of that graph
         # as apparent size
+        # TODO: if accessed location has not been writted to yet, throw an error
         
     def __setitem__(self, location: Indices, value: Any) -> None:
         # TODO: allow writes to previously written locations
@@ -162,12 +163,12 @@ class JaggedArray(Array):
         self._current_ptrs = current_ptrs  # save for consumption by __buffer__
         return array
 
-    def __buffer__(self) -> Union[dict[str, np.ndarray], np.ndarray]:
+    def __buffer__(self) -> Buffer:
         data = self.__array__()
-        return {
-            "data": data,
-            "ptr": self._current_ptrs,  # updated during execution of __array__
-        }
+        return (
+            data,
+            self._current_ptrs,  # updated during execution of __array__
+        )
 
 
 def slice_to_list(slice_: slice, size: int) -> list[int]:

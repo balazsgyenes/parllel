@@ -5,6 +5,8 @@ import torch
 
 from torch_geometric.nn import MLP, PointConv, fps, global_max_pool, radius
 
+from parllel.torch.agents.categorical import ModelOutputs
+
 
 class SAModule(torch.nn.Module):
     def __init__(self, ratio, r, nn):
@@ -59,13 +61,23 @@ class PointNetPgModel(torch.nn.Module):
         self.sa2_module = SAModule(0.25, 0.4, MLP([128 + obs_shape, 128, 128, 256]))
         self.sa3_module = GlobalSAModule(MLP([256 + obs_shape, 256, 512, 1024]))
 
-        self.mlp = MLP(hidden_sizes + [n_actions], norm=None, act=hidden_nonlinearity)
+        self.pi = MLP(hidden_sizes + [n_actions], norm=None, act=hidden_nonlinearity)
+        self.value = MLP(hidden_sizes + [1], norm=None, act=hidden_nonlinearity)
 
     def forward(self, data):
-        sa0_out = (data.x, data.pos, data.batch)
+
+        # convert to pytorch geometric batch representation
+        pos, ptr = data
+        num_nodes = ptr[1:] - ptr[:-1]
+        batch = torch.repeat_interleave(torch.arange(len(num_nodes)), repeats=num_nodes)
+
+        sa0_out = (None, pos, batch)
         sa1_out = self.sa1_module(*sa0_out)
         sa2_out = self.sa2_module(*sa1_out)
         sa3_out = self.sa3_module(*sa2_out)
         x, pos, batch = sa3_out
 
-        return self.mlp(x).log_softmax(dim=-1)
+        return ModelOutputs(
+            pi=self.pi(x).softmax(dim=-1),
+            value=self.value(x).squeeze(-1),
+        )

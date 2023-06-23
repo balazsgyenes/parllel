@@ -1,5 +1,4 @@
 from collections import defaultdict
-from functools import partial
 from typing import Dict, List, Optional, Union
 
 import numpy as np
@@ -14,8 +13,7 @@ import parllel.logger as logger
 from parllel.replays import BatchedDataLoader
 from parllel.torch.agents.agent import TorchAgent
 from parllel.torch.agents.pg import AgentPrediction
-from parllel.torch.utils import (buffer_to_device, valid_mean,
-    explained_variance)
+from parllel.torch.utils import (valid_mean, explained_variance)
 
 
 SamplesForLoss = NamedArrayTupleClass("SamplesForLoss",
@@ -39,7 +37,7 @@ class PPO(Algorithm):
     def __init__(
         self,
         agent: TorchAgent,
-        dataloader: BatchedDataLoader[SamplesForLoss[torch.Tensor]],
+        dataloader: BatchedDataLoader[SamplesForLoss[np.ndarray]],
         optimizer: Optimizer,
         learning_rate_scheduler: Optional[_LRScheduler],
         value_loss_coeff: float,
@@ -69,8 +67,6 @@ class PPO(Algorithm):
         self.update_counter = 0
         self.early_stopping = False
         self.algo_log_info = defaultdict(list)
-        self.to_device_func = partial(buffer_to_device,
-            device=self.agent.device)
 
     def optimize_agent(self,
         elapsed_steps: int,
@@ -83,9 +79,6 @@ class PPO(Algorithm):
         formed within device, without further data transfer.
         """
         self.agent.train_mode(elapsed_steps)
-
-        # Move all samples to device once and iterate through them there.
-        self.dataloader.apply_func(self.to_device_func)
 
         self.algo_log_info.clear()
         self.early_stopping = False
@@ -206,9 +199,6 @@ def build_dataloader_buffer(
     sample_buffer: Samples,
     recurrent: bool = False,
 ) -> SamplesForLoss:
-    from parllel.buffers import buffer_asarray
-    from parllel.torch.utils import torchify_buffer
-
     dataloader_buffer = SamplesForLoss(
         observation=sample_buffer.env.observation,
         agent_info=sample_buffer.agent.agent_info,
@@ -220,6 +210,4 @@ def build_dataloader_buffer(
         old_values=sample_buffer.agent.agent_info.value,
         init_rnn_state=sample_buffer.agent.initial_rnn_state if recurrent else None,
     )
-    dataloader_buffer = buffer_asarray(dataloader_buffer)
-    dataloader_buffer = torchify_buffer(dataloader_buffer)
     return dataloader_buffer

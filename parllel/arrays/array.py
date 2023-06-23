@@ -1,6 +1,6 @@
 from __future__ import annotations # full returns another Array
 from functools import reduce
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple
 
 import numpy as np
 
@@ -313,7 +313,7 @@ class Array(Buffer):
             array = array.astype(dtype, copy=False)
         return array
 
-    def __buffer__(self) -> Union[dict[str, np.ndarray], np.ndarray]:
+    def __buffer__(self) -> Buffer:
         return self.__array__()
 
     def __repr__(self) -> str:

@@ -10,7 +10,7 @@ import torch
 import wandb
 
 from parllel.arrays import buffer_from_example
-from parllel.buffers import AgentSamples, buffer_method, Samples
+from parllel.buffers import AgentSamples, buffer_asarray, buffer_method, Samples
 from parllel.cages import TrajInfo
 import parllel.logger as logger
 from parllel.logger import Verbosity
@@ -24,6 +24,7 @@ from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO, build_dataloader_buffer
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
+from parllel.torch.utils import torchify_buffer, buffer_to_device
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
@@ -135,11 +136,14 @@ def build(config: Dict) -> OnPolicyRunner:
     )
 
     dataloader_buffer = build_dataloader_buffer(batch_buffer)
+    dataloader_buffer = buffer_asarray(dataloader_buffer)
+    dataloader_buffer = torchify_buffer(dataloader_buffer)
 
     dataloader = BatchedDataLoader(
         buffer=dataloader_buffer,
         sampler_batch_spec=batch_spec,
         n_batches=config["algo"]["minibatches"],
+        pre_batches_transform=lambda x: buffer_to_device(x, device=device),
     )
 
     optimizer = torch.optim.Adam(

@@ -11,12 +11,12 @@ import torch
 import wandb
 
 from parllel.arrays import buffer_from_example, buffer_from_dict_example, JaggedArray
-from parllel.buffers import AgentSamples, buffer_method, Samples, EnvSamples
+from parllel.buffers import AgentSamples, Buffer, buffer_asarray, buffer_method, Samples, EnvSamples
 from parllel.cages import TrajInfo, ProcessCage, SerialCage
 import parllel.logger as logger
 from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
-    add_obs_normalization, add_reward_clipping, add_reward_normalization,
+    add_reward_clipping, add_reward_normalization,
     build_cages_and_env_buffers)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
@@ -25,6 +25,7 @@ from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO, build_dataloader_buffer
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
+from parllel.torch.utils import buffer_to_device, torchify_buffer
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
@@ -174,12 +175,6 @@ def build(config: Dict) -> OnPolicyRunner:
     # add several helpful transforms
     batch_transforms, step_transforms = [], []
 
-    batch_buffer, step_transforms = add_obs_normalization(
-        batch_buffer,
-        step_transforms,
-        initial_count=config["obs_norm_initial_count"],
-    )
-
     batch_buffer, batch_transforms = add_reward_normalization(
         batch_buffer,
         batch_transforms,
@@ -215,10 +210,16 @@ def build(config: Dict) -> OnPolicyRunner:
 
     dataloader_buffer = build_dataloader_buffer(batch_buffer)
 
+    def batch_transform(x: Buffer):
+        x = buffer_asarray(x)
+        x = torchify_buffer(x)
+        return buffer_to_device(x, device=device)
+
     dataloader = BatchedDataLoader(
         buffer=dataloader_buffer,
         sampler_batch_spec=batch_spec,
         n_batches=config["algo"]["minibatches"],
+        batch_transform=batch_transform,
     )
 
     optimizer = torch.optim.Adam(
