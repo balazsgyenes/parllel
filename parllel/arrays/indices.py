@@ -110,7 +110,7 @@ def add_locations(
     return current_location
 
 
-IndexType = TypeVar("IndexType", int, slice)
+IndexType = TypeVar("IndexType", int, slice, np.ndarray)
 def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexType:
     """Takes the current indexing state of a single dimension and a new index,
     and returns a single index (int or slice) that could be used to index the
@@ -118,7 +118,19 @@ def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexT
 
     current_index must be a slice in standard form (see `clean_slice`).
     """
-    if isinstance(new_index, int):
+    if isinstance(new_index, np.ndarray):
+        index = np_index_slice(current_index, new_index, size)
+        if not np.all((0 <= index) & (index < size)):
+            out_of_bounds = new_index[~(0 <= index)]
+            if out_of_bounds.shape[0] == 0:
+                out_of_bounds = new_index[~(index < size)]
+            raise IndexError(
+                f"Index {out_of_bounds[0]} is out of bounds for axis with size "
+                f"{size}."
+            )
+        return index
+
+    elif isinstance(new_index, int):
         index = index_slice(current_index, new_index, size)
         if not (0 <= index < size):
             raise IndexError(
@@ -185,6 +197,25 @@ def index_slice(slice_: slice, index: int, size: int) -> int:
         zero = start + step * math.ceil((stop - start) / step)
 
     return zero + index * step
+
+
+def np_index_slice(slice_: slice, index: np.ndarray, size: int) -> int:
+    """Compute the index of the element that would be returned if a vector was
+    first indexed with a slice and then an integer. The slice must be given in
+    standard form.
+    """
+    start, stop, step = slice_.indices(size)
+    # if the index is negative, the start is the end of the slice, or the
+    # end of the array
+    # correction if step does not evenly divide into size of array
+    # find effective end of slice by counting from start of slice
+    end = start + step * math.ceil((stop - start) / step)
+
+    new_index = np.zeros_like(index)
+    new_index[index >= 0] = start + index[index >= 0] * step
+    new_index[index < 0] = end + index[index < 0] * step
+
+    return new_index
 
 
 def clean_slice(slice_: slice, size: int) -> slice:
