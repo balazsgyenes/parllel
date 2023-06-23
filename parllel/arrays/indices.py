@@ -132,12 +132,12 @@ def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexT
         # add new_index to existing slice
         if isinstance(new_index, int):
             index = index_slice(current_index, new_index, size)
-            if not (-size <= new_index < size):
+            if not (0 <= index < size):
                 raise IndexError(
                     f"Index {new_index} is out of bounds for axis with size "
                     f"{size}."
                 )
-            return index
+            return index  # index should never be negative after cleaning
 
         elif new_index == slice(None):
             # no op if indexed with the trivial slice
@@ -159,8 +159,6 @@ def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexT
 
                 new_stop = (
                     (
-                        # TODO: these comparisons cannot be done for mixed
-                        # positive/negative indices
                         min(stop, new_stop)
                         if step > 0 else
                         max(stop, new_stop)

@@ -112,17 +112,7 @@ def rng():
     return random.default_rng()
 
 @pytest.fixture(
-    params=[
-        0.0,
-        pytest.param(0.3,
-            # marks=pytest.mark.xfail(
-            #     reason="When adding slices, the new stop is the max/min of "
-            #     "the old stop and the new stop. When the old and new stops "
-            #     "are a combination of positive/negative integers, this "
-            #     "comparison requires knowledge about the array's size."
-            # ),
-        ),
-    ],
+    params=[0.0, 0.3],
     ids=["pos_point", "pos/neg_point"],
     scope="module",
 )
@@ -130,17 +120,7 @@ def prob_start_stop_negative(request):
     return request.param
 
 @pytest.fixture(
-    params=[
-        0.0,
-        pytest.param(0.5,
-            # marks=pytest.mark.xfail(
-            #     reason="When adding slices, the new stop is the max/min of "
-            #     "the old stop and the new stop. When the old and new stops "
-            #     "are a combination of positive/negative integers, this "
-            #     "comparison requires knowledge about the array's size."
-            # ),
-        ),
-    ],
+    params=[0.0, 0.5],
     ids=["pos_step", "pos/neg_step"],
     scope="module",
 )
@@ -148,16 +128,7 @@ def prob_step_negative(request):
     return request.param
 
 @pytest.fixture(
-    params=[
-        1,
-        pytest.param(3,
-            # marks=pytest.mark.xfail(
-            #     reason="Indexing a slice having step>1 with a negative index "
-            #     "requires knowing the size of the indexed dimension, because "
-            #     "the end point of the indexed array is ambiguous."
-            # ),
-        ),
-    ],
+    params=[1, 3],
     ids=["max_step=1", "max_step=3"],
     scope="module",
 )
