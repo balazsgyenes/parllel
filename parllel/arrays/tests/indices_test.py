@@ -8,7 +8,8 @@ import pytest
 
 from parllel.buffers.buffer import Indices
 from parllel.arrays.indices import (
-    add_locations, add_indices, index_slice, clean_slice,
+    add_locations, add_indices, index_slice,
+    clean_slice, init_location,
     compute_indices,
     predict_copy_on_index,
     shape_from_indices,
@@ -145,10 +146,10 @@ class TestAddIndices:
             ], id="slices",
         ),
         pytest.param([
+            (3, slice(1, -1)),
             (Ellipsis, 2),
             (slice(None, 7), slice(1, -1)),
-            (3, slice(1, -1)),
-            ], id="Ellipsis",
+            ], id="Ellipsis with after indexing with int",
         ),
         pytest.param([
             (2, slice(1, -1)),
@@ -172,7 +173,7 @@ class TestAddIndices:
         index_history: list[Indices],
     ):
         subarray = np_array
-        curr_indices = [slice(None) for _ in np_array.shape]
+        curr_indices = init_location(np_array.shape)
 
         for indices in index_history:
             subarray = subarray[indices]
@@ -187,10 +188,10 @@ class TestAddIndices:
         prob_step_negative: float,
         prob_start_stop_negative: float,
     ):
-        for _ in range(500):
+        for _ in range(1000):
             loc1 = random_location(rng, np_array.shape, max_step, prob_step_negative, prob_start_stop_negative)
             subarray1 = np_array[loc1]
-            loc1_cleaned = add_locations([slice(None) for _ in np_array.shape], loc1, np_array.shape)  # clean location
+            loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
 
             assert np.array_equal(subarray1, np_array[tuple(loc1_cleaned)])
 

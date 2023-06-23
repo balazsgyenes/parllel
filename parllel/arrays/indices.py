@@ -59,22 +59,17 @@ def predict_copy_on_index(shape: tuple[int, ...], new_location: Indices):
         all(isinstance(index, int) for index in new_location))
 
 
-def add_locations(current_location: Sequence[Index], new_location: Indices, base_shape: tuple[int, ...]):
+def add_locations(
+    current_location: Sequence[Index],
+    new_location: Indices,
+    base_shape: tuple[int, ...],
+) -> list[Index]:
     """Takes an indexing location, the current indices of the subarray relative
     to the base array, and the base array's shape, and returns the next indices
     of the subarray relative to the base array after indexing.
 
-    Issues:
-    - no checks to make sure that index is valid (e.g. bounds checking), so the
-        indexing has to be done on the ndarray as well.
-
-    Possible optimizations:
-    - move to for loop over location zipped with current_indices with ints
-        filtered out
-    - it may be possible to jit this function if slices are replaced by tuples
-        of 3 integers
-    - it may be faster to create a jitclass for Index which represents either
-        int, slice, or Ellipsis, and can then be passed to jitted functions
+    If current_location contains slices, they must be in standard form (see
+    `clean_slice`).
     """
     current_location = list(current_location)  # create a copy to prevent modifying inputs
 
@@ -86,9 +81,11 @@ def add_locations(current_location: Sequence[Index], new_location: Indices, base
     # check if Ellipsis occurs in new_location
     i = next((index for index, elem in enumerate(new_location) if elem is Ellipsis), None)
     if i is not None:
-        # pad new_location with slice(None) elements until length equals ndim
+        # pad new_location with slice(None) elements until length equals the
+        # apparent number of dimensions
         # assume Ellipsis only occurs once, since the location is well-formed
-        new_location[i:i+1] = [slice(None)] * (len(current_location) - len(new_location) + 1)
+        apparent_n_dim = len([loc for loc in current_location if isinstance(loc, slice)])
+        new_location[i:i+1] = [slice(None)] * (apparent_n_dim - len(new_location) + 1)
 
     i = 0
     for dim, (current_index, size) in enumerate(zip(current_location, base_shape)):
@@ -115,74 +112,59 @@ def add_locations(current_location: Sequence[Index], new_location: Indices, base
 
 IndexType = TypeVar("IndexType", int, slice)
 def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexType:
-    if current_index == slice(None):
-        # this dimension has not yet been indexed at all
-        # new_index must be cleaned, and then overwrites current_index
-        if isinstance(new_index, slice):
-            return clean_slice(new_index, size)
-        elif not (-size <= new_index < size):
+    """Takes the current indexing state of a single dimension and a new index,
+    and returns a single index (int or slice) that could be used to index the
+    base array to achieve the same result.
+
+    current_index must be a slice in standard form (see `clean_slice`).
+    """
+    if isinstance(new_index, int):
+        index = index_slice(current_index, new_index, size)
+        if not (0 <= index < size):
             raise IndexError(
                 f"Index {new_index} is out of bounds for axis with size "
                 f"{size}."
             )
-        else:
-            return new_index % size  # convert negative indices to positive
-    else:
-        # this dimension has been indexed with a non-trivial slice
-        # add new_index to existing slice
-        if isinstance(new_index, int):
-            index = index_slice(current_index, new_index, size)
-            if not (0 <= index < size):
-                raise IndexError(
-                    f"Index {new_index} is out of bounds for axis with size "
-                    f"{size}."
-                )
-            return index  # index should never be negative after cleaning
+        return index  # index should never be negative after cleaning
 
-        elif new_index == slice(None):
-            # no op if indexed with the trivial slice
-            return current_index
+    elif new_index == slice(None):
+        # no op if indexed with the trivial slice
+        return current_index
+    
+    else:  # new_index: slice
+        # convert to numerical form for computation
+        start, stop, step = current_index.indices(size)
+
+        new_step = new_index.step if new_index.step is not None else 1
+        new_start = new_index.start if new_index.start is not None else (
+            0 if new_step > 0 else -1
+        )
+        new_stop = new_index.stop
+
+        # translate new_index.start into "world coordinates"
+        new_start = index_slice(current_index, new_start, size)
         
-        else:  # new_index: slice
-            step = current_index.step
-            new_step = new_index.step if new_index.step is not None else 1
+        if new_stop is not None:
+            # translate new_stop into "world coordinates"
+            new_stop = index_slice(current_index, new_stop, size)
+            # find the stop that results in the shorter sequence
+            new_stop = min(stop, new_stop) if step > 0 else max(stop, new_stop)
+        elif new_step > 0:
+            new_stop = stop
+        else:
+            new_stop = start
+            # extend new_stop one unit away from body of range
+            new_stop += np.sign(step * new_step)
+        
+        # set to None instead of -1
+        # TODO: if an empty slice was passed, do not accidentally convert to a
+        # non-empty slice
+        new_stop = None if new_stop < 0 else new_stop
 
-            new_start = new_index.start if new_index.start is not None else (
-                0 if new_step > 0 else -1
-            )
-            # translate new_index.start into "world coordinates"
-            new_start = index_slice(current_index, new_start, size)
-            
-            if (new_stop := new_index.stop) is not None:
-                # translate new_stop into "world coordinates"
-                new_stop = index_slice(current_index, new_stop, size)
-
-                new_stop = (
-                    (
-                        min(stop, new_stop)
-                        if step > 0 else
-                        max(stop, new_stop)
-                    )
-                    if (stop := current_index.stop) is not None else
-                    new_stop
-                )
-                new_stop = None if new_stop < 0 else new_stop  # set to None instead of -1
-            else:
-                if new_step > 0:
-                    # current_index.stop might be None, that's okay
-                    new_stop = current_index.stop
-                else:
-                    new_stop = current_index.start
-                    if new_stop is not None:
-                        new_stop += np.sign(step * new_step)  # extend new_stop one unit away from body of range
-                        if new_stop < 0:
-                            # if the new_stop is the beginning of array, set to None instead of -1
-                            new_stop = None
-            
-            # update step by multiplying new step onto it
-            new_step = step * new_step
-            
-            return slice(new_start, new_stop, new_step)
+        # update step by multiplying new step onto it
+        new_step = step * new_step
+        
+        return slice(new_start, new_stop, new_step)
 
 
 def index_slice(slice_: slice, index: int, size: int) -> int:
@@ -218,6 +200,11 @@ def clean_slice(slice_: slice, size: int) -> slice:
     start, stop, step = slice_.indices(size)
     stop = None if stop < 0 else stop
     return slice(start, stop, step)
+
+
+def init_location(base_shape: tuple[int, ...]) -> list[Index]:
+    # slices in standard form, with step != None
+    return [slice(0, size, 1) for size in base_shape]
 
 
 def shape_from_indices(base_shape: tuple[int, ...], indices: Sequence[Index]):
