@@ -1,10 +1,12 @@
+from __future__ import annotations
 import itertools
-from typing import Any, Optional
+from typing import Literal, Optional, Union
 
 import numpy as np
 
 from parllel.arrays.array import Array
 from parllel.buffers import Buffer, Index, Indices
+import parllel.logger as logger
 
 from .array import Array
 from .indices import add_locations, add_indices, shape_from_indices
@@ -13,7 +15,6 @@ from .indices import add_locations, add_indices, shape_from_indices
 class JaggedArray(Array):
     """
     
-    # TODO: ensure that index_lib can handle np_arrays as indices
     # TODO: maybe create a repr that doesn't call __array__, as this can be expensive
     """
     def __init__(self,
@@ -24,24 +25,34 @@ class JaggedArray(Array):
         storage: str = "local",
         padding: int = 0,
         full_size: Optional[int] = None,
+        on_overflow: Literal["drop", "resize", "wrap"] = "drop",
     ) -> None:
-
-        if batch_size == ():
-            batch_size = (1,)
-        self.batch_size = batch_size
-
         dtype = np.dtype(dtype)
         if dtype == np.object_:
             raise ValueError("Data type should not be object.")
+
+        if batch_size == ():
+            batch_size = (1,)
+
+        if on_overflow not in {"drop", "resize", "wrap"}:
+            raise ValueError(f"Unknown on_overflow option {on_overflow}")
+        elif on_overflow in {"resize", "wrap"}:
+            raise NotImplementedError(f"on_overflow option {on_overflow} not permitted")
+        
         self.dtype = dtype
-
+        # self.batch_size = batch_size
         self.padding = padding
-        self.offset = padding
+        self.on_overflow = on_overflow
 
+        self.offset = padding
         self.base_size = batch_size[0]
 
+        T_size = batch_size[0]
+        N_size = shape[0]
         # multiply the T dimension into the node dimension
-        self._base_shape = batch_size[1:] + (batch_size[0] * shape[0],) + shape[1:]
+        self._flattened_size = T_size * N_size
+        self._base_shape = batch_size[1:] + (self._flattened_size,) + shape[1:]
+        self._n_batch_dim = len(batch_size)
 
         self._apparent_base_shape = self._apparent_shape = batch_size + shape
 
@@ -54,8 +65,9 @@ class JaggedArray(Array):
         self._current_array = None
 
         # TODO: move this into allocate()
-        # TODO: add final element along T dimension for signaling end of data
-        self._ptr = np.zeros(shape=batch_size, dtype=np.int64)
+        # add an extra element to node dimension so it's always possible to
+        # access the element at t+1
+        self._ptr = np.zeros(shape=batch_size[1:] + (T_size + 1,), dtype=np.int64)
 
         self._resolve_indexing_history()
 
@@ -70,24 +82,29 @@ class JaggedArray(Array):
         
         # TODO: if current location is a single graph, set real size of that graph
         # as apparent size
-        # TODO: if accessed location has not been writted to yet, throw an error
         
-    def __setitem__(self, location: Indices, value: Any) -> None:
-        # TODO: allow writes to previously written locations
-        # TODO: zip and iterate over value and location
-        # TODO: value can be a scalar (python or numpy array), a list, or a JaggedArray
-
+    def __setitem__(self, location: Indices, value: Union[float, int, np.number, list, JaggedArray]) -> None:
         if self._apparent_shape is None:
             self._resolve_indexing_history()
 
         destination = tuple(add_locations(self._current_location, location))
 
+        if isinstance(value, list):
+            # TODO: zip and iterate over value and location
+            raise NotImplementedError("Cannot write a list into a JaggedArray.")
+        elif isinstance(value, JaggedArray):
+            raise NotImplementedError("Cannot write a JaggedArray into a JaggedArray.")
+        elif isinstance(value, (int, float)) and value == 0:
+            # TODO: test this method of element deletion
+            value = np.array([])  # special value for deleting an entry
+        value = np.atleast_1d(value)  # otherwise promote scalars to 1D arrays
+
         # split into batch locations and feature locations, which are handled differently
-        batch_locs, feature_locs = destination[:len(self.batch_size)], destination[len(self.batch_size):]
+        batch_locs, feature_locs = destination[:self._n_batch_dim], destination[self._n_batch_dim:]
         
-        # loop over all batch locations
+        # loop over all batch locations by taking the product of slices
         batch_locs = (
-            (loc,) if isinstance(loc, int) else slice_to_list(loc, size)
+            (loc,) if isinstance(loc, int) else slice_to_range(loc, size)
             for loc, size
             in zip(batch_locs, self._apparent_base_shape)
         )
@@ -96,28 +113,34 @@ class JaggedArray(Array):
             t_loc, batch_loc = loc[0], loc[1:]
 
             # get lengths of all graphs stored in this "element"
-            ptrs = self._ptr[(slice(None),) + batch_loc]
+            ptrs = self._ptr[batch_loc]
 
-            # find next available slot
-            cursor = np.argmin(ptrs[1:])
+            if (end := ptrs[t_loc] + value.shape[0]) > self._flattened_size:
+                if self.on_overflow == "resize":
+                    # TODO: add a resize method and call it here
+                    raise NotImplementedError
+                else:
+                    # drop input
+                    logger.debug(f"JaggedArray input {value} dropped due to size exceeded.")
+                    return
 
-            # TODO: if the minimum value of ptrs[1:] is not 0, the array is full
-            # handle this either by dropping input, wrapping, or extending array
+            # set end point at ptrs[t_loc + 1]
+            ptrs[t_loc + 1] = end
 
-            if cursor != t_loc:
-                raise IndexError(
-                    "JaggedArray requires consecutive writes. The next "
-                    f"available slot is at {cursor}, not {t_loc}."
-                )
+            # to ensure that ptrs remains monotonic, remove end points of entries
+            # that have now been overwritten
+            ptrs_after = ptrs[t_loc + 1:]
+            ptrs_after[ptrs_after < end] = end
+            # TODO: to prevent fragments of overwritten entries from remaining,
+            # make ptrs actual two values (start and end) for each entry (add
+            # trailing dimension of size 2)
 
-            # write to that location
-            ptrs[t_loc + 1] = ptrs[t_loc] + value.shape[0]
-
+            # compute the subarray within the slice of all nodes
             n_slice = slice(ptrs[t_loc], ptrs[t_loc + 1])
             n_loc = add_indices(n_slice, feature_locs[0])
-
             real_loc = batch_loc + (n_loc,) + feature_locs[1:]
 
+            # write to that location
             self._base_array[real_loc] = value
 
     def __array__(self, dtype=None) -> np.ndarray:
@@ -125,7 +148,7 @@ class JaggedArray(Array):
             self._resolve_indexing_history()
         
         current_location = tuple(self._current_location)
-        batch_locs, feature_locs = current_location[:len(self.batch_size)], current_location[len(self.batch_size):]
+        batch_locs, feature_locs = current_location[:self._n_batch_dim], current_location[self._n_batch_dim:]
         t_locs, b_locs = batch_locs[0], batch_locs[1:]
 
         # create a list of graphs to be concatenated into one large "batch"
@@ -134,13 +157,13 @@ class JaggedArray(Array):
 
         # loop over all batch locations except the T dimension
         b_locs = (
-            (loc,) if isinstance(loc, int) else slice_to_list(loc, size)
+            (loc,) if isinstance(loc, int) else slice_to_range(loc, size)
             for loc, size
             in zip(b_locs, self._apparent_base_shape)
         )
         for b_loc in itertools.product(*b_locs):
+            ptrs = self._ptr[b_loc]
             if isinstance(t_locs, int):
-                ptrs = self._ptr[(slice(None),) + b_loc]
                 n_slice = slice(ptrs[t_locs], ptrs[t_locs + 1])
                 n_loc = add_indices(n_slice, feature_locs[0])
                 real_loc = b_loc + (n_loc,) + feature_locs[1:]
@@ -148,7 +171,20 @@ class JaggedArray(Array):
                 graphs.append(graph)
                 current_ptrs.append(graph.shape[0])
 
-            else:  # t_locs: slice
+            # t_locs: slice
+            elif ((n_locs := feature_locs[0]) == slice(None) and 
+                  np.abs(t_locs.step) == 1):
+                # TODO: verify this works for step == -1
+                start, stop, _ = t_locs.indices(ptrs.shape[0])
+                n_loc = slice(ptrs[start], ptrs[stop + 1])
+                real_loc = b_loc + (n_loc,) + feature_locs[1:]
+                graph = self._base_array[real_loc]
+                graphs.append(graph)
+                current_ptrs.append(graph.shape[0])
+
+            else:
+                # TODO: iterate over elements of t_locs and index each one
+                # using n_locs
                 raise NotImplementedError
 
         array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
@@ -171,6 +207,7 @@ class JaggedArray(Array):
         )
 
 
-def slice_to_list(slice_: slice, size: int) -> list[int]:
+def slice_to_range(slice_: slice, size: int) -> list[int]:
     start, stop, step = slice_.indices(size)
-    return list(range(start, stop, step))
+    stop = None if stop < 0 else stop
+    return range(start, stop, step)

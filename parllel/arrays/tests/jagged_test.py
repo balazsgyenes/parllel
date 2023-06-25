@@ -108,6 +108,7 @@ class TestJaggedArray:
 
         assert np.array_equal(blank_array[0, 3], graph1)
         assert np.array_equal(blank_array[1, 3], graph2)
+        assert np.array_equal(blank_array[0:2, 3], np.concatenate((graph1, graph2)))
 
     def test_write_parallel_graphs(self, blank_array, graph_generator):
         graph1 = graph_generator()
