@@ -1,8 +1,6 @@
 from gym import Env
+from gym.wrappers import TimeLimit
 from hera_gym.envs.cartpole import ExtendedCartPoleEnv
-from gym.wrappers import (
-    TimeLimit,
-)
 
 
 def build_cartpole(
