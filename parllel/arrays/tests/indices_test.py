@@ -8,11 +8,11 @@ import pytest
 
 from parllel.buffers.buffer import Indices
 from parllel.arrays.indices import (
-    add_locations, add_indices, index_slice,
+    add_locations, index_slice, index_slice_with_int,
     clean_slice, init_location,
     compute_indices,
     predict_copy_on_index,
-    shape_from_indices,
+    shape_from_location,
 )
 
 
@@ -287,7 +287,7 @@ class TestAddIndices:
 
             slice2 = random_slice(rng, subvector.shape[0], max_step, prob_step_negative, prob_start_stop_negative)
             subsubvector = subvector[slice2]
-            joined_slice = add_indices(slice1_cleaned, slice2, vector.shape[0])
+            joined_slice = index_slice(slice1_cleaned, slice2, vector.shape[0])
 
             assert np.array_equal(subsubvector, vector[joined_slice])
 
@@ -315,7 +315,7 @@ class TestAddIndices:
         assert np.array_equal(subvector, vector[slice1_cleaned])
 
         subsubvector = subvector[slice2]
-        joined_slice = add_indices(slice1_cleaned, slice2, vector.shape[0])
+        joined_slice = index_slice(slice1_cleaned, slice2, vector.shape[0])
 
         assert np.array_equal(subsubvector, vector[joined_slice])
 
@@ -378,7 +378,7 @@ class TestAddIndices:
 
             index2 = random_int(rng, subvector.shape[0])
             element = subvector[index2]
-            global_index = index_slice(slice1_cleaned, index2, vector.shape[0])
+            global_index = index_slice_with_int(slice1_cleaned, index2, vector.shape[0])
 
             assert np.array_equal(element, vector[global_index])
 
@@ -402,7 +402,7 @@ class TestAddIndices:
 
         for indices in index_history:
             subvector = subvector[indices]
-            joined_loc = add_indices(joined_loc, indices, vector.shape[0])
+            joined_loc = index_slice(joined_loc, indices, vector.shape[0])
 
         assert np.array_equal(subvector, vector[joined_loc])
 
@@ -456,7 +456,7 @@ class TestComputeIndices:
     def test_single_index_op(self, np_array: np.ndarray, indices: list[Indices]):
         np_subarray = np_array[indices]
         indices = compute_indices(np_array, np_subarray)
-        assert np.array_equal(np_subarray, np_array[indices])
+        assert np.array_equal(np_subarray, np_array[tuple(indices)])
 
 
 class TestPredictCopyOnIndex:
@@ -485,13 +485,13 @@ class TestShapeFromIndices:
             id="element"
         ),
     ])
-    def test_shape_from_indices(self, np_array, indices):
+    def test_shape_from_location(self, np_array, indices):
         base_shape = np_array.shape
         cleaned_indices = tuple(
             slice(*index.indices(size)) if isinstance(index, slice) else index
             for index, size in zip(indices, base_shape)
         )
-        shape = shape_from_indices(np_array.shape, cleaned_indices)
+        shape = shape_from_location(cleaned_indices, np_array.shape)
         # IMPORTANT: np_array must be indexed with original indices and not the
         # cleaned indices, because these give different results for
         # slice(2, None, -1) -> slice(2, -1, -1)

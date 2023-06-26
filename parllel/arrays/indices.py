@@ -1,12 +1,25 @@
 import math
-from typing import Sequence, TypeVar
+from typing import TypeVar, Union
 
 import numpy as np
 
-from parllel.buffers.buffer import Index, Indices
+
+# A single index element, e.g. arr[3:6]
+Index = Union[int, slice, np.ndarray, type(Ellipsis)]
+StandardIndex = Union[int, slice, np.ndarray]
+BasicIndex = Union[int, slice]
+
+# A single indexing location, e.g. arr[2, 0] or arr[:-2]
+Location = Union[Index, tuple[Index, ...]]
+StandardLocation = list[Index]
+
+Shape = tuple[int, ...]
 
 
-def compute_indices(base_array: np.ndarray, current_array: np.ndarray):
+def compute_indices(
+    base_array: np.ndarray,
+    current_array: np.ndarray,
+) -> list[BasicIndex]:
     current_pointer = current_array.__array_interface__["data"][0]
     base_pointer = base_array.__array_interface__["data"][0]
     offset = current_pointer - base_pointer
@@ -51,33 +64,33 @@ def compute_indices(base_array: np.ndarray, current_array: np.ndarray):
         if current_indices[dim] is None:
             current_indices[dim] = dim_offsets[dim]
     
-    return tuple(current_indices)
+    return current_indices
 
 
-def predict_copy_on_index(shape: tuple[int, ...], new_location: Indices):
+def predict_copy_on_index(shape: Shape, new_location: Location) -> bool:
     return (len(new_location) == len(shape) and 
         all(isinstance(index, int) for index in new_location))
 
 
 def add_locations(
-    current_location: Sequence[Index],
-    new_location: Indices,
-    base_shape: tuple[int, ...],
-) -> list[Index]:
+    location: StandardLocation,
+    new_location: Location,
+    base_shape: Shape,
+) -> StandardLocation:
     """Takes an indexing location, the current indices of the subarray relative
     to the base array, and the base array's shape, and returns the next indices
     of the subarray relative to the base array after indexing.
 
-    If current_location contains slices, they must be in standard form (see
+    If location contains slices, they must be in standard form (see
     `clean_slice`).
     """
-    if any(isinstance(loc, np.ndarray) for loc in current_location):
+    if any(isinstance(location, np.ndarray) for location in location):
         raise IndexError(
             "Cannot processing further indexing operations after advanced "
             "indexing."
         )
 
-    current_location = list(current_location)  # create a copy to prevent modifying inputs
+    location = list(location)  # create a copy to prevent modifying inputs
 
     if isinstance(new_location, tuple):
         new_location = list(new_location)
@@ -85,26 +98,26 @@ def add_locations(
         new_location = [new_location]
 
     # check if Ellipsis occurs in new_location
-    i = next((index for index, elem in enumerate(new_location) if elem is Ellipsis), None)
+    i = next((dim for dim, new_index in enumerate(new_location) if new_index is Ellipsis), None)
     if i is not None:
         # pad new_location with slice(None) elements until length equals the
         # apparent number of dimensions
         # assume Ellipsis only occurs once, since the location is well-formed
-        apparent_n_dim = len([loc for loc in current_location if isinstance(loc, slice)])
+        apparent_n_dim = len([location for location in location if isinstance(location, slice)])
         new_location[i:i+1] = [slice(None)] * (apparent_n_dim - len(new_location) + 1)
 
     if not new_location:
         # e.g. if new_location was [...] or [()]
-        return current_location
+        return location
 
     i = 0
-    for dim, (current_index, size) in enumerate(zip(current_location, base_shape)):
-        if isinstance(current_index, int):
+    for dim, (index, size) in enumerate(zip(location, base_shape)):
+        if isinstance(index, int):
             # this dimension has already been indexed with an integer, it
             # cannot be indexed further
             continue
 
-        current_location[dim] = add_indices(current_index, new_location[i], size)
+        location[dim] = index_slice(index, new_location[i], size)
 
         i += 1  # consider next new_index on next loop iteration
         if i == len(new_location):
@@ -117,19 +130,19 @@ def add_locations(
             f"but {len(new_location)} were indexed."
         )
 
-    return current_location
+    return location
 
 
 IndexType = TypeVar("IndexType", int, slice, np.ndarray)
-def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexType:
+def index_slice(index: slice, new_index: IndexType, size: int) -> IndexType:
     """Takes the current indexing state of a single dimension and a new index,
     and returns a single index (int or slice) that could be used to index the
     base array to achieve the same result.
 
-    current_index must be a slice in standard form (see `clean_slice`).
+    index must be a slice in standard form (see `clean_slice`).
     """
     if isinstance(new_index, np.ndarray):
-        index = np_index_slice(current_index, new_index, size)
+        index = index_slice_with_np(index, new_index, size)
         if not np.all((0 <= index) & (index < size)):
             out_of_bounds = new_index[~(0 <= index)]
             if out_of_bounds.shape[0] == 0:
@@ -141,7 +154,7 @@ def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexT
         return index
 
     elif isinstance(new_index, int):
-        index = index_slice(current_index, new_index, size)
+        index = index_slice_with_int(index, new_index, size)
         if not (0 <= index < size):
             raise IndexError(
                 f"Index {new_index} is out of bounds for axis with size "
@@ -151,11 +164,11 @@ def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexT
 
     elif new_index == slice(None):
         # no op if indexed with the trivial slice
-        return current_index
+        return index
     
     else:  # new_index: slice
         # convert to numerical form for computation
-        start, stop, step = current_index.indices(size)
+        start, stop, step = index.indices(size)
 
         new_step = new_index.step if new_index.step is not None else 1
         new_start = new_index.start if new_index.start is not None else (
@@ -164,12 +177,12 @@ def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexT
         new_stop = new_index.stop
 
         # translate new_index.start into "world coordinates"
-        new_start = index_slice(current_index, new_start, size)
+        new_start = index_slice_with_int(index, new_start, size)
         new_start = max(0, new_start)  # lower bound at 0
         
         if new_stop is not None:
             # translate new_stop into "world coordinates"
-            new_stop = index_slice(current_index, new_stop, size)
+            new_stop = index_slice_with_int(index, new_stop, size)
             # find the stop that results in the shorter sequence
             new_stop = min(stop, new_stop) if step > 0 else max(stop, new_stop)
             # bound at the relevant end of the array, preserving empty slices
@@ -184,7 +197,7 @@ def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexT
         # set to None instead of -1
         # this might happen if the stop was specified as an integer, but lands
         # before the beginning of the array, or if the stop was None and the
-        # start/stop of current_index was -1 (i.e. None with negative step)
+        # start/stop of index was -1 (i.e. None with negative step)
         new_stop = None if new_stop < 0 else new_stop
 
         # update step by multiplying new step onto it
@@ -193,7 +206,7 @@ def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexT
         return slice(new_start, new_stop, new_step)
 
 
-def index_slice(slice_: slice, index: int, size: int) -> int:
+def index_slice_with_int(slice_: slice, index: int, size: int) -> int:
     """Compute the index of the element that would be returned if a vector was
     first indexed with a slice and then an integer. The slice must be given in
     standard form.
@@ -213,7 +226,7 @@ def index_slice(slice_: slice, index: int, size: int) -> int:
     return zero + index * step
 
 
-def np_index_slice(slice_: slice, index: np.ndarray, size: int) -> int:
+def index_slice_with_np(slice_: slice, index: np.ndarray, size: int) -> np.ndarray:
     """Compute the index of the element that would be returned if a vector was
     first indexed with a slice and then an integer. The slice must be given in
     standard form.
@@ -247,12 +260,12 @@ def clean_slice(slice_: slice, size: int) -> slice:
     return slice(start, stop, step)
 
 
-def init_location(base_shape: tuple[int, ...]) -> list[Index]:
+def init_location(base_shape: Shape) -> StandardLocation:
     # slices in standard form, with step != None
     return [slice(0, size, 1) for size in base_shape]
 
 
-def shape_from_indices(base_shape: tuple[int, ...], indices: Sequence[Index]):
+def shape_from_location(indices: StandardLocation, base_shape: Shape) -> Shape:
     """Calculates the expected shape of a numpy array of `base_shape` when
     indexed with `indices`. Assumes that all indices are in standard form, i.e.
     for slices, start/stop are positive integers and step is non-zero integer,
