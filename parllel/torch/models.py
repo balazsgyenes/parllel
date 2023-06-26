@@ -15,20 +15,23 @@ class MlpModel(torch.nn.Module):
         output_size: linear layer at output, or if ``None``, the last hidden size will be the output size and will have nonlinearity applied
         nonlinearity: torch nonlinearity Module (not Functional).
     """
+
     def __init__(
-            self,
-            input_size: int,
-            hidden_sizes: Union[int, List[int], None],
-            output_size: Optional[int],  # if None, last layer has nonlinearity applied.
-            hidden_nonlinearity: torch.nn.Module = torch.nn.ReLU,  # Module, not Functional.
-            ):
+        self,
+        input_size: int,
+        hidden_sizes: Union[int, List[int], None],
+        output_size: Optional[int],  # if None, last layer has nonlinearity applied.
+        hidden_nonlinearity: torch.nn.Module = torch.nn.ReLU,  # Module, not Functional.
+    ):
         super().__init__()
         if isinstance(hidden_sizes, int):
             hidden_sizes = [hidden_sizes]
         elif hidden_sizes is None:
             hidden_sizes = []
-        hidden_layers = [torch.nn.Linear(n_in, n_out) for n_in, n_out in
-            zip([input_size] + hidden_sizes[:-1], hidden_sizes)]
+        hidden_layers = [
+            torch.nn.Linear(n_in, n_out)
+            for n_in, n_out in zip([input_size] + hidden_sizes[:-1], hidden_sizes)
+        ]
         sequence = list()
         for layer in hidden_layers:
             sequence.extend([layer, hidden_nonlinearity()])
@@ -36,8 +39,7 @@ class MlpModel(torch.nn.Module):
             last_size = hidden_sizes[-1] if hidden_sizes else input_size
             sequence.append(torch.nn.Linear(last_size, output_size))
         self.model = torch.nn.Sequential(*sequence)
-        self._output_size = (hidden_sizes[-1] if output_size is None
-            else output_size)
+        self._output_size = hidden_sizes[-1] if output_size is None else output_size
 
     def forward(self, input):
         """Compute the model on the input, assuming input shape [B,input_size]."""
@@ -50,8 +52,7 @@ class MlpModel(torch.nn.Module):
 
 
 def conv2d_output_shape(h, w, kernel_size=1, stride=1, padding=0, dilation=1):
-    """Returns output H, W after convolution/pooling on input H, W.
-    """
+    """Returns output H, W after convolution/pooling on input H, W."""
     kh, kw = kernel_size if isinstance(kernel_size, tuple) else (kernel_size,) * 2
     sh, sw = stride if isinstance(stride, tuple) else (stride,) * 2
     ph, pw = padding if isinstance(padding, tuple) else (padding,) * 2
@@ -66,16 +67,17 @@ class Conv2dModel(torch.nn.Module):
     downsampling for strides > 1.  Requires number of input channels, but
     not input shape.  Uses ``torch.nn.Conv2d``.
     """
+
     def __init__(
-            self,
-            in_channels: int,
-            channels: List[int],
-            kernel_sizes: List[int],
-            strides: List[int],
-            paddings: Optional[List[int]] = None,
-            nonlinearity: torch.nn.Module = torch.nn.ReLU,  # Module, not Functional.
-            use_maxpool: bool = False,  # if True: convs use stride 1, maxpool downsample.
-            ):
+        self,
+        in_channels: int,
+        channels: List[int],
+        kernel_sizes: List[int],
+        strides: List[int],
+        paddings: Optional[List[int]] = None,
+        nonlinearity: torch.nn.Module = torch.nn.ReLU,  # Module, not Functional.
+        use_maxpool: bool = False,  # if True: convs use stride 1, maxpool downsample.
+    ):
         super().__init__()
         if paddings is None:
             paddings = [0 for _ in range(len(channels))]
@@ -87,9 +89,14 @@ class Conv2dModel(torch.nn.Module):
             strides = ones
         else:
             maxp_strides = ones
-        conv_layers = [torch.nn.Conv2d(in_channels=ic, out_channels=oc,
-            kernel_size=k, stride=s, padding=p) for (ic, oc, k, s, p) in
-            zip(in_channels, channels, kernel_sizes, strides, paddings)]
+        conv_layers = [
+            torch.nn.Conv2d(
+                in_channels=ic, out_channels=oc, kernel_size=k, stride=s, padding=p
+            )
+            for (ic, oc, k, s, p) in zip(
+                in_channels, channels, kernel_sizes, strides, paddings
+            )
+        ]
         sequence = list()
         for conv_layer, maxp_stride in zip(conv_layers, maxp_strides):
             sequence.extend([conv_layer, nonlinearity()])
@@ -107,8 +114,9 @@ class Conv2dModel(torch.nn.Module):
         without actually performing a forward pass through the model."""
         for child in self.conv.children():
             try:
-                h, w = conv2d_output_shape(h, w, child.kernel_size,
-                    child.stride, child.padding)
+                h, w = conv2d_output_shape(
+                    h, w, child.kernel_size, child.stride, child.padding
+                )
             except AttributeError:
                 pass  # Not a conv or maxpool layer.
             try:
@@ -119,22 +127,23 @@ class Conv2dModel(torch.nn.Module):
 
 
 class Conv2dHeadModel(torch.nn.Module):
-    """Model component composed of a ``Conv2dModel`` component followed by 
+    """Model component composed of a ``Conv2dModel`` component followed by
     a fully-connected ``MlpModel`` head.  Requires full input image shape to
     instantiate the MLP head.
     """
+
     def __init__(
-            self,
-            image_shape,
-            channels,
-            kernel_sizes,
-            strides,
-            hidden_sizes,
-            output_size=None,  # if None: nonlinearity applied to output.
-            paddings=None,
-            nonlinearity=torch.nn.ReLU,
-            use_maxpool=False,
-            ):
+        self,
+        image_shape,
+        channels,
+        kernel_sizes,
+        strides,
+        hidden_sizes,
+        output_size=None,  # if None: nonlinearity applied to output.
+        paddings=None,
+        nonlinearity=torch.nn.ReLU,
+        use_maxpool=False,
+    ):
         super().__init__()
         c, h, w = image_shape
         self.conv = Conv2dModel(
@@ -148,13 +157,18 @@ class Conv2dHeadModel(torch.nn.Module):
         )
         conv_out_size = self.conv.conv_out_size(h, w)
         if hidden_sizes or output_size:
-            self.head = MlpModel(conv_out_size, hidden_sizes,
-                output_size=output_size, hidden_nonlinearity=nonlinearity)
+            self.head = MlpModel(
+                conv_out_size,
+                hidden_sizes,
+                output_size=output_size,
+                hidden_nonlinearity=nonlinearity,
+            )
             if output_size is not None:
                 self._output_size = output_size
             else:
-                self._output_size = (hidden_sizes if
-                    isinstance(hidden_sizes, int) else hidden_sizes[-1])
+                self._output_size = (
+                    hidden_sizes if isinstance(hidden_sizes, int) else hidden_sizes[-1]
+                )
         else:
             self.head = lambda x: x
             self._output_size = conv_out_size
@@ -175,6 +189,7 @@ class RunningMeanStdModel(torch.nn.Module):
     and variance of data along each dimension, accessible in the `mean` and
     `var` attributes.  Supports multi-GPU training by all-reducing statistics
     across GPUs."""
+
     def __init__(self, shape):
         super().__init__()
         self.register_buffer("mean", torch.zeros(shape))
@@ -204,6 +219,6 @@ class RunningMeanStdModel(torch.nn.Module):
             self.mean[:] = self.mean + delta * batch_count / total
             m_a = self.var * self.count
             m_b = batch_var * batch_count
-            M2 = m_a + m_b + delta ** 2 * self.count * batch_count / total
+            M2 = m_a + m_b + delta**2 * self.count * batch_count / total
             self.var[:] = M2 / total
         self.count += batch_count
