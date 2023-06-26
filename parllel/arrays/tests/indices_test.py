@@ -1,6 +1,6 @@
 from itertools import islice
 import math
-
+from typing import Sequence
 
 import numpy as np
 import numpy.random as random
@@ -138,49 +138,6 @@ def max_step(request):
 
 
 class TestAddIndices:
-    @pytest.mark.parametrize("index_history", [
-        pytest.param([
-            slice(1, 5),
-            (2, slice(None, 3)),
-            slice(1, 2),
-            ], id="slices",
-        ),
-        pytest.param([
-            (3, slice(1, -1)),
-            (Ellipsis, 2),
-            (slice(None, 7), slice(1, -1)),
-            ], id="Ellipsis with after indexing with int",
-        ),
-        pytest.param([
-            (2, slice(1, -1)),
-            (slice(None), 3),
-            1,
-            ], id="element",
-        ),
-        pytest.param([
-            slice(None, 1, -1),
-            1,
-            (slice(None, 2), 3),
-            ], id="negative step",
-        ),
-        pytest.param([
-            slice(2, None, -1),
-            ], id="negative step ending at None",
-        ),
-    ])
-    def test_add_locations_named_cases(self,
-        np_array: np.ndarray,
-        index_history: list[Indices],
-    ):
-        subarray = np_array
-        joined_loc = init_location(np_array.shape)
-
-        for indices in index_history:
-            subarray = subarray[indices]
-            joined_loc = add_locations(joined_loc, indices, np_array.shape)
-
-        assert np.array_equal(subarray, np_array[tuple(joined_loc)])
-
     def test_add_locations(self,
         np_array: np.ndarray,
         rng: random.Generator,
@@ -222,25 +179,39 @@ class TestAddIndices:
             (np.array([1, 3, 12, 10, 7]), np.array([11, 2, 7, 4, 8])),
         ),
         (
-            (np.array([-2, -9, 8, 12, -4]), slice(3, -3)),
-            (slice(None), np.array([1, 8, -12, 1, 3]), np.array([-3, 6, -18, -17, 4])),
-        ),
-        (
-            slice(None, None, 2),
+            (10, slice(None, None, 2)),
             (np.array([2, 1, -2, -4, 8]), np.array([2, -8, 3, 5, 5])),
         ),
         (
             slice(None, None, -2),
             (np.array([2, 3, -2, -4, 7]), np.array([2, -5, 3, 4, 1])),
         ),
+        (
+            (slice(1, -1), slice(2, -2), slice(3, -3), slice(4, -4)),
+            (np.array([9, -9, -7, -11]), np.array([-13, -14, -8, 0]), np.array([6, -11, 8, -9]), np.array([-6, 5, 5, -8])),
+        ),
+        (
+            slice(10, None, -2),
+            (
+                np.array([[-2, -5, -5, -4],
+                          [-2, -2,  3, -3],
+                          [ 3,  2, -2, -1],
+                          [ 3,  4,  2,  4]]),
+                np.array([[-1,   8,   0,  18],
+                          [ 3,   5,  10,   3],
+                          [-5,  -7,  18,  -6],
+                          [ 1, -11,   9,   3]]),
+            ),
+        ),
     ], ids=[
         "single 1D array",
         "two 1D arrays at once",
         "single 1D array onto a slice",
         "two 1D arrays onto a slice",
-        "1D array and slice followed by 2 1D arrays",
         "two 1D arrays onto a slice with a step",
         "two 1D arrays onto a slice with a negative step",
+        "4 slices followed by 4 1D arrays",
+        "two 2D arrays onto a slice with a negative step",
     ])
     def test_add_locations_index_array(self,
         np_array: np.ndarray,
@@ -257,7 +228,50 @@ class TestAddIndices:
 
         assert np.array_equal(subsubarray, np_array[tuple(joined_loc)])
 
-    def test_index_slice(self,
+    @pytest.mark.parametrize("index_history", [
+        pytest.param([
+            slice(1, 5),
+            (2, slice(None, 3)),
+            slice(1, 2),
+            ], id="slices",
+        ),
+        pytest.param([
+            (3, slice(1, -1)),
+            (Ellipsis, 2),
+            (slice(None, 7), slice(1, -1)),
+            ], id="Ellipsis with after indexing with int",
+        ),
+        pytest.param([
+            (2, slice(1, -1)),
+            (slice(None), 3),
+            1,
+            ], id="element",
+        ),
+        pytest.param([
+            slice(None, 1, -1),
+            1,
+            (slice(None, 2), 3),
+            ], id="negative step",
+        ),
+        pytest.param([
+            slice(2, None, -1),
+            ], id="negative step ending at None",
+        ),
+    ])
+    def test_add_locations_named_cases(self,
+        np_array: np.ndarray,
+        index_history: Sequence[Indices],
+    ):
+        subarray = np_array
+        joined_loc = init_location(np_array.shape)
+
+        for indices in index_history:
+            subarray = subarray[indices]
+            joined_loc = add_locations(joined_loc, indices, np_array.shape)
+
+        assert np.array_equal(subarray, np_array[tuple(joined_loc)])
+
+    def test_add_slices(self,
         vector: np.ndarray,
         rng: random.Generator,
         max_step: int,
@@ -271,11 +285,11 @@ class TestAddIndices:
 
             assert np.array_equal(subvector, vector[slice1_cleaned])
 
-            index2 = random_int(rng, subvector.shape[0])
-            element = subvector[index2]
-            global_index = index_slice(slice1_cleaned, index2, vector.shape[0])
+            slice2 = random_slice(rng, subvector.shape[0], max_step, prob_step_negative, prob_start_stop_negative)
+            subsubvector = subvector[slice2]
+            joined_slice = add_indices(slice1_cleaned, slice2, vector.shape[0])
 
-            assert np.array_equal(element, vector[global_index])
+            assert np.array_equal(subsubvector, vector[joined_slice])
 
     @pytest.mark.parametrize("slice1,slice2", [
         (
@@ -305,7 +319,50 @@ class TestAddIndices:
 
         assert np.array_equal(subsubvector, vector[joined_slice])
 
-    def test_add_slices(self,
+    def test_cannot_add_after_advanced_index(self,
+        np_array: np.ndarray,
+    ):
+        loc1 = np.array([3, -9, -6, 12, -8, 1, 7, 3, 10, 19, 1, 0, -3, -7, 8, -4, 7, 19, 3, -1])
+        subarray = np_array[loc1]
+        loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
+
+        assert np.array_equal(subarray, np_array[tuple(loc1_cleaned)])
+
+        loc2 = (slice(None), np.array([18, -3, 16, -6, -3, 3, 18, -5, -1, 1, 1, 5, 18, 0, -4, 12, 13, 1, 1, -6]))
+
+        with pytest.raises(IndexError):
+            _ = add_locations(loc1_cleaned, loc2, np_array.shape)
+
+    def test_index_scalar(self,
+        np_array,
+        rng: random.Generator,
+    ):
+        joined_location = init_location(np_array.shape)
+
+        loc = tuple(random_int(rng, size) for size in np_array.shape)
+        element = np_array[loc]
+        joined_location = add_locations(joined_location, loc, np_array.shape)
+
+        assert np.array_equal(element, np_array[tuple(joined_location)])
+        assert element.shape == ()
+
+        loc = (Ellipsis,)
+        joined_location = add_locations(joined_location, loc, np_array.shape)
+
+        assert np.array_equal(element, np_array[tuple(joined_location)])
+        assert element.shape == ()
+
+        loc = ()  # empty tuple
+        joined_location = add_locations(joined_location, loc, np_array.shape)
+
+        assert np.array_equal(element, np_array[tuple(joined_location)])
+        assert element.shape == ()
+
+        loc = slice(None)
+        with pytest.raises(IndexError):
+            _ = add_locations(joined_location, loc, np_array.shape)
+
+    def test_index_slice(self,
         vector: np.ndarray,
         rng: random.Generator,
         max_step: int,
@@ -319,11 +376,57 @@ class TestAddIndices:
 
             assert np.array_equal(subvector, vector[slice1_cleaned])
 
-            slice2 = random_slice(rng, subvector.shape[0], max_step, prob_step_negative, prob_start_stop_negative)
-            subsubvector = subvector[slice2]
-            joined_slice = add_indices(slice1_cleaned, slice2, vector.shape[0])
+            index2 = random_int(rng, subvector.shape[0])
+            element = subvector[index2]
+            global_index = index_slice(slice1_cleaned, index2, vector.shape[0])
 
-            assert np.array_equal(subsubvector, vector[joined_slice])
+            assert np.array_equal(element, vector[global_index])
+
+    @pytest.mark.parametrize("index_history", [
+        pytest.param([slice(21, 30)], id="Slice too positive"),
+        pytest.param([slice(15, 25)], id="Slice end outside of range"),
+        pytest.param([slice(-5, 25)], id="Slice end outside of range, negative start"),
+        pytest.param([slice(-25, -15)], id="Slice start outside of range"),
+        pytest.param([slice(-30, -21)], id="Slice too negative"),
+        pytest.param([slice(-21, -30, -1)], id="Slice too negative, negative step"),
+        pytest.param([slice(None, None, -1), slice(-21, -30, -1)], id="Slice too negative, negative step, onto negative step"),
+        pytest.param([slice(10, 10)], id="Empty slice"),
+    ])
+    def test_out_of_bounds_slice(self,
+        vector: np.ndarray,
+        index_history: Sequence[Indices],
+    ):
+
+        subvector = vector
+        joined_loc = clean_slice(slice(None), vector.shape[0])
+
+        for indices in index_history:
+            subvector = subvector[indices]
+            joined_loc = add_indices(joined_loc, indices, vector.shape[0])
+
+        assert np.array_equal(subvector, vector[joined_loc])
+
+    @pytest.mark.parametrize("loc", [
+        pytest.param((slice(3), 25), id="Integer too positive"),
+        pytest.param((slice(None, None, -1), -25), id="Integer too negative"),
+    ])
+    def test_out_of_bounds_integer(self, shape, loc):
+        with pytest.raises(IndexError):
+            _ = add_locations(init_location(shape), loc, shape)
+
+    @pytest.mark.parametrize("loc", [
+        pytest.param(
+            (slice(None), 5, -5, slice(5, -5), slice(4, None)),
+            id="Trailing extra slice",
+        ),
+        pytest.param(
+            (slice(None), 5, -5, slice(5, -5), 0),
+            id="Trailing extra integer",
+        ),
+    ])
+    def test_too_many_indices(self, shape, loc):
+        with pytest.raises(IndexError):
+            _ = add_locations(init_location(shape), loc, shape)
 
 
 class TestComputeIndices:

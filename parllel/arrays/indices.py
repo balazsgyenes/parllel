@@ -71,6 +71,12 @@ def add_locations(
     If current_location contains slices, they must be in standard form (see
     `clean_slice`).
     """
+    if any(isinstance(loc, np.ndarray) for loc in current_location):
+        raise IndexError(
+            "Cannot processing further indexing operations after advanced "
+            "indexing."
+        )
+
     current_location = list(current_location)  # create a copy to prevent modifying inputs
 
     if isinstance(new_location, tuple):
@@ -86,6 +92,10 @@ def add_locations(
         # assume Ellipsis only occurs once, since the location is well-formed
         apparent_n_dim = len([loc for loc in current_location if isinstance(loc, slice)])
         new_location[i:i+1] = [slice(None)] * (apparent_n_dim - len(new_location) + 1)
+
+    if not new_location:
+        # e.g. if new_location was [...] or [()]
+        return current_location
 
     i = 0
     for dim, (current_index, size) in enumerate(zip(current_location, base_shape)):
@@ -155,12 +165,15 @@ def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexT
 
         # translate new_index.start into "world coordinates"
         new_start = index_slice(current_index, new_start, size)
+        new_start = max(0, new_start)  # lower bound at 0
         
         if new_stop is not None:
             # translate new_stop into "world coordinates"
             new_stop = index_slice(current_index, new_stop, size)
             # find the stop that results in the shorter sequence
             new_stop = min(stop, new_stop) if step > 0 else max(stop, new_stop)
+            # bound at the relevant end of the array, preserving empty slices
+            new_stop = max(0, new_stop) if step > 0 else min(new_stop, size)
         elif new_step > 0:
             new_stop = stop
         else:
@@ -169,8 +182,9 @@ def add_indices(current_index: slice, new_index: IndexType, size: int) -> IndexT
             new_stop += np.sign(step * new_step)
         
         # set to None instead of -1
-        # TODO: if an empty slice was passed, do not accidentally convert to a
-        # non-empty slice
+        # this might happen if the stop was specified as an integer, but lands
+        # before the beginning of the array, or if the stop was None and the
+        # start/stop of current_index was -1 (i.e. None with negative step)
         new_stop = None if new_stop < 0 else new_stop
 
         # update step by multiplying new step onto it
