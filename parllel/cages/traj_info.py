@@ -19,7 +19,8 @@ class TrajInfo:
     def set_discount(cls, discount: float) -> None:
         cls._discount = discount
 
-    def step(self,
+    def step(
+        self,
         observation: Any,
         action: Any,
         reward: Union[np.array, float],
@@ -37,9 +38,12 @@ class TrajInfo:
 class MultiAgentTrajInfo(TrajInfo):
     Return: Dict[str, float] = field(default_factory=partial(defaultdict, float))
     NonzeroRewards: Dict[str, int] = field(default_factory=partial(defaultdict, int))
-    DiscountedReturn: Dict[str, float] = field(default_factory=partial(defaultdict, float))
+    DiscountedReturn: Dict[str, float] = field(
+        default_factory=partial(defaultdict, float)
+    )
 
-    def step(self,
+    def step(
+        self,
         observation: Any,
         action: Any,
         reward: Dict[str, Union[np.array, float]],
