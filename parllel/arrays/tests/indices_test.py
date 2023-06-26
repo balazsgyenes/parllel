@@ -213,7 +213,7 @@ class TestAddIndices:
         "4 slices followed by 4 1D arrays",
         "two 2D arrays onto a slice with a negative step",
     ])
-    def test_add_locations_index_array(self,
+    def test_add_locations_with_arrays(self,
         np_array: np.ndarray,
         loc1: Indices,
         loc2: Indices,
@@ -467,7 +467,108 @@ class TestPredictCopyOnIndex:
 
 
 class TestShapeFromIndices:
-    @pytest.mark.parametrize("indices", [
+    def test_shape_from_location(self,
+        np_array: np.ndarray,
+        rng: random.Generator,
+        max_step: int,
+        prob_step_negative: float,
+        prob_start_stop_negative: float,
+    ):
+        for _ in range(1000):
+            loc1 = random_location(rng, np_array.shape, max_step, prob_step_negative, prob_start_stop_negative)
+            subarray = np_array[loc1]
+            loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
+
+            if not (subarray.shape == shape_from_location(loc1_cleaned, np_array.shape)):
+                _ = add_locations(init_location(np_array.shape), loc1, np_array.shape)
+
+            assert subarray.shape == shape_from_location(loc1_cleaned, np_array.shape)
+
+            if not subarray.shape:
+                continue  # if we have indexed a single element already, skip
+            
+            loc2 = random_location(rng, subarray.shape, max_step, prob_step_negative, prob_start_stop_negative)
+            subsubarray = subarray[loc2]
+            joined_loc = add_locations(loc1_cleaned, loc2, np_array.shape)
+            
+            if not (subsubarray.shape == shape_from_location(joined_loc, np_array.shape)):
+                _ = add_locations(loc1_cleaned, loc2, np_array.shape)
+
+            assert subsubarray.shape == shape_from_location(joined_loc, np_array.shape)
+
+    @pytest.mark.parametrize("loc1,loc2", [
+        (
+            (7, slice(None)),
+            (np.array([2, 10, 6, 17, 6]), 5),
+        ),
+        (
+            slice(2, None),
+            (np.array([0, 5, 3, 2, 9]), -10, np.array([14, 2, 7, 4, 8])),
+        ),
+        (
+            slice(2, None),
+            (np.array([0, 5, 3, 2, 9]), slice(5, -5), np.array([14, 2, 7, 4, 8])),
+        ),
+        (
+            (10, slice(2, -2)),
+            np.array([4, 13, 12, 11, 8]),
+        ),
+        (
+            slice(3, -3),
+            (10, np.array([1, 3, 12, 10, 7]), np.array([11, 2, 7, 4, 8])),
+        ),
+        (
+            (10, slice(None, None, 2)),
+            (np.array([2, 1, -2, -4, 8]), np.array([2, -8, 3, 5, 5])),
+        ),
+        (
+            slice(None, None, -2),
+            (np.array([2, 3, -2, -4, 7]), np.array([2, -5, 3, 4, 1])),
+        ),
+        (
+            (slice(1, -1), slice(2, -2), slice(3, -3), slice(4, -4)),
+            (np.array([9, -9, -7, -11]), np.array([-13, -14, -8, 0]), np.array([6, -11, 8, -9]), np.array([-6, 5, 5, -8])),
+        ),
+        (
+            slice(10, None, -2),
+            (
+                np.array([[-2, -5, -5, -4],
+                          [-2, -2,  3, -3],
+                          [ 3,  2, -2, -1],
+                          [ 3,  4,  2,  4]]),
+                np.array([[-1,   8,   0,  18],
+                          [ 3,   5,  10,   3],
+                          [-5,  -7,  18,  -6],
+                          [ 1, -11,   9,   3]]),
+            ),
+        ),
+    ], ids=[
+        "single 1D array onto an integer and a slice",
+        "two 1D arrays with an integer between them",
+        "two 1D arrays with a slice between them",
+        "single 1D array onto a slice",
+        "two 1D arrays onto a slice",
+        "two 1D arrays onto a slice with a step",
+        "two 1D arrays onto a slice with a negative step",
+        "4 slices followed by 4 1D arrays",
+        "two 2D arrays onto a slice with a negative step",
+    ])
+    def test_add_locations_index_array(self,
+        np_array: np.ndarray,
+        loc1: Indices,
+        loc2: Indices,
+    ):
+        subarray = np_array[loc1]
+        loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
+
+        assert subarray.shape == shape_from_location(loc1_cleaned, np_array.shape)
+
+        subsubarray = subarray[loc2]
+        joined_loc = add_locations(loc1_cleaned, loc2, np_array.shape)
+
+        assert subsubarray.shape == shape_from_location(joined_loc, np_array.shape)
+
+    @pytest.mark.parametrize("location", [
         pytest.param(
             (slice(None, None, 2), 2, slice(3), slice(10)),
             id="slices"
@@ -485,14 +586,7 @@ class TestShapeFromIndices:
             id="element"
         ),
     ])
-    def test_shape_from_location(self, np_array, indices):
-        base_shape = np_array.shape
-        cleaned_indices = tuple(
-            slice(*index.indices(size)) if isinstance(index, slice) else index
-            for index, size in zip(indices, base_shape)
-        )
-        shape = shape_from_location(cleaned_indices, np_array.shape)
-        # IMPORTANT: np_array must be indexed with original indices and not the
-        # cleaned indices, because these give different results for
-        # slice(2, None, -1) -> slice(2, -1, -1)
-        assert shape == np_array[indices].shape
+    def test_shape_from_location_named_cases(self, np_array, location):
+        subarray = np_array[location]
+        loc_cleaned = add_locations(init_location(np_array.shape), location, np_array.shape)  # clean location
+        assert subarray.shape == shape_from_location(loc_cleaned, np_array.shape)

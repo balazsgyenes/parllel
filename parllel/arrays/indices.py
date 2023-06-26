@@ -11,7 +11,7 @@ BasicIndex = Union[int, slice]
 
 # A single indexing location, e.g. arr[2, 0] or arr[:-2]
 Location = Union[Index, tuple[Index, ...]]
-StandardLocation = list[Index]
+StandardLocation = list[StandardIndex]
 
 Shape = tuple[int, ...]
 
@@ -98,11 +98,13 @@ def add_locations(
         new_location = [new_location]
 
     # check if Ellipsis occurs in new_location
-    i = next((dim for dim, new_index in enumerate(new_location) if new_index is Ellipsis), None)
-    if i is not None:
+    ellipses = [dim for dim, new_index in enumerate(new_location) if new_index is Ellipsis]
+    if ellipses:
+        if len(ellipses) > 1:
+            raise IndexError("An index can only have a single ellipsis ('...').")
         # pad new_location with slice(None) elements until length equals the
         # apparent number of dimensions
-        # assume Ellipsis only occurs once, since the location is well-formed
+        i = ellipses[0]
         apparent_n_dim = len([location for location in location if isinstance(location, slice)])
         new_location[i:i+1] = [slice(None)] * (apparent_n_dim - len(new_location) + 1)
 
@@ -265,25 +267,29 @@ def init_location(base_shape: Shape) -> StandardLocation:
     return [slice(0, size, 1) for size in base_shape]
 
 
-def shape_from_location(indices: StandardLocation, base_shape: Shape) -> Shape:
+def shape_from_location(location: StandardLocation, base_shape: Shape) -> Shape:
     """Calculates the expected shape of a numpy array of `base_shape` when
     indexed with `indices`. Assumes that all indices are in standard form, i.e.
     for slices, start/stop are positive integers and step is non-zero integer,
     and that base_shape and indices are the same length.
     """
-    return tuple(
-        (
-            size # dimension unindexed, base size unchanged
-            if index == slice(None)
-            # otherwise calculate size of slice
-            else max(
-                # (stop - start) // step, but also account for the fact that
-                # stop is not included in slice. increment depending on whether
-                # step is negative or positive
-                (index.stop - np.sign(index.step) - index.start) // index.step + 1,
-                0) # in case stop is before start, clamp size to at least 0
-        )
-        for size, index
-        in zip(base_shape, indices)
-        if not isinstance(index, int)  # dimension is invisible if indexed with int
-    )
+    # dimension is invisible if indexed with int
+    location = [index for index in location if not isinstance(index, int)]
+    
+    # filter out arrays, as they must be handled differently
+    arrays = [(dim, index) for dim, index in enumerate(location) if isinstance(index, np.ndarray)]
+    if arrays:
+        broadcasted_shape = np.broadcast(*(arr for _, arr in arrays)).shape
+        location = [index for index in location if not isinstance(index, np.ndarray)]
+
+    shape = []
+    for index, base_size in zip(location, base_shape):
+        start, stop, step = index.indices(base_size)
+        size = max(0, math.ceil((stop - start) / step))
+        shape.append(size)
+
+    if arrays:
+        first_array = min(dim for dim, _ in arrays)
+        shape[first_array:first_array] = list(broadcasted_shape)
+
+    return tuple(shape)
