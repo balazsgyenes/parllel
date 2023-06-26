@@ -4,7 +4,6 @@ from typing import Dict, Tuple, Union
 import gym
 import numpy as np
 
-
 ActionType = Union[np.ndarray, Dict[str, np.ndarray]]
 ObsType = Union[np.ndarray, Dict[str, np.ndarray]]
 RewardType = Union[float, np.ndarray, Dict[str, np.ndarray]]

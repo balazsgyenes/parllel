@@ -6,9 +6,9 @@ from gym.wrappers import TimeLimit as GymTimeLimit
 
 from parllel.arrays import Array
 from parllel.buffers import (Buffer, buffer_asarray, dict_to_namedtuple,
-    namedtuple_to_dict)
+                             namedtuple_to_dict)
 
-from .collections import ObsType, EnvStepType, EnvRandomStepType, EnvSpaces
+from .collections import EnvRandomStepType, EnvSpaces, EnvStepType, ObsType
 from .traj_info import TrajInfo
 
 
@@ -24,7 +24,9 @@ class Cage(ABC):
     reset observation. If False, environment is not reset and the
     `needs_reset` flag is set to True.
     """
-    def __init__(self,
+
+    def __init__(
+        self,
         EnvClass: Callable,
         env_kwargs: Dict,
         TrajInfoClass: Callable,
@@ -82,14 +84,14 @@ class Cage(ABC):
         # line up with the corresponding observation
         if self._render:
             rendering = self._env.render(mode="rgb_array")
-        
+
         # get underlying numpy arrays and convert to dict if needed
         action = buffer_asarray(action)
         action = namedtuple_to_dict(action)
 
         obs, reward, done, env_info = self._env.step(action)
         self._traj_info.step(obs, action, reward, done, env_info)
-        
+
         if self._time_limit:
             env_info["timeout"] = env_info.pop("TimeLimit.truncated", False)
 
@@ -107,7 +109,7 @@ class Cage(ABC):
         if done:
             # reset immediately and overwrite last observation
             obs = self._reset_env()
-        
+
         return action, obs, reward, done, env_info
 
     def _reset_env(self) -> ObsType:
@@ -117,7 +119,8 @@ class Cage(ABC):
         return self._env.reset()
 
     @abstractmethod
-    def set_samples_buffer(self,
+    def set_samples_buffer(
+        self,
         action: Buffer,
         obs: Buffer,
         reward: Buffer,
@@ -131,8 +134,10 @@ class Cage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def step_async(self,
-        action: Buffer, *,
+    def step_async(
+        self,
+        action: Buffer,
+        *,
         out_obs: Optional[Buffer] = None,
         out_reward: Optional[Buffer] = None,
         out_done: Optional[Buffer] = None,
@@ -169,12 +174,14 @@ class Cage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def random_step_async(self, *,
+    def random_step_async(
+        self,
+        *,
         out_action: Optional[Buffer] = None,
         out_obs: Optional[Buffer] = None,
         out_reward: Optional[Buffer] = None,
         out_done: Optional[Buffer] = None,
-        out_info: Optional[Buffer] = None
+        out_info: Optional[Buffer] = None,
     ) -> None:
         """Take a step with a random action from the env's action space. If
         out arguments are provided, the result will be written there,
