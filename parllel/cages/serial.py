@@ -4,7 +4,7 @@ from parllel.arrays import Array
 from parllel.buffers import Buffer
 
 from .cage import Cage
-from .collections import EnvStepType, EnvRandomStepType, ObsType
+from .collections import EnvRandomStepType, EnvStepType, ObsType
 from .traj_info import TrajInfo
 
 
@@ -21,7 +21,9 @@ class SerialCage(Cage):
     reset observation. If False, environment is not reset and the
     `needs_reset` flag is set to True.
     """
-    def __init__(self,
+
+    def __init__(
+        self,
         EnvClass: Callable,
         env_kwargs: Dict,
         TrajInfoClass: Callable,
@@ -37,7 +39,8 @@ class SerialCage(Cage):
         self._create_env()
         self._step_result: Union[EnvStepType, EnvRandomStepType, ObsType, None] = None
 
-    def set_samples_buffer(self,
+    def set_samples_buffer(
+        self,
         action: Buffer,
         obs: Buffer,
         reward: Buffer,
@@ -46,8 +49,10 @@ class SerialCage(Cage):
     ) -> None:
         pass
 
-    def step_async(self,
-        action: Buffer, *,
+    def step_async(
+        self,
+        action: Buffer,
+        *,
         out_obs: Optional[Buffer] = None,
         out_reward: Optional[Buffer] = None,
         out_done: Optional[Buffer] = None,
@@ -62,7 +67,7 @@ class SerialCage(Cage):
             else:
                 # store done state
                 self._needs_reset = True
-    
+
         if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
             self._step_result = (obs, reward, done, env_info)
         else:
@@ -81,16 +86,20 @@ class SerialCage(Cage):
         self._completed_trajs = []
         return completed_trajs
 
-    def random_step_async(self, *,
+    def random_step_async(
+        self,
+        *,
         out_action: Optional[Buffer] = None,
         out_obs: Optional[Buffer] = None,
         out_reward: Optional[Buffer] = None,
         out_done: Optional[Buffer] = None,
-        out_info: Optional[Buffer] = None
+        out_info: Optional[Buffer] = None,
     ) -> None:
         action, obs, reward, done, env_info = self._random_step_env()
 
-        if any(out is None for out in (out_action, out_obs, out_reward, out_done, out_info)):
+        if any(
+            out is None for out in (out_action, out_obs, out_reward, out_done, out_info)
+        ):
             self._step_result = (action, obs, reward, done, env_info)
         else:
             out_action[:] = action
@@ -98,7 +107,7 @@ class SerialCage(Cage):
             out_reward[:] = reward
             out_done[:] = done
             out_info[:] = env_info
-        
+
     def reset_async(self, *, out_obs: Optional[Buffer] = None) -> None:
         reset_obs = self._reset_env()
         self._needs_reset = False
