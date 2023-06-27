@@ -1,8 +1,6 @@
 from gym import Env
 from gym.envs.classic_control.cartpole import CartPoleEnv
-from gym.wrappers import (
-    TimeLimit,
-)
+from gym.wrappers import TimeLimit
 
 
 def build_cartpole(
