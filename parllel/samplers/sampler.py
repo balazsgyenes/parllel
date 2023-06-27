@@ -107,6 +107,7 @@ class Sampler(ABC):
             dtype=np.int32,
         )
 
+        done[:] = False
         env_to_step = list(enumerate(self.envs))
         for t in range(self.max_steps_decorrelate):
             # filter out any environments that don't need to be stepped anymore
@@ -134,7 +135,7 @@ class Sampler(ABC):
 
             # no need to reset environments, since they are always reset
             # automatically when calling random_step_async
-            done[t] = np.logical_or(terminated[t], truncated[t])
+            done[T_last] = np.logical_or(terminated[T_last], truncated[T_last])
 
         # discard any completed trajectories. The incomplete ones will be
         # continued during batch collection
