@@ -1,22 +1,26 @@
+import multiprocessing as mp
 from contextlib import contextmanager
 from datetime import datetime
-import multiprocessing as mp
 from pathlib import Path
 from typing import Dict
 
 import hydra
-from omegaconf import DictConfig, OmegaConf
 import torch
-import wandb
+from envs.cartpole import build_cartpole
+from hera_gym.wrappers import add_human_render_wrapper, add_subprocess_wrapper
+from models.lstm_model import CartPoleLstmPgModel
+from omegaconf import DictConfig, OmegaConf
 
-from parllel.arrays import buffer_from_example
-from parllel.buffers import AgentSamples, buffer_method, Samples
-from parllel.cages import TrajInfo
 import parllel.logger as logger
+import wandb
+from parllel.arrays import buffer_from_example
+from parllel.buffers import AgentSamples, Samples, buffer_method
+from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
-    add_obs_normalization, add_reward_clipping, add_reward_normalization,
-    add_valid, build_cages_and_env_buffers, add_initial_rnn_state)
+                              add_initial_rnn_state, add_obs_normalization,
+                              add_reward_clipping, add_reward_normalization,
+                              add_valid, build_cages_and_env_buffers)
 from parllel.replays import BatchedDataLoader
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers import RecurrentSampler
@@ -27,14 +31,9 @@ from parllel.torch.handler import TorchHandler
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
-from envs.cartpole import build_cartpole
-from models.lstm_model import CartPoleLstmPgModel
-from hera_gym.wrappers import add_human_render_wrapper, add_subprocess_wrapper
-
 
 @contextmanager
 def build(config: Dict) -> OnPolicyRunner:
-
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -97,14 +96,14 @@ def build(config: Dict) -> OnPolicyRunner:
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 
-    # for recurrent problems, we need to save the initial state at the 
+    # for recurrent problems, we need to save the initial state at the
     # beginning of the batch
     batch_buffer = add_initial_rnn_state(batch_buffer, agent)
 
     # for advantage estimation, we need to estimate the value of the last
     # state in the batch
     batch_buffer = add_bootstrap_value(batch_buffer)
-    
+
     # for recurrent problems, compute mask that zeroes out samples after
     # environments are done before they can be reset
     batch_buffer = add_valid(batch_buffer)
@@ -166,7 +165,7 @@ def build(config: Dict) -> OnPolicyRunner:
         lr=config["algo"]["learning_rate"],
         **config.get("optimizer", {}),
     )
-    
+
     # create algorithm
     algorithm = PPO(
         agent=agent,
@@ -186,7 +185,7 @@ def build(config: Dict) -> OnPolicyRunner:
 
     try:
         yield runner
-    
+
     finally:
         sampler.close()
         agent.close()
@@ -194,15 +193,14 @@ def build(config: Dict) -> OnPolicyRunner:
             cage.close()
         buffer_method(batch_buffer, "close")
         buffer_method(batch_buffer, "destroy")
-    
+
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo_recurrent")
 def main(config: DictConfig) -> None:
-
     mp.set_start_method("fork")
 
     run = wandb.init(
-        anonymous="must", # for this example, send to wandb dummy account
+        anonymous="must",  # for this example, send to wandb dummy account
         project="CartPole",
         tags=["discrete", "state-based", "ppo", "recurrent"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
@@ -213,7 +211,9 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=Path(f"log_data/cartpole-ppo-recurrent/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        log_dir=Path(
+            f"log_data/cartpole-ppo-recurrent/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        ),
         tensorboard=True,
         output_files={
             "txt": "log.txt",
