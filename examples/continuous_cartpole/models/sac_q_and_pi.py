@@ -2,7 +2,7 @@ from typing import List, Tuple, Union
 
 import numpy as np
 import torch
-from gym import spaces
+from gymnasium import spaces
 from torch import nn
 
 from parllel.torch.agents.sac_agent import PiModelOutputs, QModelOutputs
