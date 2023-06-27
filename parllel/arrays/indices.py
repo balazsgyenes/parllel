@@ -3,7 +3,6 @@ from typing import TypeVar, Union
 
 import numpy as np
 
-
 # A single index element, e.g. arr[3:6]
 Index = Union[int, slice, np.ndarray, type(Ellipsis)]
 StandardIndex = Union[int, slice, np.ndarray]
@@ -68,6 +67,8 @@ def compute_indices(
 
 
 def predict_copy_on_index(shape: Shape, new_location: Location) -> bool:
+    if not isinstance(new_location, tuple):
+        new_location = (new_location,)
     return (len(new_location) == len(shape) and 
         all(isinstance(index, int) for index in new_location))
 
@@ -76,10 +77,16 @@ def add_locations(
     location: StandardLocation,
     new_location: Location,
     base_shape: Shape,
+    neg_from_end: bool = True,
 ) -> StandardLocation:
     """Takes an indexing location, the current indices of the subarray relative
     to the base array, and the base array's shape, and returns the next indices
     of the subarray relative to the base array after indexing.
+
+    If `neg_from_end` is True (default), negative indices are interpreted as
+    relative to the end of the array (as standard in Python and numpy). If
+    False, negative indices are relative to the start of the array, allowing
+    access to the base array from within a subarray.
 
     If location contains slices, they must be in standard form (see
     `clean_slice`).
@@ -119,7 +126,7 @@ def add_locations(
             # cannot be indexed further
             continue
 
-        location[dim] = index_slice(index, new_location[i], size)
+        location[dim] = index_slice(index, new_location[i], size, neg_from_end)
 
         i += 1  # consider next new_index on next loop iteration
         if i == len(new_location):
@@ -136,7 +143,12 @@ def add_locations(
 
 
 IndexType = TypeVar("IndexType", int, slice, np.ndarray)
-def index_slice(index: slice, new_index: IndexType, size: int) -> IndexType:
+def index_slice(
+    index: slice,
+    new_index: IndexType,
+    size: int,
+    neg_from_end: bool = True,
+) -> IndexType:
     """Takes the current indexing state of a single dimension and a new index,
     and returns a single index (int or slice) that could be used to index the
     base array to achieve the same result.
@@ -144,25 +156,25 @@ def index_slice(index: slice, new_index: IndexType, size: int) -> IndexType:
     index must be a slice in standard form (see `clean_slice`).
     """
     if isinstance(new_index, np.ndarray):
-        index = index_slice_with_np(index, new_index, size)
-        if not np.all((0 <= index) & (index < size)):
-            out_of_bounds = new_index[~(0 <= index)]
+        new_index = index_slice_with_np(index, new_index, size, neg_from_end)
+        if not np.all((0 <= new_index) & (new_index < size)):
+            out_of_bounds = new_index[~(0 <= new_index)]
             if out_of_bounds.shape[0] == 0:
-                out_of_bounds = new_index[~(index < size)]
+                out_of_bounds = new_index[~(new_index < size)]
             raise IndexError(
                 f"Index {out_of_bounds[0]} is out of bounds for axis with size "
                 f"{size}."
             )
-        return index
+        return new_index
 
     elif isinstance(new_index, int):
-        index = index_slice_with_int(index, new_index, size)
-        if not (0 <= index < size):
+        new_index = index_slice_with_int(index, new_index, size, neg_from_end)
+        if not (0 <= new_index < size):
             raise IndexError(
                 f"Index {new_index} is out of bounds for axis with size "
                 f"{size}."
             )
-        return index  # index should never be negative after cleaning
+        return new_index  # new_index should never be negative after cleaning
 
     elif new_index == slice(None):
         # no op if indexed with the trivial slice
@@ -179,12 +191,12 @@ def index_slice(index: slice, new_index: IndexType, size: int) -> IndexType:
         new_stop = new_index.stop
 
         # translate new_index.start into "world coordinates"
-        new_start = index_slice_with_int(index, new_start, size)
+        new_start = index_slice_with_int(index, new_start, size, neg_from_end)
         new_start = max(0, new_start)  # lower bound at 0
         
         if new_stop is not None:
             # translate new_stop into "world coordinates"
-            new_stop = index_slice_with_int(index, new_stop, size)
+            new_stop = index_slice_with_int(index, new_stop, size, neg_from_end)
             # find the stop that results in the shorter sequence
             new_stop = min(stop, new_stop) if step > 0 else max(stop, new_stop)
             # bound at the relevant end of the array, preserving empty slices
@@ -208,13 +220,15 @@ def index_slice(index: slice, new_index: IndexType, size: int) -> IndexType:
         return slice(new_start, new_stop, new_step)
 
 
-def index_slice_with_int(slice_: slice, index: int, size: int) -> int:
+def index_slice_with_int(
+    slice_: slice, index: int, size: int, neg_from_end: bool = True
+) -> int:
     """Compute the index of the element that would be returned if a vector was
     first indexed with a slice and then an integer. The slice must be given in
     standard form.
     """
     step = slice_.step
-    if index >= 0:
+    if index >= 0 or not neg_from_end:
         zero = slice_.start
     else:
         # if the index is negative, the start is the end of the slice, or the
@@ -228,21 +242,27 @@ def index_slice_with_int(slice_: slice, index: int, size: int) -> int:
     return zero + index * step
 
 
-def index_slice_with_np(slice_: slice, index: np.ndarray, size: int) -> np.ndarray:
+def index_slice_with_np(
+    slice_: slice, index: np.ndarray, size: int, neg_from_end: bool = True
+) -> np.ndarray:
     """Compute the index of the element that would be returned if a vector was
     first indexed with a slice and then an integer. The slice must be given in
     standard form.
     """
     start, stop, step = slice_.indices(size)
+    
+    if neg_from_end:
     # if the index is negative, the start is the end of the slice, or the
     # end of the array
     # correction if step does not evenly divide into size of array
     # find effective end of slice by counting from start of slice
-    end = start + step * math.ceil((stop - start) / step)
+        end = start + step * math.ceil((stop - start) / step)
 
-    new_index = np.zeros_like(index)
-    new_index[index >= 0] = start + index[index >= 0] * step
-    new_index[index < 0] = end + index[index < 0] * step
+        new_index = np.zeros_like(index)
+        new_index[index >= 0] = start + index[index >= 0] * step
+        new_index[index < 0] = end + index[index < 0] * step
+    else:
+        new_index = start + index * step
 
     return new_index
 
