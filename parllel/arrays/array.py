@@ -19,7 +19,7 @@ class Array(Buffer):
     """
     _subclasses = {}
     storage = "local"
-    kind = "standard"
+    kind = "default"
 
     def __init_subclass__(cls, /, kind: Optional[str] = None, storage: Optional[str] = None, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
@@ -111,6 +111,7 @@ class Array(Buffer):
         template: Array,
         shape: Optional[Tuple[int, ...]] = None,
         dtype: Optional[np.dtype] = None,
+        kind: Optional[str] = None,
         storage: Optional[str] = None,
         padding: Optional[int] = None,
         full_size: Optional[int] = None,
@@ -121,9 +122,12 @@ class Array(Buffer):
         the created Array is just the apparent size of the template. To set it
         to another value, either pass it manually or set the
         `inherit_full_size` flag to True to use the template's full size.
+
+        # TODO: turn this into a normal method called new_array
         """
         shape = shape if shape is not None else template.shape
         dtype = dtype or template.dtype
+        kind = kind or template.kind
         storage = storage or template.storage
         padding = padding if padding is not None else template.padding
         # only inherit full_size from template if full_size is not the default and flag set to true
@@ -135,6 +139,7 @@ class Array(Buffer):
         return cls(
             shape,
             dtype,
+            kind=kind,
             storage=storage,
             padding=padding,
             full_size=full_size,
@@ -300,9 +305,12 @@ class Array(Buffer):
 
         if self.padding and self._offset >= self._full_size:
             # copy values from end of base array to beginning
-            final_values = slice(-(self.padding * 2), None)
-            next_previous_values = slice(0, self.padding * 2)
-            self._base_array[next_previous_values] = self._base_array[final_values]
+            final_values = slice(
+                self._full_size - self.padding,
+                self._full_size + self.padding,
+            )
+            next_previous_values = slice(-self.padding, self.padding)
+            self.full[next_previous_values] = self.full[final_values]
 
         self._offset %= self._full_size
 

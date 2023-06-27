@@ -15,10 +15,12 @@ from .indices import (add_locations, index_slice, init_location,
 
 
 class JaggedArray(Array, kind="jagged"):
+    """An array that represents a list of arrays, the sizes of which may differ
+    in their leading dimension.
     """
-    
     # TODO: maybe create a repr that doesn't call __array__, as this can be expensive
-    """
+    # TODO: ensure consistent init args between this and Array
+    # TODO: ensure that shape and batch_shape are stored
     kind = "jagged"
 
     def __init__(self,
@@ -87,6 +89,11 @@ class JaggedArray(Array, kind="jagged"):
         self._buffer_id: int = id(self)
         self._index_history: list[Indices] = []
         self._current_location = init_location(self._virtual_base_shape)
+        if padding:
+            init_slice = slice(padding, self._default_size + padding)
+            self._current_location = add_locations(
+                self._current_location, init_slice, self._virtual_base_shape,
+            )
 
         self._allocate()
         # TODO: move this into allocate()
@@ -97,11 +104,14 @@ class JaggedArray(Array, kind="jagged"):
         self._current_array = None  # not used by JaggedArray
         self._apparent_shape = batch_shape + shape  # shape of current array
 
-        self._resolve_indexing_history()
-
     def _resolve_indexing_history(self) -> None:
         for location in self._index_history:
-            self._current_location = add_locations(self._current_location, location, self._virtual_base_shape)
+            self._current_location = add_locations(
+                self._current_location,
+                location,
+                self._virtual_base_shape,
+                neg_from_end=False,
+            )
         
         self._index_history.clear()
 
@@ -114,7 +124,12 @@ class JaggedArray(Array, kind="jagged"):
         if self._apparent_shape is None:
             self._resolve_indexing_history()
 
-        destination = tuple(add_locations(self._current_location, location, self._virtual_base_shape))
+        destination = tuple(add_locations(
+            self._current_location,
+            location,
+            self._virtual_base_shape,
+            neg_from_end=False,
+        ))
 
         if isinstance(value, list):
             # TODO: zip and iterate over value and location
@@ -131,9 +146,8 @@ class JaggedArray(Array, kind="jagged"):
         
         # loop over all batch locations by taking the product of slices
         batch_locs = (
-            (loc,) if isinstance(loc, int) else slice_to_range(loc, size)
-            for loc, size
-            in zip(batch_locs, self._virtual_base_shape)
+            (loc,) if isinstance(loc, int) else slice_to_range(loc)
+            for loc in batch_locs
         )
         for loc in itertools.product(*batch_locs):
 
@@ -171,6 +185,47 @@ class JaggedArray(Array, kind="jagged"):
             # write to that location
             self._base_array[real_loc] = value
 
+    @property
+    def full(self) -> JaggedArray:
+        full: JaggedArray = self.__new__(type(self))
+        full.__dict__.update(self.__dict__)
+
+        full._default_size = full._full_size
+        full._offset = 0
+
+        full._index_history = []
+        full._current_array = None
+        full._apparent_shape = None
+
+        # clear current location
+        # TODO: this can be deleted once Array has been refactored
+        full._current_location = init_location(full._virtual_base_shape)
+        if full.padding:
+            init_slice = slice(full.padding, full._default_size + full.padding)
+            full._current_location = add_locations(
+                full._current_location, init_slice, full._virtual_base_shape,
+            )
+
+        return full
+
+    def rotate(self) -> None:
+        # TODO: once setiem supports JaggedArray, no override needed
+        self._offset += self._default_size
+
+        if self.padding and self._offset >= self._full_size:
+            # copy values from end of base array to beginning
+            final_values = range(
+                self._full_size - self.padding,
+                self._full_size + self.padding,
+            )
+            next_previous_values = range(-self.padding, self.padding)
+            b_locs = [range(size) for size in self._virtual_base_shape[1:self._n_batch_dim]]
+            for source, destination in zip(final_values, next_previous_values):
+                for b_loc in itertools.product(*b_locs):
+                    self.full[(destination,) + b_loc] = np.asarray(self.full[(source,) + b_loc])
+
+        self._offset %= self._full_size
+
     def __array__(self, dtype=None) -> np.ndarray:
         if self._apparent_shape is None:
             self._resolve_indexing_history()
@@ -201,15 +256,14 @@ class JaggedArray(Array, kind="jagged"):
             # these are contiguous array regions
             batch_locs = itertools.product(
                 *(
-                    (loc,) if isinstance(loc, int) else slice_to_range(loc, size)
-                    for loc, size
-                    in zip(batch_locs, self._virtual_base_shape[:self._n_batch_dim])
+                    (loc,) if isinstance(loc, int) else slice_to_range(loc)
+                    for loc in batch_locs
                 )
             )
 
         # loop over all batch locations except the T dimension
         for batch_loc in batch_locs:
-            if not all(isinstance(loc, int) for loc in batch_loc):
+            if any(isinstance(loc, slice) for loc in batch_loc):
                 raise NotImplementedError(f"{batch_loc=}")
 
             t_loc, b_loc = batch_loc[0], batch_loc[1:]
@@ -243,7 +297,7 @@ class JaggedArray(Array, kind="jagged"):
         )
 
 
-def slice_to_range(slice_: slice, size: int) -> list[int]:
-    start, stop, step = slice_.indices(size)
-    stop = None if stop < 0 else stop
+def slice_to_range(slice_: slice) -> list[int]:
+    start, stop, step = slice_.start, slice_.stop, slice_.step
+    stop = -1 if stop is None else stop
     return range(start, stop, step)

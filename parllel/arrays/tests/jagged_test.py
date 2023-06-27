@@ -93,12 +93,6 @@ class TestJaggedArray:
         blank_array[loc] = graph
         assert np.array_equal(blank_array[loc], graph)
 
-    def test_write_single_graph_negative_batch_index(self, blank_array, graph_generator):
-        graph = graph_generator()
-        loc = (0, -4)
-        blank_array[loc] = graph
-        assert np.array_equal(blank_array[loc], graph)
-
     def test_write_consecutive_graphs(self, blank_array, graph_generator):
         graph1 = graph_generator()
         graph2 = graph_generator()
@@ -120,3 +114,43 @@ class TestJaggedArray:
         assert np.array_equal(blank_array[0, 1], graph1)
         assert np.array_equal(blank_array[0, 2], graph2)
         assert np.array_equal(blank_array[0, 1:3], np.concatenate((graph1, graph2)))
+
+    def test_get_array_indices(self, blank_array, graph_generator, rng):
+        graphs = [graph_generator() for _ in range(4)]
+
+        blank_array[0, 0] = graphs[0]
+        blank_array[0, 1] = graphs[1]
+        blank_array[1, 0] = graphs[2]
+        blank_array[1, 1] = graphs[3]
+
+        t_locs = rng.integers(0, 2, size=(10,))
+        b_locs = rng.integers(0, 2, size=(10,))
+
+        batch = blank_array[t_locs, b_locs]
+
+        items = []
+        for t_loc, b_loc in zip(t_locs, b_locs):
+            items.append(graphs[t_loc * 2 + b_loc])
+
+        np_batch = np.concatenate(items)
+
+        assert np.array_equal(np_batch, batch)
+
+    def test_rotate(self, blank_array: JaggedArray, graph_generator):
+        batch_shape, shape = blank_array.shape[:2], blank_array.shape[2:]
+        array = JaggedArray(
+            shape=shape,
+            dtype=blank_array.dtype,
+            batch_shape=batch_shape,
+            padding=1,
+        )
+
+        graphs = [graph_generator() for _ in range(2)]
+
+        array[array.last, 0] = graphs[0]
+        array[array.last + 1, 0] = graphs[1]
+
+        array.rotate()
+
+        assert np.array_equal(array[-1, 0], graphs[0])
+        assert np.array_equal(array[0, 0], graphs[1])
