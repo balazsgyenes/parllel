@@ -26,7 +26,7 @@ def feature_shape():
     return (2, 3)
 
 @pytest.fixture(scope="module")
-def batch_size():
+def batch_shape():
     return (64, 8)
 
 @pytest.fixture(params=[np.float32], scope="module")
@@ -48,11 +48,11 @@ def full_size(request):
     return request.param
 
 @pytest.fixture
-def blank_array(ArrayClass, max_points, feature_shape, dtype, batch_size, storage, padding, full_size):
+def blank_array(ArrayClass, max_points, feature_shape, dtype, batch_shape, storage, padding, full_size):
     array = ArrayClass(
         shape=(max_points,) + feature_shape,
         dtype=dtype,
-        batch_size=batch_size,
+        batch_shape=batch_shape,
         storage=storage,
         padding=padding,
         full_size=full_size,

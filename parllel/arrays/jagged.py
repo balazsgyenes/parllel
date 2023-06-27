@@ -1,28 +1,33 @@
 from __future__ import annotations
+
 import itertools
 from typing import Literal, Optional, Union
 
 import numpy as np
 
+import parllel.logger as logger
 from parllel.arrays.array import Array
 from parllel.buffers import Buffer, Index, Indices
-import parllel.logger as logger
 
 from .array import Array
-from .indices import add_locations, add_indices, shape_from_indices
+from .indices import (add_locations, index_slice, init_location,
+                      shape_from_location)
 
 
-class JaggedArray(Array):
+class JaggedArray(Array, kind="jagged"):
     """
     
     # TODO: maybe create a repr that doesn't call __array__, as this can be expensive
     """
+    kind = "jagged"
+
     def __init__(self,
         shape: tuple[int, ...],
         dtype: np.dtype,
         *,
-        batch_size: tuple[int, ...],
-        storage: str = "local",
+        kind: Optional[str] = None,
+        storage: Optional[str] = None,
+        batch_shape: tuple[int, ...],
         padding: int = 0,
         full_size: Optional[int] = None,
         on_overflow: Literal["drop", "resize", "wrap"] = "drop",
@@ -31,54 +36,76 @@ class JaggedArray(Array):
         if dtype == np.object_:
             raise ValueError("Data type should not be object.")
 
-        if batch_size == ():
-            batch_size = (1,)
+        if batch_shape == ():
+            batch_shape = (1,)
+
+        if padding < 0:
+            raise ValueError("Padding must be non-negative.")
+        if padding > shape[0]:
+            raise ValueError(
+                f"Padding ({padding}) cannot be greater than leading "
+                f"dimension {shape[0]}."
+            )
 
         if on_overflow not in {"drop", "resize", "wrap"}:
             raise ValueError(f"Unknown on_overflow option {on_overflow}")
         elif on_overflow in {"resize", "wrap"}:
-            raise NotImplementedError(f"on_overflow option {on_overflow} not permitted")
+            raise NotImplementedError(f"{on_overflow=}")
         
+        if full_size is None:
+            full_size = batch_shape[0]
+        else:
+            raise NotImplementedError(f"{full_size=}")
+        if full_size < batch_shape[0]:
+            raise ValueError(
+                f"Full size ({full_size}) cannot be less than "
+                f"leading batch dimension {batch_shape[0]}."
+            )
+        if full_size % batch_shape[0] != 0:
+            raise ValueError(
+                f"The leading dimension {batch_shape[0]} must divide the full "
+                f"size ({full_size}) evenly."
+            )
+
         self.dtype = dtype
-        # self.batch_size = batch_size
         self.padding = padding
-        self.on_overflow = on_overflow
 
-        self.offset = padding
-        self.base_size = batch_size[0]
-
-        T_size = batch_size[0]
+        base_T_size = full_size + 2 * padding
         N_size = shape[0]
+        self._default_size = batch_shape[0]  # size of leading dim of unindexed array
+        self._virtual_base_shape = (base_T_size,) + batch_shape[1:] + shape  # shape that base array appears to be
+        self._full_size = full_size  # size of leading dim of full array, without padding
+        self._offset = 0  # offset of visible region within full array, without padding
+        self._shift = self._offset + padding  # offset of visible region within base array
         # multiply the T dimension into the node dimension
-        self._flattened_size = T_size * N_size
-        self._base_shape = batch_size[1:] + (self._flattened_size,) + shape[1:]
-        self._n_batch_dim = len(batch_size)
+        self._flattened_size = base_T_size * N_size
+        self._base_shape = batch_shape[1:] + (self._flattened_size,) + shape[1:]
+        self._n_batch_dim = len(batch_shape)
 
-        self._apparent_base_shape = self._apparent_shape = batch_size + shape
-
+        self.on_overflow = on_overflow
+        
         self._buffer_id: int = id(self)
         self._index_history: list[Indices] = []
-        self._current_location: list[Index] = [slice(None) for _ in self._apparent_base_shape]
+        self._current_location = init_location(self._virtual_base_shape)
 
         self._allocate()
-
-        self._current_array = None
-
         # TODO: move this into allocate()
         # add an extra element to node dimension so it's always possible to
         # access the element at t+1
-        self._ptr = np.zeros(shape=batch_size[1:] + (T_size + 1,), dtype=np.int64)
+        self._ptr = np.zeros(shape=batch_shape[1:] + (base_T_size + 1,), dtype=np.int64)
+
+        self._current_array = None  # not used by JaggedArray
+        self._apparent_shape = batch_shape + shape  # shape of current array
 
         self._resolve_indexing_history()
 
     def _resolve_indexing_history(self) -> None:
         for location in self._index_history:
-            self._current_location = add_locations(self._current_location, location)
+            self._current_location = add_locations(self._current_location, location, self._virtual_base_shape)
         
         self._index_history.clear()
 
-        self._apparent_shape = shape_from_indices(self._apparent_base_shape,
-                                                  self._current_location)
+        self._apparent_shape = shape_from_location(self._current_location, self._virtual_base_shape)
         
         # TODO: if current location is a single graph, set real size of that graph
         # as apparent size
@@ -87,7 +114,7 @@ class JaggedArray(Array):
         if self._apparent_shape is None:
             self._resolve_indexing_history()
 
-        destination = tuple(add_locations(self._current_location, location))
+        destination = tuple(add_locations(self._current_location, location, self._virtual_base_shape))
 
         if isinstance(value, list):
             # TODO: zip and iterate over value and location
@@ -106,7 +133,7 @@ class JaggedArray(Array):
         batch_locs = (
             (loc,) if isinstance(loc, int) else slice_to_range(loc, size)
             for loc, size
-            in zip(batch_locs, self._apparent_base_shape)
+            in zip(batch_locs, self._virtual_base_shape)
         )
         for loc in itertools.product(*batch_locs):
 
@@ -136,8 +163,9 @@ class JaggedArray(Array):
             # trailing dimension of size 2)
 
             # compute the subarray within the slice of all nodes
-            n_slice = slice(ptrs[t_loc], ptrs[t_loc + 1])
-            n_loc = add_indices(n_slice, feature_locs[0])
+            start, end = ptrs[t_loc], ptrs[t_loc + 1]
+            n_slice = slice(start, end, 1)  # standard slice must have integer step
+            n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
             real_loc = batch_loc + (n_loc,) + feature_locs[1:]
 
             # write to that location
@@ -149,43 +177,51 @@ class JaggedArray(Array):
         
         current_location = tuple(self._current_location)
         batch_locs, feature_locs = current_location[:self._n_batch_dim], current_location[self._n_batch_dim:]
-        t_locs, b_locs = batch_locs[0], batch_locs[1:]
+        
+        if any(isinstance(loc, np.ndarray) for loc in feature_locs):
+            raise IndexError("No advanced indexing permitted within feature dimensions.")
 
         # create a list of graphs to be concatenated into one large "batch"
         graphs = []
         current_ptrs = []
 
+        if any(isinstance(loc, np.ndarray) for loc in batch_locs):
+            # advanced indexing: zip arrays and iterate over them together
+            # TODO: also iterate over product of this zip any slices present
+            batch_locs = zip(
+                *(
+                    iter(loc) if isinstance(loc, np.ndarray) else (loc,)
+                    for loc in batch_locs
+                )
+            )
+        else:
+            # iterate over every combination of batch indices, treating every
+            # graph individually
+            # TODO: can optimize by handling slices in T dim separately, as
+            # these are contiguous array regions
+            batch_locs = itertools.product(
+                *(
+                    (loc,) if isinstance(loc, int) else slice_to_range(loc, size)
+                    for loc, size
+                    in zip(batch_locs, self._virtual_base_shape[:self._n_batch_dim])
+                )
+            )
+
         # loop over all batch locations except the T dimension
-        b_locs = (
-            (loc,) if isinstance(loc, int) else slice_to_range(loc, size)
-            for loc, size
-            in zip(b_locs, self._apparent_base_shape)
-        )
-        for b_loc in itertools.product(*b_locs):
+        for batch_loc in batch_locs:
+            if not all(isinstance(loc, int) for loc in batch_loc):
+                raise NotImplementedError(f"{batch_loc=}")
+
+            t_loc, b_loc = batch_loc[0], batch_loc[1:]
             ptrs = self._ptr[b_loc]
-            if isinstance(t_locs, int):
-                n_slice = slice(ptrs[t_locs], ptrs[t_locs + 1])
-                n_loc = add_indices(n_slice, feature_locs[0])
-                real_loc = b_loc + (n_loc,) + feature_locs[1:]
-                graph = self._base_array[real_loc]
-                graphs.append(graph)
-                current_ptrs.append(graph.shape[0])
 
-            # t_locs: slice
-            elif ((n_locs := feature_locs[0]) == slice(None) and 
-                  np.abs(t_locs.step) == 1):
-                # TODO: verify this works for step == -1
-                start, stop, _ = t_locs.indices(ptrs.shape[0])
-                n_loc = slice(ptrs[start], ptrs[stop + 1])
-                real_loc = b_loc + (n_loc,) + feature_locs[1:]
-                graph = self._base_array[real_loc]
-                graphs.append(graph)
-                current_ptrs.append(graph.shape[0])
-
-            else:
-                # TODO: iterate over elements of t_locs and index each one
-                # using n_locs
-                raise NotImplementedError
+            start, end = ptrs[t_loc], ptrs[t_loc + 1]
+            n_slice = slice(start, end, 1)
+            n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
+            real_loc = b_loc + (n_loc,) + feature_locs[1:]
+            graph = self._base_array[real_loc]
+            graphs.append(graph)
+            current_ptrs.append(graph.shape[0])
 
         array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
         current_ptrs = np.cumsum(current_ptrs)

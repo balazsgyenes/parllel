@@ -1,4 +1,5 @@
-from __future__ import annotations # full returns another Array
+from __future__ import annotations  # full returns another Array
+
 from functools import reduce
 from typing import Any, Optional, Tuple
 
@@ -18,20 +19,27 @@ class Array(Buffer):
     """
     _subclasses = {}
     storage = "local"
+    kind = "standard"
 
-    def __init_subclass__(cls, /, storage: Optional[str] = None, **kwargs) -> None:
+    def __init_subclass__(cls, /, kind: Optional[str] = None, storage: Optional[str] = None, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
-        if storage is not None:
-            cls._subclasses[storage] = cls
+        kind = kind if kind is not None else "default"
+        storage = storage if storage is not None else "local"
+        cls._subclasses[(kind, storage)] = cls
 
-    def __new__(cls, *args, storage: str = "local", **kwargs):
-        # can instantiate a subclass directly by just not passing storage arg
+    def __new__(cls, *args, kind: Optional[str] = None, storage: Optional[str] = None, **kwargs):
+        # fill in empty arguments with values from class used to instantiate
+        # can instantiate a subclass directly by just not passing kind/storage
         # e.g. SharedMemoryArray(shape=(4,4), dtype=np.float32)
-        if storage == "local" or storage is None:
+        kind = kind if kind is not None else cls.kind
+        storage = storage if storage is not None else cls.storage
+
+        if kind == "default" and storage == "local":
+            # instantiating "Array" with default arguments
             return super().__new__(cls)
         # otherwise look up name in dictionary of registered subclasses
         try:
-            subcls = cls._subclasses[storage]
+            subcls = cls._subclasses[(kind, storage)]
         except KeyError:
             raise ValueError(f"No array registered under storage type '{storage}'")
         return super().__new__(subcls)
@@ -40,7 +48,8 @@ class Array(Buffer):
         shape: Tuple[int, ...],
         dtype: np.dtype,
         *,
-        storage: str = "local",  # consumed by __new__
+        kind: Optional[str] = None,  # consumed by __new__
+        storage: Optional[str] = None,  # consumed by __new__
         padding: int = 0,
         full_size: Optional[int] = None,
     ) -> None:
@@ -73,26 +82,23 @@ class Array(Buffer):
                 f"size ({full_size}) evenly."
             )
 
-        self.full_shape = (full_size,) + shape[1:]
         self.dtype = dtype
         self.padding = padding
-        self.base_size = shape[0]
 
-        self.full_size = full_size
-        self.offset = 0
-        self.shift = self.offset + padding
-        
+        self._default_size = shape[0]  # size of leading dim of unindexed array
+        self._full_size = full_size  # size of leading dim of full array, without padding
+        self._offset = 0  # offset of visible region within full array, without padding
+        self._shift = self._offset + padding  # offset of visible region within base array
         # add padding onto both ends of first dimension
-        self._base_shape = (full_size + 2 * self.padding,) + shape[1:]
-        self._apparent_shape = shape
+        self._base_shape = (full_size + 2 * padding,) + shape[1:]
 
         self._buffer_id: int = id(self)
         self._index_history: list[Indices] = []
 
         self._allocate()
 
-        # the result of calling np.asarray() on the array at any time
-        self._current_array = self._base_array
+        self._current_array = self._base_array  # the result of np.asarray()
+        self._apparent_shape = shape  # shape of current array
 
         # used to enable indexing into a single element like element[:] = 0
         # set to the previous value of current_array, or the base_array
@@ -122,8 +128,8 @@ class Array(Buffer):
         padding = padding if padding is not None else template.padding
         # only inherit full_size from template if full_size is not the default and flag set to true
         full_size = full_size if full_size is not None else (
-            template.full_size
-            if (inherit_full_size and template.full_size > template.base_size) else
+            template._full_size
+            if (inherit_full_size and template._full_size > template._default_size) else
             None
         )
         return cls(
@@ -183,19 +189,19 @@ class Array(Buffer):
 
     def _resolve_indexing_history(self) -> None:
         array = self._base_array
-        self.shift = shift = self.offset + self.padding
+        self._shift = shift = self._offset + self.padding
 
         if self._index_history:
             # shift only the first indices, leave the rest (if there are more)
             index_history = [shift_indices(
                 self._index_history[0],
                 shift,
-                self.base_size,
+                self._default_size,
             )] + self._index_history[1:]
         else:
             # even if the array was never indexed, only this slice of the array
             # should be returned by __array__
-            index_history = [slice(shift, shift + self.base_size)]
+            index_history = [slice(shift, shift + self._default_size)]
 
         # if index history has only 1 element, this has no effect
         array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
@@ -223,12 +229,12 @@ class Array(Buffer):
                 location = self._index_history[-1]
                 # indices must be shifted if they were the first indices
                 if len(self._index_history) == 1:
-                    location = shift_indices(location, self.shift, self.base_size)
+                    location = shift_indices(location, self._shift, self._default_size)
                 destination = self._previous_array
             else:
                 destination = self._current_array
         else:
-            location = shift_indices(location, self.shift, self.base_size)
+            location = shift_indices(location, self._shift, self._default_size)
             destination = self._base_array
         destination[location] = value
     
@@ -237,8 +243,8 @@ class Array(Buffer):
         full: Array = self.__new__(type(self))
         full.__dict__.update(self.__dict__)
 
-        full.base_size = full.full_size
-        full.offset = 0
+        full._default_size = full._full_size
+        full._offset = 0
 
         full._index_history = []
         full._current_array = None
@@ -262,7 +268,7 @@ class Array(Buffer):
 
         # total shift of offset cannot exceed +/-padding, but we do not check
         # if padding is exceeded, getitem/setitem may throw error
-        new.offset += offset
+        new._offset += offset
 
         # index_history is already empty
         # current array is now invalid, but apparent shape should still be
@@ -279,7 +285,7 @@ class Array(Buffer):
             raise RuntimeError("Only allowed to call `reset()` on original array")
         
         # if apparent size is not smaller, sets offset to 0
-        self.offset = self.full_size - self.base_size
+        self._offset = self._full_size - self._default_size
 
         # current array is now invalid, but apparent shape should still be
         # correct
@@ -290,15 +296,15 @@ class Array(Buffer):
         if self._index_history:
             raise RuntimeError("Only allowed to call `rotate()` on original array")
 
-        self.offset += self.base_size
+        self._offset += self._default_size
 
-        if self.padding and self.offset >= self.full_size:
+        if self.padding and self._offset >= self._full_size:
             # copy values from end of base array to beginning
             final_values = slice(-(self.padding * 2), None)
             next_previous_values = slice(0, self.padding * 2)
             self._base_array[next_previous_values] = self._base_array[final_values]
 
-        self.offset %= self.full_size
+        self._offset %= self._full_size
 
         # current array is now invalid, but apparent shape should still be
         # correct
