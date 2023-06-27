@@ -317,7 +317,7 @@ class ProcessCage(Cage, mp.Process):
 
                 if out_obs is None:
                     out_obs[:] = reset_obs
-                    out_info[:] = reset_info
+                    # out_info[:] = reset_info # TODO: How to deal with reset_info since it might not contain the same keys as env_info?
                     self._child_pipe.send((reset_obs, reset_info))
                 self._needs_reset = False
                 self._child_pipe.send(self.needs_reset)
