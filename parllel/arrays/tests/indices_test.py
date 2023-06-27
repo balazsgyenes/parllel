@@ -1,20 +1,15 @@
-from itertools import islice
 import math
+from itertools import islice
 from typing import Sequence
 
 import numpy as np
 import numpy.random as random
 import pytest
 
-from parllel.buffers.buffer import Indices
-from parllel.arrays.indices import (
-    add_locations, index_slice, index_slice_with_int,
-    clean_slice, init_location,
-    compute_indices,
-    predict_copy_on_index,
-    shape_from_location,
-)
-
+from parllel.arrays.indices import (Index, Location, add_locations,
+                                    clean_slice, compute_indices, index_slice,
+                                    index_slice_with_int, init_location,
+                                    predict_copy_on_index, shape_from_location)
 
 PROB_SLICE = 0.5
 PROB_INDEX_NEGATIVE = 0.5
@@ -80,7 +75,7 @@ def random_location(
     max_step: int = MAX_STEP,
     prob_start_stop_negative: float = PROB_INDEX_NEGATIVE,
     prob_step_negative: float = PROB_STEP_NEGATIVE,
-) -> Indices:
+) -> Location:
     return tuple(
         (
             random_slice(rng, size, max_step, prob_step_negative, prob_start_stop_negative)
@@ -215,8 +210,8 @@ class TestAddIndices:
     ])
     def test_add_locations_with_arrays(self,
         np_array: np.ndarray,
-        loc1: Indices,
-        loc2: Indices,
+        loc1: Location,
+        loc2: Location,
     ):
         subarray = np_array[loc1]
         loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
@@ -260,7 +255,7 @@ class TestAddIndices:
     ])
     def test_add_locations_named_cases(self,
         np_array: np.ndarray,
-        index_history: Sequence[Indices],
+        index_history: Sequence[Location],
     ):
         subarray = np_array
         joined_loc = init_location(np_array.shape)
@@ -394,7 +389,7 @@ class TestAddIndices:
     ])
     def test_out_of_bounds_slice(self,
         vector: np.ndarray,
-        index_history: Sequence[Indices],
+        index_history: Sequence[Index],
     ):
 
         subvector = vector
@@ -430,7 +425,7 @@ class TestAddIndices:
 
 
 class TestComputeIndices:
-    @pytest.mark.parametrize("indices", [
+    @pytest.mark.parametrize("location", [
         pytest.param(
             (slice(None, None, 2), 2, slice(1)),
             id="slice"
@@ -453,10 +448,10 @@ class TestComputeIndices:
             marks=pytest.mark.xfail(reason="Indexing a scalar results in a copy")
         ),
     ])
-    def test_single_index_op(self, np_array: np.ndarray, indices: list[Indices]):
-        np_subarray = np_array[indices]
-        indices = compute_indices(np_array, np_subarray)
-        assert np.array_equal(np_subarray, np_array[tuple(indices)])
+    def test_single_index_op(self, np_array: np.ndarray, location: Location):
+        np_subarray = np_array[location]
+        location = compute_indices(np_array, np_subarray)
+        assert np.array_equal(np_subarray, np_array[tuple(location)])
 
 
 class TestPredictCopyOnIndex:
@@ -555,8 +550,8 @@ class TestShapeFromIndices:
     ])
     def test_add_locations_index_array(self,
         np_array: np.ndarray,
-        loc1: Indices,
-        loc2: Indices,
+        loc1: Location,
+        loc2: Location,
     ):
         subarray = np_array[loc1]
         loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
