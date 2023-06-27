@@ -13,7 +13,8 @@ from .sampler import Sampler
 
 
 class EvalSampler(Sampler):
-    def __init__(self,
+    def __init__(
+        self,
         max_traj_length: int,
         min_trajectories: int,
         envs: Sequence[Cage],
@@ -27,7 +28,7 @@ class EvalSampler(Sampler):
                     "EvalSampler expects cages that reset environments "
                     "automatically. Set `reset_automatically=True`."
                 )
-        
+
         super().__init__(
             batch_spec=BatchSpec(1, len(envs)),
             envs=envs,
@@ -65,26 +66,30 @@ class EvalSampler(Sampler):
         # prepare agent for sampling
         self.agent.eval_mode(elapsed_steps)
         self.agent.reset()
-        
+
         # TODO: freeze statistics in obs normalization
 
         n_completed_trajs = 0
 
         # main sampling loop
         for _ in range(self.max_traj_length):
-
             # apply any transforms to the observation before the agent steps
             if self.obs_transform is not None:
                 sample_buffer = self.obs_transform(sample_buffer, 0)
 
             # agent observes environment and outputs actions
-            self.agent.step(observation[0], out_action=action[0],
-                out_agent_info=agent_info[0])
+            self.agent.step(
+                observation[0], out_action=action[0], out_agent_info=agent_info[0]
+            )
 
             for b, env in enumerate(self.envs):
-                env.step_async(action[0, b],
-                    out_obs=observation[0, b], out_reward=reward[0, b],
-                    out_done=done[0, b], out_info=env_info[0, b])
+                env.step_async(
+                    action[0, b],
+                    out_obs=observation[0, b],
+                    out_reward=reward[0, b],
+                    out_done=done[0, b],
+                    out_info=env_info[0, b],
+                )
 
             for b, env in enumerate(self.envs):
                 env.await_step()
@@ -96,12 +101,10 @@ class EvalSampler(Sampler):
                 if n_completed_trajs >= self.min_trajectories:
                     break
                 self.agent.reset_one(np.asarray(dones))
-        
+
         # collect all completed trajectories from envs
         completed_trajectories = [
-            traj
-            for env in self.envs
-            for traj in env.collect_completed_trajs()
+            traj for env in self.envs for traj in env.collect_completed_trajs()
         ]
 
         return completed_trajectories
