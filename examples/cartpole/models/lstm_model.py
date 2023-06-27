@@ -2,7 +2,7 @@ from typing import List, Union
 
 import torch
 import torch.nn.functional as F
-from gym import spaces
+from gymnasium import spaces
 from torch import nn
 
 from parllel.buffers import NamedArrayTupleClass
