@@ -44,7 +44,7 @@ def build_cages_and_env_buffers(
 
     # get example output from env
     example_cage.random_step_async()
-    action, obs, reward, done, info = example_cage.await_step()
+    action, obs, reward, terminated, truncated, info = example_cage.await_step()
 
     example_cage.close()
 
@@ -78,8 +78,28 @@ def build_cages_and_env_buffers(
     # add padding in case reward normalization is used
     # TODO: ideally, we only would add padding if we know we want reward
     # normalization, but how to do this?
+    batch_terminated = buffer_from_example(
+        terminated,
+        tuple(batch_spec),
+        shape=(),
+        dtype=bool,
+        storage=storage,
+        padding=1,
+        full_size=full_size,
+    )
+
+    batch_truncated = buffer_from_example(
+        truncated,
+        tuple(batch_spec),
+        shape=(),
+        dtype=bool,
+        storage=storage,
+        padding=1,
+        full_size=full_size,
+    )
+
     batch_done = buffer_from_example(
-        done,
+        truncated,
         tuple(batch_spec),
         shape=(),
         dtype=bool,
@@ -92,7 +112,14 @@ def build_cages_and_env_buffers(
         info, tuple(batch_spec), name="envinfo", storage=storage
     )
 
-    batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
+    batch_env = EnvSamples(
+        batch_observation,
+        batch_reward,
+        batch_done,
+        batch_terminated,
+        batch_truncated,
+        batch_info,
+    )
 
     # in discrete problems, integer actions are used as array indices during
     # optimization. Pytorch requires indices to be 64-bit integers, so we
@@ -113,6 +140,8 @@ def build_cages_and_env_buffers(
             batch_observation,
             batch_reward,
             batch_done,
+            batch_terminated,
+            batch_truncated,
             batch_info,
         )
 
@@ -127,6 +156,7 @@ def build_cages_and_env_buffers(
 
 
 def add_initial_rnn_state(batch_buffer: Samples, agent: Agent) -> Samples:
+    # TODO: I am not sure how to deal with done vs truncated/terminated here
     rnn_state = agent.initial_rnn_state()
     storage = batch_buffer.env.done.storage
     batch_init_rnn = buffer_from_example(rnn_state, (), storage=storage)
@@ -338,7 +368,7 @@ def build_eval_sampler(
     max_traj_length: int,
     min_trajectories: int,
     step_transforms: Optional[List[Transform]] = None,
-) -> EvalSampler:
+) -> tuple[EvalSampler, Buffer[Array]]:
     # allocate a step buffer with space for a single step
     # first, collect only the elements needed for evaluation
     step_buffer = Samples(
@@ -349,6 +379,8 @@ def build_eval_sampler(
         env=EnvSamples(
             observation=samples_buffer.env.observation,
             reward=samples_buffer.env.reward,
+            terminated=samples_buffer.env.terminated,
+            truncated=samples_buffer.env.truncated,
             done=samples_buffer.env.done,
             env_info=samples_buffer.env.env_info,
         ),

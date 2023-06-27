@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import astuple, dataclass, field, fields
 from functools import partial
-from typing import Any, ClassVar, Dict, Iterator, Tuple, Union
+from typing import Any, ClassVar, Dict, Iterator, Tuple
 
 import numpy as np
 
@@ -23,8 +23,9 @@ class TrajInfo:
         self,
         observation: Any,
         action: Any,
-        reward: Union[np.array, float],
-        done: bool,
+        reward: float,
+        terminated: bool,
+        truncated: bool,
         env_info: Dict[str, Any],
     ) -> None:
         self.Length += 1
@@ -46,8 +47,9 @@ class MultiAgentTrajInfo(TrajInfo):
         self,
         observation: Any,
         action: Any,
-        reward: Dict[str, Union[np.array, float]],
-        done: bool,
+        reward: Dict[str, np.ndarray | float],
+        terminated: bool,
+        truncated: bool,
         env_info: Dict[str, Any],
     ) -> None:
         self.Length += 1

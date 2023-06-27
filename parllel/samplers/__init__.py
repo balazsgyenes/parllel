@@ -6,10 +6,10 @@ import parllel.handlers
 import parllel.transforms
 import parllel.types
 
-from .sampler import Sampler
 from .basic import BasicSampler
 from .eval import EvalSampler
 from .recurrent import RecurrentSampler
+from .sampler import Sampler
 
 __all__ = [
     Sampler,

@@ -1,14 +1,17 @@
-from abc import ABC, abstractmethod
-from typing import Callable, Dict, List, Optional, Union
+from __future__ import annotations
 
-import gym
-from gym.wrappers import TimeLimit as GymTimeLimit
+from abc import ABC, abstractmethod
+from typing import Callable, Dict, List, Optional, Tuple
+
+import gymnasium as gym
+from gymnasium.wrappers.time_limit import TimeLimit as GymTimeLimit
 
 from parllel.arrays import Array
 from parllel.buffers import (Buffer, buffer_asarray, dict_to_namedtuple,
                              namedtuple_to_dict)
 
-from .collections import EnvRandomStepType, EnvSpaces, EnvStepType, ObsType
+from .collections import (EnvInfoType, EnvRandomStepType, EnvSpaces,
+                          EnvStepType, ObsType)
 from .traj_info import TrajInfo
 
 
@@ -49,10 +52,6 @@ class Cage(ABC):
 
         # determine if environment also wrapped with gym's TimeLimit
         env_unwrapped = self._env
-        self._time_limit = isinstance(env_unwrapped, GymTimeLimit)
-        while not self._time_limit and hasattr(env_unwrapped, "env"):
-            env_unwrapped = env_unwrapped.env
-            self._time_limit = isinstance(env_unwrapped, GymTimeLimit)
 
         # save obs and action spaces for easy access
         self._spaces = EnvSpaces(
@@ -83,40 +82,40 @@ class Cage(ABC):
         # if rendering, render before step is taken so that the renderings
         # line up with the corresponding observation
         if self._render:
-            rendering = self._env.render(mode="rgb_array")
+            rendering = self._env.render()
 
         # get underlying numpy arrays and convert to dict if needed
         action = buffer_asarray(action)
         action = namedtuple_to_dict(action)
 
-        obs, reward, done, env_info = self._env.step(action)
-        self._traj_info.step(obs, action, reward, done, env_info)
-
-        if self._time_limit:
-            env_info["timeout"] = env_info.pop("TimeLimit.truncated", False)
+        obs, reward, terminated, truncated, env_info = self._env.step(action)
+        self._traj_info.step(obs, action, reward, terminated, truncated, env_info)
 
         if self._render:
             env_info["rendering"] = rendering
 
-        return obs, reward, done, env_info
+        return obs, reward, terminated, truncated, env_info
 
     def _random_step_env(self) -> EnvRandomStepType:
         action = self._env.action_space.sample()
         action = dict_to_namedtuple(action, "action")
 
-        obs, reward, done, env_info = self._step_env(action)
+        obs, reward, terminated, truncated, env_info = self._step_env(action)
 
-        if done:
+        if terminated or truncated:
             # reset immediately and overwrite last observation
-            obs = self._reset_env()
+            obs, env_info = self._reset_env()
 
-        return action, obs, reward, done, env_info
+        return action, obs, reward, terminated, truncated, env_info
 
-    def _reset_env(self) -> ObsType:
+    def _reset_env(
+        self, seed: Optional[int] = None, options: Optional[dict] = None
+    ) -> Tuple[ObsType, EnvInfoType]:
         # store finished trajectory and start new one
         self._completed_trajs.append(self._traj_info)
         self._traj_info = self.TrajInfoClass()
-        return self._env.reset()
+        obs, env_info = self._env.reset(seed=seed, options=options)
+        return obs, env_info
 
     @abstractmethod
     def set_samples_buffer(
@@ -140,7 +139,8 @@ class Cage(ABC):
         *,
         out_obs: Optional[Buffer] = None,
         out_reward: Optional[Buffer] = None,
-        out_done: Optional[Buffer] = None,
+        out_terminated: Optional[Buffer] = None,
+        out_truncated: Optional[Buffer] = None,
         out_info: Optional[Buffer] = None,
     ) -> None:
         """Step the environment asynchronously using action. If out arguments
@@ -153,7 +153,7 @@ class Cage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def await_step(self) -> Union[EnvStepType, EnvRandomStepType, ObsType]:
+    def await_step(self) -> EnvStepType | EnvRandomStepType | ObsType:
         """Wait for the asynchronous step to finish and return the results.
         If step_async, reset_async, or random_step_async was called previously
         with input arguments, returns None.
@@ -180,7 +180,8 @@ class Cage(ABC):
         out_action: Optional[Buffer] = None,
         out_obs: Optional[Buffer] = None,
         out_reward: Optional[Buffer] = None,
-        out_done: Optional[Buffer] = None,
+        out_terminated: Optional[Buffer] = None,
+        out_truncated: Optional[Buffer] = None,
         out_info: Optional[Buffer] = None,
     ) -> None:
         """Take a step with a random action from the env's action space. If
@@ -193,7 +194,9 @@ class Cage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def reset_async(self, *, out_obs: Optional[Buffer] = None) -> None:
+    def reset_async(
+        self, *, out_obs: Optional[Buffer] = None, out_info: Optional[Buffer]
+    ) -> None:
         """Reset the environment. If out_obs is provided, the reset observation
         is written there, otherwise it is returned the next time that
         await_step is called.

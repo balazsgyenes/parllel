@@ -43,16 +43,18 @@ class EvalSampler(Sampler):
         # prepare cages for sampling
         self.reset_envs()
 
-    def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
+    def collect_batch(self, elapsed_steps: int) -> List[TrajInfo]:
         # get references to buffer elements
         action, agent_info = (
             self.sample_buffer.agent.action,
             self.sample_buffer.agent.agent_info,
         )
-        observation, reward, done, env_info = (
+        observation, reward, done, terminated, truncated, env_info = (
             self.sample_buffer.env.observation,
             self.sample_buffer.env.reward,
             self.sample_buffer.env.done,
+            self.sample_buffer.env.terminated,
+            self.sample_buffer.env.truncated,
             self.sample_buffer.env.env_info,
         )
         sample_buffer = self.sample_buffer
@@ -72,7 +74,7 @@ class EvalSampler(Sampler):
         n_completed_trajs = 0
 
         # main sampling loop
-        for _ in range(self.max_traj_length):
+        for t in range(self.max_traj_length):
             # apply any transforms to the observation before the agent steps
             if self.obs_transform is not None:
                 sample_buffer = self.obs_transform(sample_buffer, 0)
@@ -87,13 +89,16 @@ class EvalSampler(Sampler):
                     action[0, b],
                     out_obs=observation[0, b],
                     out_reward=reward[0, b],
-                    out_done=done[0, b],
+                    out_terminated=terminated[0, b],
+                    out_truncated=truncated[0, b],
                     out_info=env_info[0, b],
                 )
 
             for b, env in enumerate(self.envs):
                 env.await_step()
 
+            # print(np.logical_or(terminated[t], truncated[t]))
+            done[0] = np.logical_or(terminated[0], truncated[0])
             # if environment is done, reset agent
             # environment has already been reset inside cage
             if np.any(dones := done[0]):

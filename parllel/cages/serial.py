@@ -1,10 +1,10 @@
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional
 
 from parllel.arrays import Array
 from parllel.buffers import Buffer
 
 from .cage import Cage
-from .collections import EnvRandomStepType, EnvStepType, ObsType
+from .collections import EnvRandomStepType, EnvResetType, EnvStepType
 from .traj_info import TrajInfo
 
 
@@ -37,14 +37,15 @@ class SerialCage(Cage):
         )
         # create env immediately in the local process
         self._create_env()
-        self._step_result: Union[EnvStepType, EnvRandomStepType, ObsType, None] = None
+        self._step_result: EnvStepType | EnvRandomStepType | EnvResetType | None = None
 
     def set_samples_buffer(
         self,
         action: Buffer,
         obs: Buffer,
         reward: Buffer,
-        done: Array,
+        terminated: Array,
+        truncated: Array,
         info: Buffer,
     ) -> None:
         pass
@@ -55,28 +56,35 @@ class SerialCage(Cage):
         *,
         out_obs: Optional[Buffer] = None,
         out_reward: Optional[Buffer] = None,
-        out_done: Optional[Buffer] = None,
+        out_terminated: Optional[Buffer] = None,
+        out_truncated: Optional[Buffer] = None,
         out_info: Optional[Buffer] = None,
     ) -> None:
-        obs, reward, done, env_info = self._step_env(action)
+        obs, reward, terminated, truncated, env_info = self._step_env(action)
+
+        done = terminated or truncated
 
         if done:
             if self.reset_automatically:
                 # reset immediately and overwrite last observation
-                obs = self._reset_env()
+                obs, env_info = self._reset_env()
             else:
                 # store done state
                 self._needs_reset = True
 
-        if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
-            self._step_result = (obs, reward, done, env_info)
+        if any(
+            out is None
+            for out in (out_obs, out_reward, out_terminated, out_truncated, out_info)
+        ):
+            self._step_result = (obs, reward, terminated, truncated, env_info)
         else:
             out_obs[:] = obs
             out_reward[:] = reward
-            out_done[:] = done
+            out_terminated[:] = terminated
+            out_truncated[:] = truncated
             out_info[:] = env_info
 
-    def await_step(self) -> Union[EnvStepType, EnvRandomStepType, ObsType]:
+    def await_step(self) -> EnvStepType | EnvRandomStepType | EnvResetType:
         result = self._step_result
         self._step_result = None
         return result
@@ -92,30 +100,36 @@ class SerialCage(Cage):
         out_action: Optional[Buffer] = None,
         out_obs: Optional[Buffer] = None,
         out_reward: Optional[Buffer] = None,
-        out_done: Optional[Buffer] = None,
+        out_terminated: Optional[Buffer] = None,
+        out_truncated: Optional[Buffer] = None,
         out_info: Optional[Buffer] = None,
     ) -> None:
-        action, obs, reward, done, env_info = self._random_step_env()
+        action, obs, reward, terminated, truncated, env_info = self._random_step_env()
 
         if any(
-            out is None for out in (out_action, out_obs, out_reward, out_done, out_info)
+            out is None
+            for out in (out_action, out_obs, out_reward, out_terminated, out_info)
         ):
-            self._step_result = (action, obs, reward, done, env_info)
+            self._step_result = (action, obs, reward, terminated, truncated, env_info)
         else:
             out_action[:] = action
             out_obs[:] = obs
             out_reward[:] = reward
-            out_done[:] = done
+            out_terminated[:] = terminated
+            out_truncated[:] = truncated
             out_info[:] = env_info
 
-    def reset_async(self, *, out_obs: Optional[Buffer] = None) -> None:
-        reset_obs = self._reset_env()
+    def reset_async(
+        self, *, out_obs: Optional[Buffer] = None, out_info: Optional[Buffer]
+    ) -> None:
+        reset_obs, reset_info = self._reset_env()
         self._needs_reset = False
 
         if out_obs is None:
-            self._step_result = reset_obs
+            self._step_result = (reset_obs, reset_info)
         else:
             out_obs[:] = reset_obs
+            out_info[:] = reset_info
 
     def close(self) -> None:
         self._close_env()

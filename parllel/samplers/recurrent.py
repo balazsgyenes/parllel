@@ -13,7 +13,8 @@ from .sampler import Sampler
 
 
 class RecurrentSampler(Sampler):
-    def __init__(self,
+    def __init__(
+        self,
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
         agent: Handler,
@@ -24,8 +25,7 @@ class RecurrentSampler(Sampler):
         obs_transform: Optional[Transform] = None,
         batch_transform: Optional[Transform] = None,
     ) -> None:
-        """Generates samples for training recurrent agents.
-        """
+        """Generates samples for training recurrent agents."""
         super().__init__(
             batch_spec=batch_spec,
             envs=envs,
@@ -44,31 +44,38 @@ class RecurrentSampler(Sampler):
 
         # verify that valid field exists
         if not hasattr(sample_buffer.env, "valid"):
-            raise ValueError("RecurrentSampler expects a buffer field at "
-                "sample_buffer.env.valid. Please allocate this.")
+            raise ValueError(
+                "RecurrentSampler expects a buffer field at "
+                "sample_buffer.env.valid. Please allocate this."
+            )
 
         # verify that valid is a RotatingArray
         try:
             # try writing beyond the apparent bounds of the action buffer
             sample_buffer.env.valid[batch_spec.T] = 0
         except IndexError:
-            raise TypeError("sample_buffer.env.valid must be a "
-                "RotatingArray")
+            raise TypeError("sample_buffer.env.valid must be a " "RotatingArray")
 
         # verify that initial_rnn_state field exists
-        if get_initial_rnn_state and not hasattr(sample_buffer.agent,
-            "initial_rnn_state"):
-            raise ValueError("RecurrentSampler expects a buffer field at "
-                "sample_buffer.agent.initial_rnn_state. Please allocate this.")
+        if get_initial_rnn_state and not hasattr(
+            sample_buffer.agent, "initial_rnn_state"
+        ):
+            raise ValueError(
+                "RecurrentSampler expects a buffer field at "
+                "sample_buffer.agent.initial_rnn_state. Please allocate this."
+            )
         self.get_initial_rnn_state = get_initial_rnn_state
 
-        if get_bootstrap_value and not hasattr(self.sample_buffer.agent,
-                "bootstrap_value"):
-            raise ValueError("Requested bootstrap value from agent, but "
+        if get_bootstrap_value and not hasattr(
+            self.sample_buffer.agent, "bootstrap_value"
+        ):
+            raise ValueError(
+                "Requested bootstrap value from agent, but "
                 "sample_buffer.agent.bootstrap_value does not exist. Please "
-                "allocate it.")
+                "allocate it."
+            )
         self.get_bootstrap_value = get_bootstrap_value
-        
+
         self.obs_transform = obs_transform
         self.batch_transform = batch_transform
 
@@ -81,10 +88,12 @@ class RecurrentSampler(Sampler):
             self.sample_buffer.agent.action,
             self.sample_buffer.agent.agent_info,
         )
-        observation, reward, done, env_info, valid = (
+        observation, reward, done, terminated, truncated, env_info, valid = (
             self.sample_buffer.env.observation,
             self.sample_buffer.env.reward,
             self.sample_buffer.env.done,
+            self.sample_buffer.env.terminated,
+            self.sample_buffer.env.truncated,
             self.sample_buffer.env.env_info,
             self.sample_buffer.env.valid,
         )
@@ -95,12 +104,12 @@ class RecurrentSampler(Sampler):
 
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
-        
+
         if self.get_initial_rnn_state:
             self.agent.initial_rnn_state(
                 out_rnn_state=sample_buffer.agent.initial_rnn_state
             )
-        
+
         # first time step is always valid, rest are invalid by default
         valid[0] = True
         valid[1:] = False
@@ -110,7 +119,6 @@ class RecurrentSampler(Sampler):
         # main sampling loop
         envs_to_step = list(enumerate(self.envs))
         for t in range(self.batch_spec.T):
-
             # get a list of environments that are not done yet
             # we want to avoid stepping these
             envs_to_step = [(b, env) for b, env in envs_to_step if not env.needs_reset]
@@ -124,21 +132,28 @@ class RecurrentSampler(Sampler):
                 self.batch_samples = self.obs_transform(sample_buffer, t)
 
             # agent observes environment and outputs actions
-            self.agent.step(observation[t], out_action=action[t],
-                out_agent_info=agent_info[t])
+            self.agent.step(
+                observation[t], out_action=action[t], out_agent_info=agent_info[t]
+            )
 
             for b, env in envs_to_step:
-                env.step_async(action[t, b],
-                    out_obs=observation[t+1, b], out_reward=reward[t, b],
-                    out_done=done[t, b], out_info=env_info[t, b])
+                env.step_async(
+                    action[t, b],
+                    out_obs=observation[t + 1, b],
+                    out_reward=reward[t, b],
+                    out_terminated=terminated[t, b],
+                    out_truncated=truncated[t, b],
+                    out_info=env_info[t, b],
+                )
 
             for b, env in envs_to_step:
                 env.await_step()
 
             # calculate validity of samples in next time step
             # this might be required by the obs_transform
+            done[t] = np.logical_or(terminated[t], truncated[t])
             valid[t + 1] = np.logical_and(valid[t], np.logical_not(done[t]))
-        
+
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
             # if environment is already done, this value is invalid, but then
@@ -149,12 +164,17 @@ class RecurrentSampler(Sampler):
             )
 
         # reset any environments that need reset in parallel
-        envs_need_reset = [(b, env) for b, env in enumerate(self.envs) if env.needs_reset]
-        
+        envs_need_reset = [
+            (b, env) for b, env in enumerate(self.envs) if env.needs_reset
+        ]
+
         for b, env in envs_need_reset:
             # overwrite next first observation with reset observation
-            env.reset_async(out_obs=observation[self.batch_spec.T, b])
-            
+            env.reset_async(
+                out_obs=observation[self.batch_spec.T, b],
+                out_info=env_info[self.batch_spec.T, b],
+            )
+
         self.agent.reset_one([b for b, env in envs_need_reset])
 
         for b, env in envs_need_reset:
@@ -162,9 +182,7 @@ class RecurrentSampler(Sampler):
 
         # collect all completed trajectories from envs
         completed_trajectories = [
-            traj
-            for env in self.envs
-            for traj in env.collect_completed_trajs()
+            traj for env in self.envs for traj in env.collect_completed_trajs()
         ]
 
         # apply user-defined transforms
