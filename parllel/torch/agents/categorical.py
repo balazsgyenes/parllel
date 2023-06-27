@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, Union
 
-import gym
+import gymnasium
 import torch
 
 from parllel.buffers import (Buffer, buffer_map, buffer_method,
