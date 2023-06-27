@@ -1,6 +1,6 @@
-from dataclasses import dataclass
 import enum
 import multiprocessing as mp
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from parllel.arrays import Array, ManagedMemoryArray
@@ -9,12 +9,13 @@ from parllel.buffers.registry import BufferRegistry
 from parllel.buffers.utils import buffer_all
 
 from .cage import Cage
-from .collections import EnvStepType, EnvRandomStepType, ObsType, EnvSpaces
+from .collections import EnvRandomStepType, EnvSpaces, EnvStepType, ObsType
 from .traj_info import TrajInfo
 
 
 class Command(enum.Enum):
     """Commands for communicating with the subprocess"""
+
     register_sample_buffer = 1
     step = 2
     collect_completed_trajs = 4
@@ -26,6 +27,7 @@ class Command(enum.Enum):
 @dataclass
 class Message:
     """Bundles a command and an optional action for atomic messages"""
+
     command: Command
     data: Any = None
 
@@ -44,7 +46,9 @@ class ProcessCage(Cage, mp.Process):
     reset observation. If False, environment is not reset and the
     `needs_reset` flag is set to True.
     """
-    def __init__(self,
+
+    def __init__(
+        self,
         EnvClass: Callable,
         env_kwargs: Dict,
         TrajInfoClass: Callable,
@@ -77,7 +81,8 @@ class ProcessCage(Cage, mp.Process):
         # ensures that `step` is always followed by `await_step`
         self.waiting: bool = False
 
-    def set_samples_buffer(self,
+    def set_samples_buffer(
+        self,
         action: Buffer,
         obs: Buffer,
         reward: Buffer,
@@ -87,7 +92,9 @@ class ProcessCage(Cage, mp.Process):
         """Pass reference to samples buffer after process start."""
         assert not self.waiting
         samples_buffer = (action, obs, reward, done, info)
-        if not buffer_all(samples_buffer, lambda arr: isinstance(arr, ManagedMemoryArray)):
+        if not buffer_all(
+            samples_buffer, lambda arr: isinstance(arr, ManagedMemoryArray)
+        ):
             raise TypeError(
                 "Only ManagedMemoryArray can be set as samples buffer after "
                 "process start. Either use ManagedMemoryArrays or pass the "
@@ -96,10 +103,12 @@ class ProcessCage(Cage, mp.Process):
         self._parent_pipe.send(Message(Command.register_sample_buffer, samples_buffer))
         for buf in samples_buffer:
             self.buffer_registry.register_buffer(buf)
-        self._parent_pipe.recv() # block until finished
+        self._parent_pipe.recv()  # block until finished
 
-    def step_async(self,
-        action: Buffer, *,
+    def step_async(
+        self,
+        action: Buffer,
+        *,
         out_obs: Optional[Buffer] = None,
         out_reward: Optional[Buffer] = None,
         out_done: Optional[Buffer] = None,
@@ -127,20 +136,22 @@ class ProcessCage(Cage, mp.Process):
         self._parent_pipe.send(Message(Command.collect_completed_trajs))
         trajs = self._parent_pipe.recv()
         return trajs
-    
-    def random_step_async(self, *,
+
+    def random_step_async(
+        self,
+        *,
         out_action: Optional[Buffer] = None,
         out_obs: Optional[Buffer] = None,
         out_reward: Optional[Buffer] = None,
         out_done: Optional[Buffer] = None,
-        out_info: Optional[Buffer] = None
+        out_info: Optional[Buffer] = None,
     ) -> None:
         assert not self.waiting
         args = (out_action, out_obs, out_reward, out_done, out_info)
         args = tuple(self.buffer_registry.reduce_buffer(buf) for buf in args)
         self._parent_pipe.send(Message(Command.random_step, args))
         self.waiting = True
-    
+
     def reset_async(self, *, out_obs: Optional[Buffer] = None) -> None:
         assert not self.waiting
         out_obs = self.buffer_registry.reduce_buffer(out_obs)
@@ -157,16 +168,18 @@ class ProcessCage(Cage, mp.Process):
         """This method runs in a child process. It receives messages through
         child_pipe, and sends back results.
         """
-        self._create_env() # create env, traj info, etc.
+        self._create_env()  # create env, traj info, etc.
 
         _reset_obs: Optional[Buffer] = None
 
         # send env spaces back to parent
         # parent process can receive gym Space objects because gym is imported
-        self._child_pipe.send(EnvSpaces(
-            observation=self._env.observation_space,
-            action=self._env.action_space,
-        ))
+        self._child_pipe.send(
+            EnvSpaces(
+                observation=self._env.observation_space,
+                action=self._env.action_space,
+            )
+        )
 
         while True:
             message: Message = self._child_pipe.recv()
@@ -192,7 +205,9 @@ class ProcessCage(Cage, mp.Process):
                         # store done state
                         self._needs_reset = True
 
-                if any(out is None for out in (out_obs, out_reward, out_done, out_info)):
+                if any(
+                    out is None for out in (out_obs, out_reward, out_done, out_info)
+                ):
                     self._child_pipe.send((obs, reward, done, env_info))
                 else:
                     out_obs[:] = obs
@@ -217,7 +232,10 @@ class ProcessCage(Cage, mp.Process):
                 out_action, out_obs, out_reward, out_done, out_info = data
                 action, obs, reward, done, env_info = self._random_step_env()
 
-                if any(out is None for out in (out_action, out_obs, out_reward, out_done, out_info)):
+                if any(
+                    out is None
+                    for out in (out_action, out_obs, out_reward, out_done, out_info)
+                ):
                     self._child_pipe.send((action, obs, reward, done, env_info))
                 else:
                     out_action[:] = action
