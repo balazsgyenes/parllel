@@ -4,7 +4,8 @@ from typing import Optional, Union
 import gym
 import torch
 
-from parllel.buffers import Buffer, buffer_map, buffer_method, dict_to_namedtuple
+from parllel.buffers import (Buffer, buffer_map, buffer_method,
+                             dict_to_namedtuple)
 from parllel.handlers.agent import AgentStep
 from parllel.torch.distributions.categorical import Categorical, DistInfo
 from parllel.torch.utils import buffer_to_device, torchify_buffer
@@ -23,7 +24,7 @@ class ModelOutputs:
 class CategoricalPgAgent(TorchAgent):
     """Agent for policy gradient algorithm using categorical action
     distribution for discrete action spaces.
-    
+
     The model must return the ModelOutputs type in this module, which contains:
         - pi: probabilities for each discrete action in the action space
         - value: value estimates, which can be omitted in cases without value
@@ -37,15 +38,17 @@ class CategoricalPgAgent(TorchAgent):
         - previous_action: action sampled from distribution from last time step
         - rnn_state: hidden recurrent state from last time step
     """
-    def __init__(self,
-            model: torch.nn.Module,
-            distribution: Categorical,
-            observation_space: gym.Space,
-            action_space: gym.Space,
-            n_states: Optional[int] = None,
-            device: Optional[torch.device] = None,
-            recurrent: bool = False,
-        ) -> None:
+
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        distribution: Categorical,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        n_states: Optional[int] = None,
+        device: Optional[torch.device] = None,
+        recurrent: bool = False,
+    ) -> None:
         super().__init__(model, distribution, device)
 
         self.observation_space = observation_space
@@ -63,7 +66,7 @@ class CategoricalPgAgent(TorchAgent):
         example_obs = dict_to_namedtuple(example_obs, "observation")
         example_obs = torchify_buffer(example_obs)
         example_inputs = (example_obs,)
-        
+
         if self.recurrent:
             example_action = self.action_space.sample()
             example_action = dict_to_namedtuple(example_action, "action")
@@ -78,8 +81,10 @@ class CategoricalPgAgent(TorchAgent):
             try:
                 model_outputs: ModelOutputs = self.model(*example_inputs)
             except TypeError as e:
-                raise TypeError("You may have forgotten to pass recurrent=True"
-                    " when creating this agent.") from e
+                raise TypeError(
+                    "You may have forgotten to pass recurrent=True"
+                    " when creating this agent."
+                ) from e
 
         if self.recurrent:
             # Extend an rnn_state to allocate a slot for each env.
@@ -96,15 +101,15 @@ class CategoricalPgAgent(TorchAgent):
                 lambda t: torch.stack((t,) * n_states, dim=0),
                 example_action,
             )
-            self.previous_action = buffer_to_device(previous_action,
-                device=self.device)
+            self.previous_action = buffer_to_device(previous_action, device=self.device)
 
     @torch.no_grad()
-    def step(self,
-            observation: Buffer,
-            *,
-            env_indices: Union[int, slice] = ...,
-        ) -> AgentStep:
+    def step(
+        self,
+        observation: Buffer,
+        *,
+        env_indices: Union[int, slice] = ...,
+    ) -> AgentStep:
         model_inputs = (observation,)
         model_inputs = buffer_to_device(model_inputs, device=self.device)
         if self.recurrent:
@@ -124,7 +129,8 @@ class CategoricalPgAgent(TorchAgent):
         if self.recurrent:
             # overwrite saved rnn_state and action as inputs to next step
             previous_action = self._advance_states(
-                model_outputs.next_rnn_state, action, env_indices)
+                model_outputs.next_rnn_state, action, env_indices
+            )
         else:
             previous_action = None
 
@@ -145,18 +151,19 @@ class CategoricalPgAgent(TorchAgent):
         model_inputs = buffer_to_device(model_inputs, device=self.device)
         if self.recurrent:
             # already on device
-            rnn_states, previous_action = self._get_states(...)          
+            rnn_states, previous_action = self._get_states(...)
             previous_action = self.distribution.to_onehot(self.previous_action)
             model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         value = model_outputs.value
         return buffer_to_device(value, device="cpu")
 
-    def predict(self,
-            observation: Buffer,
-            agent_info: AgentInfo,
-            init_rnn_state: Optional[Buffer] = None,
-        ) -> AgentPrediction:
+    def predict(
+        self,
+        observation: Buffer,
+        agent_info: AgentInfo,
+        init_rnn_state: Optional[Buffer] = None,
+    ) -> AgentPrediction:
         """Performs forward pass on training data, for algorithm."""
         model_inputs = (observation,)
         if self.recurrent:
@@ -166,7 +173,10 @@ class CategoricalPgAgent(TorchAgent):
             previous_action = self.distribution.to_onehot(previous_action)
             init_rnn_state = buffer_method(init_rnn_state, "transpose", 0, 1)
             init_rnn_state = buffer_method(init_rnn_state, "contiguous")
-            model_inputs += (previous_action, init_rnn_state,)
+            model_inputs += (
+                previous_action,
+                init_rnn_state,
+            )
         model_outputs: ModelOutputs = self.model(*model_inputs)
         dist_info = DistInfo(prob=model_outputs.pi)
         value = model_outputs.value
