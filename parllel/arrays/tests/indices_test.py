@@ -90,7 +90,7 @@ def random_location(
 
 
 @pytest.fixture(params=[
-    (20, 20, 20, 20)
+    (20, 22, 24, 26)
 ], scope="module")
 def shape(request):
     return request.param
@@ -461,7 +461,7 @@ class TestPredictCopyOnIndex:
         assert not predict_copy_on_index((9,3,2), (slice(4,5),0,0))
 
 
-class TestShapeFromIndices:
+class TestShapeFromLocation:
     def test_shape_from_location(self,
         np_array: np.ndarray,
         rng: random.Generator,
@@ -548,7 +548,7 @@ class TestShapeFromIndices:
         "4 slices followed by 4 1D arrays",
         "two 2D arrays onto a slice with a negative step",
     ])
-    def test_add_locations_index_array(self,
+    def test_shape_from_location_index_array(self,
         np_array: np.ndarray,
         loc1: Location,
         loc2: Location,

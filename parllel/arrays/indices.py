@@ -294,16 +294,31 @@ def shape_from_location(location: StandardLocation, base_shape: Shape) -> Shape:
     and that base_shape and indices are the same length.
     """
     # dimension is invisible if indexed with int
-    location = [index for index in location if not isinstance(index, int)]
+    visible_dims = [
+        (index, size)
+        for index, size
+        in zip(location, base_shape)
+        if not isinstance(index, int)
+    ]
     
     # filter out arrays, as they must be handled differently
-    arrays = [(dim, index) for dim, index in enumerate(location) if isinstance(index, np.ndarray)]
+    arrays = [
+        (dim, index)
+        for dim, (index, size)
+        in enumerate(visible_dims)
+        if isinstance(index, np.ndarray)
+    ]
     if arrays:
         broadcasted_shape = np.broadcast(*(arr for _, arr in arrays)).shape
-        location = [index for index in location if not isinstance(index, np.ndarray)]
+        visible_dims = [
+            (index, size)
+            for index, size
+            in visible_dims
+            if not isinstance(index, np.ndarray)
+        ]
 
     shape = []
-    for index, base_size in zip(location, base_shape):
+    for index, base_size in visible_dims:
         start, stop, step = index.indices(base_size)
         size = max(0, math.ceil((stop - start) / step))
         shape.append(size)
