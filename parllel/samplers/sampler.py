@@ -107,7 +107,6 @@ class Sampler(ABC):
             dtype=np.int32,
         )
 
-        done[:] = False
         env_to_step = list(enumerate(self.envs))
         for t in range(self.max_steps_decorrelate):
             # filter out any environments that don't need to be stepped anymore

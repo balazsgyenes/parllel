@@ -78,7 +78,6 @@ class BasicSampler(Sampler):
         # rotate last values from previous batch to become previous values
         buffer_rotate(sample_buffer)
 
-        done[:] = False
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
 
