@@ -7,7 +7,7 @@ from typing import Dict
 import hydra
 import torch
 from envs.cartpole import build_cartpole
-from hera_gym.wrappers import add_human_render_wrapper, add_subprocess_wrapper
+# from hera_gym.wrappers import add_human_render_wrapper, add_subprocess_wrapper
 from models.lstm_model import CartPoleLstmPgModel
 from omegaconf import DictConfig, OmegaConf
 
@@ -42,10 +42,10 @@ def build(config: Dict) -> OnPolicyRunner:
     TrajInfo.set_discount(config["algo"]["discount"])
 
     EnvClass = build_cartpole
-    if config["render_during_training"]:
-        if parallel:
-            EnvClass = add_subprocess_wrapper(EnvClass)
-        EnvClass = add_human_render_wrapper(EnvClass)
+    # if config["render_during_training"]:
+    #     if parallel:
+    #         EnvClass = add_subprocess_wrapper(EnvClass)
+    #     EnvClass = add_human_render_wrapper(EnvClass)
 
     cages, batch_action, batch_env = build_cages_and_env_buffers(
         EnvClass=EnvClass,
