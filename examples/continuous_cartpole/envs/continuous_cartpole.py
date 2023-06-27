@@ -1,11 +1,14 @@
-from gym import Env
-from gym.wrappers import TimeLimit
-from hera_gym.envs.cartpole import ExtendedCartPoleEnv
+from typing import Literal
+
+from gymnasium import Env
+from gymnasium.wrappers.time_limit import TimeLimit
+
+from .cartpole import ExtendedCartPoleEnv
 
 
 def build_cartpole(
     max_episode_steps: int = 250,
-    reward_type: str = "dense",
+    reward_type: Literal["dense", "sparse"] = "dense",
 ) -> Env:
     env = ExtendedCartPoleEnv(
         action_type="continuous",
