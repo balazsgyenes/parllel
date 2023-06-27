@@ -2,7 +2,7 @@ from typing import List, Optional, Union
 
 import torch
 import torch.nn as nn
-from gym import spaces
+from gymnasium import spaces
 
 from parllel.torch.agents.gaussian import ModelOutputs
 from parllel.torch.models import MlpModel
