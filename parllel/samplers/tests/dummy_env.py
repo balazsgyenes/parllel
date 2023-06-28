@@ -75,7 +75,7 @@ class DummyEnv(gym.Env):
         reward = self.reward_space.sample()
         terminated = self._traj_counter >= self.episode_length
         truncated = False
-        done = terminated = truncated
+        done = terminated or truncated
         env_info = {"action": copy.deepcopy(action)}
 
         # check the call stack to determine if this is a "real sample" or not
