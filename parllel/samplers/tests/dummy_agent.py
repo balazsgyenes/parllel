@@ -1,6 +1,6 @@
 from typing import Union
 
-import gym
+import gymnasium as gym
 import numpy as np
 from numpy import random
 
