@@ -1,23 +1,21 @@
-import itertools
-import multiprocessing as mp
 from contextlib import contextmanager
 from datetime import datetime
+import itertools
+import multiprocessing as mp
 from pathlib import Path
 from typing import Dict
 
 import hydra
+from omegaconf import DictConfig, OmegaConf
 import torch
 import wandb
-from envs.continuous_cartpole import build_cartpole
-from models.sac_q_and_pi import PiMlpModel, QMlpModel
-from omegaconf import DictConfig, OmegaConf
 
-import parllel.logger as logger
 from parllel.arrays import buffer_from_example
-from parllel.buffers import AgentSamples, Samples, buffer_method
+from parllel.buffers import AgentSamples, buffer_method, Samples
 from parllel.cages import TrajInfo
+import parllel.logger as logger
 from parllel.logger import Verbosity
-from parllel.patterns import build_cages_and_env_buffers, build_eval_sampler
+from parllel.patterns import (build_cages_and_env_buffers, build_eval_sampler)
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
 from parllel.samplers import BasicSampler
@@ -28,9 +26,13 @@ from parllel.torch.handler import TorchHandler
 from parllel.torch.utils import torchify_buffer
 from parllel.types import BatchSpec
 
+from envs.continuous_cartpole import build_cartpole
+from models.sac_q_and_pi import QMlpModel, PiMlpModel
+
 
 @contextmanager
 def build(config: Dict) -> OffPolicyRunner:
+
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -67,13 +69,11 @@ def build(config: Dict) -> OffPolicyRunner:
         action_space=action_space,
         **config["q_model"],
     )
-    model = torch.nn.ModuleDict(
-        {
-            "pi": pi_model,
-            "q1": q1_model,
-            "q2": q2_model,
-        }
-    )
+    model = torch.nn.ModuleDict({
+        "pi": pi_model,
+        "q1": q1_model,
+        "q2": q2_model,
+    })
     distribution = SquashedGaussian(
         dim=action_space.shape[0],
         scale=action_space.high[0],
@@ -152,7 +152,7 @@ def build(config: Dict) -> OffPolicyRunner:
             **config.get("optimizer", {}),
         ),
     }
-
+    
     # create algorithm
     algorithm = SAC(
         batch_spec=batch_spec,
@@ -184,7 +184,7 @@ def build(config: Dict) -> OffPolicyRunner:
 
     try:
         yield runner
-
+    
     finally:
         eval_cages = eval_sampler.envs
         eval_sampler.close()
@@ -192,21 +192,22 @@ def build(config: Dict) -> OffPolicyRunner:
             cage.close()
         buffer_method(step_buffer, "close")
         buffer_method(step_buffer, "destroy")
-
+    
         sampler.close()
         agent.close()
         for cage in cages:
             cage.close()
         buffer_method(batch_buffer, "close")
         buffer_method(batch_buffer, "destroy")
-
+    
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_sac")
 def main(config: DictConfig) -> None:
+
     mp.set_start_method("fork")
 
     run = wandb.init(
-        anonymous="must",  # for this example, send to wandb dummy account
+        anonymous="must", # for this example, send to wandb dummy account
         project="CartPole",
         tags=["continuous", "state-based", "sac", "feedforward"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
@@ -217,9 +218,7 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=Path(
-            f"log_data/cartpole-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
-        ),
+        log_dir=Path(f"log_data/cartpole-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
         output_files={
             "txt": "log.txt",

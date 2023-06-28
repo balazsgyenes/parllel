@@ -1,28 +1,28 @@
 from typing import List, Union
 
-import torch
-import torch.nn.functional as F
 from gymnasium import spaces
+import torch
 from torch import nn
+import torch.nn.functional as F
 
 from parllel.buffers import NamedArrayTupleClass
 from parllel.torch.agents.categorical import ModelOutputs
 from parllel.torch.models import MlpModel
 from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 
+
 RnnState = NamedArrayTupleClass("RnnState", ["h", "c"])
 
 
 class CartPoleLstmPgModel(nn.Module):
-    def __init__(
-        self,
-        obs_space: spaces.Box,
-        action_space: spaces.Discrete,
-        pre_lstm_hidden_sizes: Union[int, List[int], None],
-        lstm_size: int,
-        post_lstm_hidden_sizes: Union[int, List[int], None],
-        hidden_nonlinearity: str,
-    ) -> None:
+    def __init__(self,
+                 obs_space: spaces.Box,
+                 action_space: spaces.Discrete,
+                 pre_lstm_hidden_sizes: Union[int, List[int], None],
+                 lstm_size: int,
+                 post_lstm_hidden_sizes: Union[int, List[int], None],
+                 hidden_nonlinearity: str,
+                 ) -> None:
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
         obs_shape = obs_space.shape[0]

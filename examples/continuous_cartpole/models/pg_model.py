@@ -1,8 +1,8 @@
 from typing import List, Optional, Union
 
+from gymnasium import spaces
 import torch
 import torch.nn as nn
-from gymnasium import spaces
 
 from parllel.torch.agents.gaussian import ModelOutputs
 from parllel.torch.models import MlpModel
@@ -10,8 +10,7 @@ from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 
 
 class GaussianCartPoleFfPgModel(nn.Module):
-    def __init__(
-        self,
+    def __init__(self,
         obs_space: spaces.Box,
         action_space: spaces.Discrete,
         hidden_sizes: Union[int, List[int], None],
@@ -39,7 +38,7 @@ class GaussianCartPoleFfPgModel(nn.Module):
             self.mu = nn.Sequential(mu_mlp, mu_nonlinearity())
         else:
             self.mu = mu_mlp
-
+        
         self.value = MlpModel(
             input_size=obs_shape,
             hidden_sizes=hidden_sizes,
@@ -47,7 +46,7 @@ class GaussianCartPoleFfPgModel(nn.Module):
             hidden_nonlinearity=hidden_nonlinearity,
         )
         self.log_std = nn.Parameter(torch.full((action_size,), init_log_std))
-
+    
     def forward(self, observation):
         lead_dim, T, B, _ = infer_leading_dims(observation, 1)
 
