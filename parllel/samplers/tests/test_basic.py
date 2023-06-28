@@ -6,7 +6,7 @@ import numpy as np
 from parllel.arrays import Array, buffer_from_example, buffer_from_dict_example
 from parllel.buffers import (AgentSamples, EnvSamples, NamedArrayTuple,
     NamedArrayTupleClass, Samples, buffer_method, buffer_asarray)
-from parllel.cages import SerialCage, MultiAgentTrajInfo, TrajInfo
+from parllel.cages import SerialCage, MultiAgentTrajInfo, TrajInfo, ProcessCage
 from parllel.types import BatchSpec
 
 from parllel.buffers.tests.utils import buffer_equal
@@ -76,14 +76,31 @@ def multireward(request):
 def get_bootstrap(request):
     return request.param
 
+@pytest.fixture(
+    params=[ProcessCage],
+    ids=["process"],
+    scope="module",
+)
+def CageCls(request):
+    return request.param
+
 @pytest.fixture
-def envs(action_space, observation_space, batch_spec, multireward):
+def envs(action_space, observation_space, CageCls, batch_spec, multireward, batch_buffer):
     episode_lengths = range(
         EPISODE_LENGTH_START,
         EPISODE_LENGTH_START + EPISODE_LENGTH_STEP * batch_spec.B,
         EPISODE_LENGTH_STEP,
     )
-    cages = [SerialCage(
+
+    buffers = (
+        batch_buffer.agent.action,
+        batch_buffer.env.observation,
+        batch_buffer.env.reward,
+        batch_buffer.env.done,
+        batch_buffer.env.env_info,
+    )
+
+    cages = [CageCls(
         EnvClass=DummyEnv,
         env_kwargs=dict(
             action_space=action_space,
@@ -95,6 +112,7 @@ def envs(action_space, observation_space, batch_spec, multireward):
         ),
         TrajInfoClass=MultiAgentTrajInfo if multireward else TrajInfo,
         reset_automatically=True,
+        **({"buffers": buffers} if CageCls is ProcessCage else {}),
     ) for length in episode_lengths]
 
     yield cages
@@ -115,10 +133,27 @@ def agent(action_space, observation_space, batch_spec):
     return handler
 
 @pytest.fixture
-def batch_buffer(action_space, observation_space, batch_spec, envs, agent, get_bootstrap):
+def batch_buffer(action_space, observation_space, CageCls, batch_spec, agent, get_bootstrap, multireward):
+    # create example env
+    example_cage = CageCls(
+        EnvClass=DummyEnv,
+        env_kwargs=dict(
+            action_space=action_space,
+            observation_space=observation_space,
+            episode_length=10,
+            batch_spec=batch_spec,
+            n_batches=N_BATCHES,
+            multireward=multireward,
+        ),
+        TrajInfoClass=MultiAgentTrajInfo if multireward else TrajInfo,
+        reset_automatically=True,
+    )
     # get example output from env
-    envs[0].random_step_async()
-    action, obs, reward, done, info = envs[0].await_step()
+    example_cage.random_step_async()
+    action, obs, reward, done, info = example_cage.await_step()
+
+    example_cage.close()
+
     agent_info = agent.get_agent_info()
 
     # allocate batch buffer based on examples
@@ -143,11 +178,7 @@ def batch_buffer(action_space, observation_space, batch_spec, envs, agent, get_b
         batch_agent = AgentSamples(batch_action, batch_agent_info)
 
     batch_buffer = Samples(batch_agent, batch_env)
-        
-    for env in envs:
-        env.set_samples_buffer(batch_action, batch_observation, batch_reward,
-            batch_done, batch_info)
-
+    
     yield batch_buffer
 
     buffer_method(batch_buffer, "close")
