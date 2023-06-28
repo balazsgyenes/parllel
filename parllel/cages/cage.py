@@ -104,7 +104,7 @@ class Cage(ABC):
 
         if terminated or truncated:
             # reset immediately and overwrite last observation
-            obs, env_info = self._reset_env()
+            obs, reset_info = self._reset_env()  # TODO: what to do with reset_info?
 
         return action, obs, reward, terminated, truncated, env_info
 
