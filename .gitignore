@@ -15,3 +15,6 @@ videos
 
 # hydra default log folder
 outputs
+
+# build folder for editable installs
+build

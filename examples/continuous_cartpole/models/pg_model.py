@@ -1,6 +1,6 @@
 from typing import List, Optional, Union
 
-from gym import spaces
+from gymnasium import spaces
 import torch
 import torch.nn as nn
 

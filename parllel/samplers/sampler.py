@@ -4,15 +4,16 @@ from typing import List, Optional, Sequence, Tuple
 import numpy as np
 from numpy import random
 
+import parllel.logger as logger
 from parllel.buffers import Samples, buffer_method
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
-import parllel.logger as logger
 from parllel.types import BatchSpec
 
 
 class Sampler(ABC):
-    def __init__(self,
+    def __init__(
+        self,
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
         agent: Handler,
@@ -20,12 +21,12 @@ class Sampler(ABC):
         max_steps_decorrelate: Optional[int] = None,
     ) -> None:
         self.batch_spec = batch_spec
-        
+
         assert len(envs) == self.batch_spec.B
         self.envs = tuple(envs)
-        
+
         self.agent = agent
-        
+
         try:
             # try writing beyond the expected bounds of the observation buffer
             sample_buffer.env.observation[self.batch_spec.T] = 0
@@ -44,8 +45,7 @@ class Sampler(ABC):
         self.seed(seed=None)  # TODO: replace with seeding module
 
     def reset(self) -> None:
-        """Prepare environments, agents and buffers for sampling.
-        """
+        """Prepare environments, agents and buffers for sampling."""
         self.reset_envs()
         if self.max_steps_decorrelate > 0:
             self.decorrelate_environments()
@@ -56,22 +56,29 @@ class Sampler(ABC):
         of the observation buffer, assuming that batch collection begins by
         rotating the batch buffer.
         """
-        logger.debug("Resetting sampler buffer state.")
+        logger.debug(f"{type(self).__name__}: Resetting sampler buffer state.")
         buffer_method(self.sample_buffer, "reset")
-        logger.debug("Resetting all environments.")
+        logger.debug(f"{type(self).__name__}: Resetting all environments.")
         observation = self.sample_buffer.env.observation
+        env_info = self.sample_buffer.env.env_info
         for b, env in enumerate(self.envs):
-            # save reset observation to the end of buffer, since it will be 
+            # save reset observation to the end of buffer, since it will be
             # rotated to the beginning
-            env.reset_async(out_obs=observation[self.batch_spec.T, b])
+            env.reset_async(
+                out_obs=observation[self.batch_spec.T, b],
+                out_info=env_info[self.batch_spec.T, b],
+            )
 
         # wait for envs to finish reset
         for b, env in enumerate(self.envs):
             env.await_step()
 
+        # discard the trajectories that were just forcefully completed
+        [env.collect_completed_trajs() for env in self.envs]
+
     def reset_agent(self) -> None:
         """Reset RNN state of agent, if it has one"""
-        logger.debug("Resetting agent.")
+        logger.debug(f"{type(self).__name__}: Resetting agent.")
         self.agent.reset()
 
     def seed(self, seed) -> None:
@@ -79,14 +86,18 @@ class Sampler(ABC):
 
     def decorrelate_environments(self) -> None:
         """Randomly step environments so they are not all synced up."""
-        logger.info("Decorrelating environments with up to "
-            f"{self.max_steps_decorrelate} random steps each.")
+        logger.info(
+            f"{type(self).__name__}: Decorrelating environments with up to "
+            f"{self.max_steps_decorrelate} random steps each."
+        )
         # get references to buffer elements
         action = self.sample_buffer.agent.action
-        observation, reward, done, env_info = (
+        observation, reward, done, terminated, truncated, env_info = (
             self.sample_buffer.env.observation,
             self.sample_buffer.env.reward,
             self.sample_buffer.env.done,
+            self.sample_buffer.env.terminated,
+            self.sample_buffer.env.truncated,
             self.sample_buffer.env.env_info,
         )
         T_last = self.batch_spec.T - 1
@@ -101,7 +112,6 @@ class Sampler(ABC):
 
         env_to_step = list(enumerate(self.envs))
         for t in range(self.max_steps_decorrelate):
-
             # filter out any environments that don't need to be stepped anymore
             env_to_step = [(b, env) for b, env in env_to_step if t <= n_random_steps[b]]
 
@@ -117,8 +127,9 @@ class Sampler(ABC):
                     out_action=action[T_last, b],
                     out_obs=observation[T_last + 1, b],
                     out_reward=reward[T_last, b],
-                    out_done=done[T_last, b],
-                    out_info=env_info[T_last, b]
+                    out_terminated=terminated[T_last, b],
+                    out_truncated=truncated[T_last, b],
+                    out_info=env_info[T_last, b],
                 )
 
             for b, env in env_to_step:
@@ -126,6 +137,7 @@ class Sampler(ABC):
 
             # no need to reset environments, since they are always reset
             # automatically when calling random_step_async
+            done[T_last] = np.logical_or(terminated[T_last], truncated[T_last])
 
         # discard any completed trajectories. The incomplete ones will be
         # continued during batch collection
