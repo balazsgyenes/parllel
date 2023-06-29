@@ -1,7 +1,7 @@
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-import gym
+import gymnasium as gym
 from nptyping import NDArray
 
 
@@ -9,7 +9,7 @@ class DummyEnv(gym.Env):
     def __init__(self,
                  step_duration: float,
                  observation_space: gym.Space,
-                 action_space: gym.Space = None,
+                 action_space: Optional[gym.Space] = None,
                  ) -> None:
         self._step_duration = step_duration
         self.observation_space = observation_space

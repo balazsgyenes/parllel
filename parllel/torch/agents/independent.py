@@ -1,6 +1,6 @@
 from typing import Optional, Sequence, Union
 
-import gym
+import gymnasium as gym
 import torch
 
 from parllel.buffers import Buffer, NamedTupleClass
