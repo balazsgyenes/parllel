@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -24,7 +24,7 @@ def build_cages_and_env_buffers(
     batch_spec: BatchSpec,
     parallel: bool,
     full_size: Optional[int] = None,
-) -> Tuple[List[Cage], Buffer, Buffer]:
+) -> Tuple[Sequence[Cage], Buffer, Buffer]:
     if parallel:
         CageCls = ProcessCage
         storage = "shared"
@@ -75,17 +75,12 @@ def build_cages_and_env_buffers(
         full_size=full_size,
     )
 
-    # add padding in case reward normalization is used
-    # TODO: ideally, we only would add padding if we know we want reward
-    # normalization, but how to do this?
     batch_terminated = buffer_from_example(
         terminated,
         tuple(batch_spec),
         shape=(),
         dtype=bool,
         storage=storage,
-        padding=1,
-        full_size=full_size,
     )
 
     batch_truncated = buffer_from_example(
@@ -94,10 +89,11 @@ def build_cages_and_env_buffers(
         shape=(),
         dtype=bool,
         storage=storage,
-        padding=1,
-        full_size=full_size,
     )
 
+    # add padding in case reward normalization is used
+    # TODO: ideally, we only would add padding if we know we want reward
+    # normalization, but how to do this?
     batch_done = buffer_from_example(
         truncated,
         tuple(batch_spec),
@@ -156,7 +152,6 @@ def build_cages_and_env_buffers(
 
 
 def add_initial_rnn_state(batch_buffer: Samples, agent: Agent) -> Samples:
-    # TODO: I am not sure how to deal with done vs truncated/terminated here
     rnn_state = agent.initial_rnn_state()
     storage = batch_buffer.env.done.storage
     batch_init_rnn = buffer_from_example(rnn_state, (), storage=storage)
@@ -234,7 +229,7 @@ def add_advantage_estimation(
     value = batch_buffer.agent.agent_info.value
 
     if multiagent and not isinstance(action, NamedTuple):
-        raise TypeError("MultiAgent Advantage requires a dictionary action" " space.")
+        raise TypeError("MultiAgent Advantage requires a dictionary action space.")
 
     # create new NamedArrayTuple for env samples with additional fields
     EnvSamplesClass = NamedArrayTupleClass(

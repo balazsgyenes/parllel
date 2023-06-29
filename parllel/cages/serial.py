@@ -68,9 +68,8 @@ class SerialCage(Cage):
 
         if done:
             if self.reset_automatically:
-                # reset immediately and overwrite last observation
-                # TODO: how to deal with reset_info, since it does not necessarily contain the same information as env_info?
-                obs, reset_info = self._reset_env()
+                # reset immediately and overwrite last observation and info
+                obs, env_info = self._reset_env()
             else:
                 # store done state
                 self._needs_reset = True
@@ -128,11 +127,11 @@ class SerialCage(Cage):
         reset_obs, reset_info = self._reset_env()
         self._needs_reset = False
 
-        if out_obs is None:
+        if out_obs is None or out_info is None:
             self._step_result = (reset_obs, reset_info)
         else:
             out_obs[:] = reset_obs
-            # out_info[:] = reset_info # TODO: how should we deal with the info Dict returned from  env.reset()
+            out_info[:] = reset_info
 
     def close(self) -> None:
         self._close_env()

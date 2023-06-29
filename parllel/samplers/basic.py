@@ -6,7 +6,7 @@ from parllel.buffers import Samples
 from parllel.buffers.utils import buffer_rotate
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
-from parllel.transforms import Transform
+from parllel.transforms import BatchTransform, StepTransform
 from parllel.types import BatchSpec
 
 from .sampler import Sampler
@@ -25,8 +25,8 @@ class BasicSampler(Sampler):
         sample_buffer: Samples,
         max_steps_decorrelate: Optional[int] = None,
         get_bootstrap_value: bool = False,
-        obs_transform: Optional[Transform] = None,
-        batch_transform: Optional[Transform] = None,
+        obs_transform: Optional[StepTransform] = None,
+        batch_transform: Optional[BatchTransform] = None,
     ) -> None:
         for cage in envs:
             if not cage.reset_automatically:

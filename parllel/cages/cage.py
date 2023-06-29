@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Tuple
 
 import gymnasium as gym
-from gymnasium.wrappers.time_limit import TimeLimit as GymTimeLimit
 
 from parllel.arrays import Array
 from parllel.buffers import (Buffer, buffer_asarray, dict_to_namedtuple,
@@ -49,9 +48,6 @@ class Cage(ABC):
 
         self._env: gym.Env = self.EnvClass(**self.env_kwargs)
         self._env.reset()
-
-        # determine if environment also wrapped with gym's TimeLimit
-        env_unwrapped = self._env
 
         # save obs and action spaces for easy access
         self._spaces = EnvSpaces(
@@ -104,7 +100,7 @@ class Cage(ABC):
 
         if terminated or truncated:
             # reset immediately and overwrite last observation
-            obs, reset_info = self._reset_env()  # TODO: what to do with reset_info?
+            obs, env_info = self._reset_env()
 
         return action, obs, reward, terminated, truncated, env_info
 
@@ -114,8 +110,7 @@ class Cage(ABC):
         # store finished trajectory and start new one
         self._completed_trajs.append(self._traj_info)
         self._traj_info = self.TrajInfoClass()
-        obs, env_info = self._env.reset(seed=seed, options=options)
-        return obs, env_info
+        return self._env.reset(seed=seed, options=options)
 
     @abstractmethod
     def set_samples_buffer(

@@ -308,17 +308,16 @@ class ProcessCage(Cage, mp.Process):
                 out_obs = self.buffer_registry.rebuild_buffer(out_obs)
                 out_info = self.buffer_registry.rebuild_buffer(out_info)
                 if _reset_obs is not None and _reset_info is not None:
-                    reset_obs = _reset_obs
-                    reset_info = _reset_info
-                    _reset_obs = None
-                    _reset_info = None
+                    reset_obs, reset_info = _reset_obs, _reset_info
+                    _reset_obs, _reset_info = None, None
                 else:
                     reset_obs, reset_info = self._reset_env()
 
-                if out_obs is None:
-                    out_obs[:] = reset_obs
-                    # out_info[:] = reset_info # TODO: How to deal with reset_info since it might not contain the same keys as env_info?
+                if out_obs is None or out_info is None:
                     self._child_pipe.send((reset_obs, reset_info))
+                else:
+                    out_obs[:] = reset_obs
+                    out_info[:] = reset_info
                 self._needs_reset = False
                 self._child_pipe.send(self.needs_reset)
 

@@ -106,7 +106,7 @@ class DummyEnv(gym.Env):
             self._step_ctr = batch_ctr * self.batch_spec.T
         obs = self.observation_space.sample()
         self._samples.observation[self._step_ctr] = obs
-        return obs, {}
+        return obs, {"action": None}
 
     @property
     def samples(self):
