@@ -17,7 +17,7 @@ class DummyEnv(gym.Env):
 
     def step(self, action: NDArray) -> Tuple[NDArray, float, bool, Dict[str, Any]]:
         time.sleep(self._step_duration)
-        return self.observation_space.sample(), 1., False, {}
+        return self.observation_space.sample(), 1., False, False, {}
 
     def reset(self) -> NDArray:
         return self.observation_space.sample()
