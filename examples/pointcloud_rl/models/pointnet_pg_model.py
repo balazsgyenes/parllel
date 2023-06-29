@@ -1,8 +1,9 @@
-from typing import Optional, Union
+from __future__ import annotations
 
-from gym import spaces
+from typing import Optional
+
 import torch
-
+from gymnasium import spaces
 from torch_geometric.nn import MLP, PointConv, fps, global_max_pool, radius
 
 from parllel.torch.agents.categorical import ModelOutputs
@@ -43,7 +44,7 @@ class PointNetPgModel(torch.nn.Module):
     def __init__(self,
         obs_space: spaces.Box,
         action_space: spaces.Discrete,
-        hidden_sizes: Union[int, list[int], None] = None,
+        hidden_sizes: int | list[int] | None = None,
         hidden_nonlinearity: Optional[str] = None,
     ):
         super().__init__()
@@ -55,6 +56,11 @@ class PointNetPgModel(torch.nn.Module):
 
         if hidden_sizes is None:
             hidden_sizes = [1024, 512, 256]
+        else:
+            try:
+                hidden_sizes = list(hidden_sizes)
+            except TypeError:
+                hidden_sizes = [int(hidden_sizes)]
 
         # Input channels account for both `pos` and node features.
         self.sa1_module = SAModule(0.5, 0.2, MLP([obs_shape, 64, 64, 128]))

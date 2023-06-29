@@ -1,43 +1,52 @@
-from typing import Tuple
+from __future__ import annotations
 
-from gym import Env, spaces
+from typing import Any, SupportsFloat, SupportsInt
+
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 
-from pointcloud import PointCloud
+from .pointcloud import PointCloud
 
 
-class DummyEnv(Env):
-    def __init__(self,
+ObsType = np.ndarray
+ActionType = SupportsInt
+
+
+class DummyEnv(gym.Env):
+    def __init__(
+        self,
         prob_done: float,
     ) -> None:
         self.observation_space = PointCloud(
             max_num_points=50,
             low=-np.inf,
             high=np.inf,
-            shape=(3,),
+            feature_shape=(3,),
             dtype=np.float32,
         )
         self.action_space = spaces.Discrete(2)
         self.prob_done = prob_done
 
-        self.seed()
-
-    def seed(self, seed=None):
-        self.rng = np.random.default_rng(seed)
-        return [seed]
-
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, dict]:
+    def step(
+        self, action: ActionType
+    ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         obs = self.observation_space.sample()
-        done = self.rng.random() < self.prob_done
-        return (obs, 1.0, done, {})
+        done = self.np_random.random() < self.prob_done
+        return (obs, 1.0, done, False, {})
 
-    def reset(self) -> np.ndarray:
-        return self.observation_space.sample()
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[ObsType, dict[str, Any]]:
+        if seed is not None:
+            self._np_random = np.random.default_rng()
+
+        return self.observation_space.sample(), {}
 
 
 def build_dummy(
     prob_done: float,
-) -> Env:
+) -> gym.Env:
     env = DummyEnv(prob_done=prob_done)
 
     return env

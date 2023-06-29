@@ -9,7 +9,7 @@ reward_clip_min: -5
 reward_clip_max: 5
 max_steps_decorrelate: 50
 env:
-  max_episode_steps: 1000
+  prob_done: 0.1
 device: null
 model:
   hidden_sizes: [1024, 512, 256]

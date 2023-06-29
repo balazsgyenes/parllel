@@ -1,23 +1,27 @@
-from typing import Optional, Union
+from __future__ import annotations
 
-from gym import spaces
+from typing import Any, Optional, Sequence, SupportsFloat
+
+from gymnasium import spaces
 import numpy as np
+from numpy.typing import NDArray
 
 
 class PointCloud(spaces.Box):
-    def __init__(self,
+    def __init__(
+        self,
         max_num_points: int,
-        low: Union[float, np.ndarray],
-        high: Union[float, np.ndarray],
-        feature_shape: tuple[int, ...] = None,
-        dtype: np.dtype = np.float32,
+        low: SupportsFloat | NDArray[Any],
+        high: SupportsFloat | NDArray[Any],
+        feature_shape: Sequence[int] | None = None,
+        dtype: type[np.floating[Any]] | type[np.integer[Any]] = np.float32,
         seed: Optional[int] = None,
     ):
         super().__init__(low, high, feature_shape, dtype, seed)
         self.max_num_points = max_num_points
 
     def sample(self):
-        n_points = self.np_random.randint(self.max_num_points)
+        n_points = self.np_random.integers(self.max_num_points)
 
         sample_shape = (n_points,) + self.shape
 
@@ -50,10 +54,14 @@ class PointCloud(spaces.Box):
         )
 
         sample[:, bounded] = self.np_random.uniform(
-            low=self.low[bounded], high=high[bounded],
+            low=self.low[bounded],
+            high=high[bounded],
             size=(n_points,) + bounded[bounded].shape,
         )
         if self.dtype.kind == "i":
             sample = np.floor(sample)
 
         return sample.astype(self.dtype)
+
+    def __repr__(self) -> str:
+        return f"PointCloud({self.max_num_points}, {self.low_repr}, {self.high_repr}, {self.shape}, {self.dtype})"

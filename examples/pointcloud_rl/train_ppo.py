@@ -11,13 +11,24 @@ import torch
 import wandb
 
 from parllel.arrays import buffer_from_example, buffer_from_dict_example, JaggedArray
-from parllel.buffers import AgentSamples, Buffer, buffer_asarray, buffer_method, Samples, EnvSamples
+from parllel.buffers import (
+    AgentSamples,
+    Buffer,
+    buffer_asarray,
+    buffer_method,
+    Samples,
+    EnvSamples,
+)
 from parllel.cages import TrajInfo, ProcessCage, SerialCage
 import parllel.logger as logger
 from parllel.logger import Verbosity
-from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
-    add_reward_clipping, add_reward_normalization,
-    build_cages_and_env_buffers)
+from parllel.patterns import (
+    add_advantage_estimation,
+    add_bootstrap_value,
+    add_reward_clipping,
+    add_reward_normalization,
+    build_cages_and_env_buffers,
+)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
 from parllel.samplers import BasicSampler
@@ -35,7 +46,6 @@ from models.pointnet_pg_model import PointNetPgModel
 
 @contextmanager
 def build(config: Dict) -> OnPolicyRunner:
-
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -45,13 +55,13 @@ def build(config: Dict) -> OnPolicyRunner:
 
     ## copied from build_cages_and_env_buffers
 
-    EnvClass=build_dummy
-    env_kwargs=config["env"]
-    TrajInfoClass=TrajInfo
-    reset_automatically=True
-    batch_spec=batch_spec
-    parallel=parallel
-    full_size=None
+    EnvClass = build_dummy
+    env_kwargs = config["env"]
+    TrajInfoClass = TrajInfo
+    reset_automatically = True
+    batch_spec = batch_spec
+    parallel = parallel
+    full_size = None
 
     if parallel:
         CageCls = ProcessCage
@@ -72,7 +82,7 @@ def build(config: Dict) -> OnPolicyRunner:
 
     # get example output from env
     example_cage.random_step_async()
-    action, obs, reward, done, info = example_cage.await_step()
+    action, obs, reward, terminated, truncated, info = example_cage.await_step()
 
     spaces = example_cage.spaces
     obs_space, action_space = spaces.observation, spaces.action
@@ -93,7 +103,7 @@ def build(config: Dict) -> OnPolicyRunner:
     batch_observation = JaggedArray(
         shape=(obs_space.max_num_points,) + obs_space.shape,
         dtype=dtype,
-        batch_size=tuple(batch_spec),
+        batch_shape=tuple(batch_spec),
         storage=storage,
         padding=1,
         full_size=full_size,
@@ -101,25 +111,73 @@ def build(config: Dict) -> OnPolicyRunner:
 
     # in case environment creates rewards of shape (1,) or of integer type,
     # force to be correct shape and type
-    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward", shape=(), dtype=np.float32, storage=storage, full_size=full_size)
-
-    # add padding in case reward normalization is used
-    # TODO: ideally, we only would add padding if we know we want reward
-    # normalization, but how to do this?
-    batch_done = buffer_from_example(done, tuple(batch_spec), shape=(), dtype=bool, storage=storage, padding=1, full_size=full_size)
-
-    batch_info = buffer_from_dict_example(info, tuple(batch_spec), name="envinfo", storage=storage)
-
-    batch_env = EnvSamples(batch_observation, batch_reward, batch_done, batch_info)
+    batch_reward = buffer_from_dict_example(
+        reward,
+        tuple(batch_spec),
+        name="reward",
+        shape=(),
+        dtype=np.float32,
+        storage=storage,
+        full_size=full_size,
+    )
+    batch_terminated = buffer_from_example(
+        terminated,
+        tuple(batch_spec),
+        shape=(),
+        dtype=bool,
+        storage=storage,
+    )
+    batch_truncated = buffer_from_example(
+        truncated,
+        tuple(batch_spec),
+        shape=(),
+        dtype=bool,
+        storage=storage,
+    )
+    batch_done = buffer_from_example(
+        truncated,
+        tuple(batch_spec),
+        shape=(),
+        dtype=bool,
+        storage=storage,
+        padding=1,
+        full_size=full_size,
+    )
+    batch_info = buffer_from_dict_example(
+        info, tuple(batch_spec), name="envinfo", storage=storage
+    )
+    batch_env = EnvSamples(
+        batch_observation,
+        batch_reward,
+        batch_done,
+        batch_terminated,
+        batch_truncated,
+        batch_info,
+    )
 
     # in discrete problems, integer actions are used as array indices during
     # optimization. Pytorch requires indices to be 64-bit integers, so we
     # force actions to be 32 bits only if they are floats
-    batch_action = buffer_from_dict_example(action, tuple(batch_spec), name="action", force_32bit="float", storage=storage, full_size=full_size)
+    batch_action = buffer_from_dict_example(
+        action,
+        tuple(batch_spec),
+        name="action",
+        force_32bit="float",
+        storage=storage,
+        full_size=full_size,
+    )
 
     # pass batch buffers to Cage on creation
     if CageCls is ProcessCage:
-        cage_kwargs["buffers"] = (batch_action, batch_observation, batch_reward, batch_done, batch_info)
+        cage_kwargs["buffers"] = (
+            batch_action,
+            batch_observation,
+            batch_reward,
+            batch_done,
+            batch_terminated,
+            batch_truncated,
+            batch_info,
+        )
 
     logger.debug(f"Instantiating {batch_spec.B} environments...")
 
@@ -227,7 +285,7 @@ def build(config: Dict) -> OnPolicyRunner:
         lr=config["algo"]["learning_rate"],
         **config.get("optimizer", {}),
     )
-    
+
     # create algorithm
     algorithm = PPO(
         agent=agent,
@@ -247,7 +305,7 @@ def build(config: Dict) -> OnPolicyRunner:
 
     try:
         yield runner
-    
+
     finally:
         sampler.close()
         agent.close()
@@ -259,11 +317,10 @@ def build(config: Dict) -> OnPolicyRunner:
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo")
 def main(config: DictConfig) -> None:
-
     mp.set_start_method("fork")
 
     run = wandb.init(
-        anonymous="must", # for this example, send to wandb dummy account
+        anonymous="must",  # for this example, send to wandb dummy account
         project="CartPole",
         tags=["discrete", "state-based", "ppo", "feedforward"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
@@ -292,16 +349,4 @@ def main(config: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    # main()
-
-    space = PointCloudSpace(
-        max_num_points=100,
-        low=-np.inf,
-        high=np.inf,
-        shape=(4,),
-        dtype=np.float32,
-    )
-
-    print(sample := space.sample())
-
-    print(sample := space.sample())
+    main()
