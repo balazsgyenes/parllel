@@ -1,12 +1,12 @@
 import cProfile
 from pathlib import Path
 import time
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
 from parllel.buffers import Samples
-from parllel.cages import Cage
+from parllel.cages import Cage, TrajInfo
 import parllel.logger as logger
 from parllel.types import BatchSpec
 
@@ -39,18 +39,20 @@ class ProfilingSampler(Sampler):
         # skip resetting agent
         pass
 
-    def collect_batch(self, elapsed_steps: int) -> None:
-        pass
+    def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
+        raise NotImplementedError
 
     def time_batches(self):
         batch_T, batch_B = self.batch_spec
         durations = self.durations
 
         action = self.sample_buffer.agent.action
-        observation, reward, done, env_info = (
+        observation, reward, done, terminated, truncated, env_info = (
             self.sample_buffer.env.observation,
             self.sample_buffer.env.reward,
             self.sample_buffer.env.done,
+            self.sample_buffer.env.terminated,
+            self.sample_buffer.env.truncated,
             self.sample_buffer.env.env_info,
         )
 
@@ -66,13 +68,20 @@ class ProfilingSampler(Sampler):
                 start = time.perf_counter()
 
                 for b, env in enumerate(self.envs):
-                    env.step_async(action[t, b],
-                        out_obs=observation[t+1, b], out_reward=reward[t, b],
-                        out_done=done[t, b], out_info=env_info[t, b])
+                    env.step_async(
+                        action[t, b],
+                        out_obs=observation[t + 1, b],
+                        out_reward=reward[t, b],
+                        out_terminated=terminated[t, b],
+                        out_truncated=truncated[t, b],
+                        out_info=env_info[t, b],
+                    )
 
                 for b, env in enumerate(self.envs):
                     env.await_step()
 
+                done[t] = np.logical_or(terminated[t], truncated[t])
+                
                 end = time.perf_counter()
                 durations[t] = (end - start)
 

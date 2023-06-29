@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from collections import defaultdict
 from dataclasses import astuple, dataclass, field, fields
 from functools import partial
-from typing import Any, ClassVar, Dict, Iterator, Tuple, Union
+from typing import Any, ClassVar, Dict, Iterator, Tuple
 
 import numpy as np
 
@@ -19,11 +21,13 @@ class TrajInfo:
     def set_discount(cls, discount: float) -> None:
         cls._discount = discount
 
-    def step(self,
+    def step(
+        self,
         observation: Any,
         action: Any,
-        reward: Union[np.array, float],
-        done: bool,
+        reward: float,
+        terminated: bool,
+        truncated: bool,
         env_info: Dict[str, Any],
     ) -> None:
         self.Length += 1
@@ -37,13 +41,17 @@ class TrajInfo:
 class MultiAgentTrajInfo(TrajInfo):
     Return: Dict[str, float] = field(default_factory=partial(defaultdict, float))
     NonzeroRewards: Dict[str, int] = field(default_factory=partial(defaultdict, int))
-    DiscountedReturn: Dict[str, float] = field(default_factory=partial(defaultdict, float))
+    DiscountedReturn: Dict[str, float] = field(
+        default_factory=partial(defaultdict, float)
+    )
 
-    def step(self,
+    def step(
+        self,
         observation: Any,
         action: Any,
-        reward: Dict[str, Union[np.array, float]],
-        done: bool,
+        reward: Dict[str, np.ndarray | float],
+        terminated: bool,
+        truncated: bool,
         env_info: Dict[str, Any],
     ) -> None:
         self.Length += 1

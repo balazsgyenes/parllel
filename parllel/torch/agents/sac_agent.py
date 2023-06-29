@@ -2,7 +2,7 @@ import copy
 from dataclasses import dataclass
 from typing import Tuple, Union
 
-import gym
+import gymnasium as gym
 import torch
 
 from parllel.buffers import Buffer, NamedArrayTupleClass

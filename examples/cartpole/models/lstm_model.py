@@ -1,6 +1,6 @@
 from typing import List, Union
 
-from gym import spaces
+from gymnasium import spaces
 import torch
 from torch import nn
 import torch.nn.functional as F

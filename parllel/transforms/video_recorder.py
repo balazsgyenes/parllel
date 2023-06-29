@@ -1,7 +1,10 @@
+import distutils.spawn
+import distutils.version
+import os
 from pathlib import Path
+import subprocess
 from typing import Iterator, List, Optional, Tuple
 
-from gym.wrappers.monitoring import video_recorder
 import numba
 import numpy as np
 
@@ -91,7 +94,7 @@ class RecordVectorizedVideo(BatchTransform):
 
         self.path = self.output_dir / f"policy_video_step_{start_total_t}.mp4"
         logger.log(f"Started recording video of policy to {self.path}")
-        self.recorder = video_recorder.ImageEncoder(
+        self.recorder = ImageEncoder(
             output_path=str(self.path),
             frame_shape=self.tiled_frame.shape,
             frames_per_sec=self.env_fps,
@@ -201,7 +204,7 @@ def write_tiles_to_frame(
     tiled_height: int,
     tiled_width: int,
     tiled_frame: np.ndarray,
-) -> np.ndarray:
+) -> None:
     """Write images from individual environments into a preallocated tiled
     frame. Transposes image channels from torch order to image order and
     freezes images if the image data is no longer valid.
@@ -219,3 +222,155 @@ def write_tiles_to_frame(
             b += 1
             if b == n_images:
                 return
+
+
+class ImageEncoder(object):
+    """Writes a sequence of frames to an mp4 file on disk.
+
+    Copied from gym v0.21
+    """
+    def __init__(self, output_path, frame_shape, frames_per_sec, output_frames_per_sec):
+        self.proc: Optional[subprocess.Popen] = None
+        self.output_path = output_path
+        # Frame shape should be lines-first, so w and h are swapped
+        h, w, pixfmt = frame_shape
+        if pixfmt != 3 and pixfmt != 4:
+            raise ValueError(
+                "Your frame has shape {}, but we require (w,h,3) or (w,h,4), i.e., RGB values for a w-by-h image, with an optional alpha channel.".format(
+                    frame_shape
+                )
+            )
+        self.wh = (w, h)
+        self.includes_alpha = pixfmt == 4
+        self.frame_shape = frame_shape
+        self.frames_per_sec = frames_per_sec
+        self.output_frames_per_sec = output_frames_per_sec
+
+        if distutils.spawn.find_executable("avconv") is not None:
+            self.backend = "avconv"
+        elif distutils.spawn.find_executable("ffmpeg") is not None:
+            self.backend = "ffmpeg"
+        else:
+            raise RuntimeError(
+                """Found neither the ffmpeg nor avconv executables. On OS X, you can install ffmpeg via `brew install ffmpeg`. On most Ubuntu variants, `sudo apt-get install ffmpeg` should do it. On Ubuntu 14.04, however, you'll need to install avconv with `sudo apt-get install libav-tools`."""
+            )
+
+        self.start()
+
+    @property
+    def version_info(self):
+        return {
+            "backend": self.backend,
+            "version": str(
+                subprocess.check_output(
+                    [self.backend, "-version"], stderr=subprocess.STDOUT
+                )
+            ),
+            "cmdline": self.cmdline,
+        }
+
+    def start(self):
+        if self.backend == "ffmpeg":
+            self.cmdline = (
+                self.backend,
+                "-nostats",
+                "-loglevel",
+                "error",  # suppress warnings
+                "-y",
+                # input
+                "-f",
+                "rawvideo",
+                "-s:v",
+                "{}x{}".format(*self.wh),
+                "-pix_fmt",
+                ("rgb32" if self.includes_alpha else "rgb24"),
+                "-r",
+                "%d" % self.frames_per_sec,
+                "-i",
+                "-",  # this used to be /dev/stdin, which is not Windows-friendly
+                # output
+                "-an",
+                "-r",
+                "%d" % self.frames_per_sec,
+                "-vcodec",
+                "mpeg4",
+                "-pix_fmt",
+                "bgr24",
+                "-r",
+                "%d" % self.output_frames_per_sec,
+                self.output_path,
+            )
+        else:
+            self.cmdline = (
+                self.backend,
+                "-nostats",
+                "-loglevel",
+                "error",  # suppress warnings
+                "-y",
+                # input
+                "-f",
+                "rawvideo",
+                "-s:v",
+                "{}x{}".format(*self.wh),
+                "-pix_fmt",
+                ("rgb32" if self.includes_alpha else "rgb24"),
+                "-framerate",
+                "%d" % self.frames_per_sec,
+                "-i",
+                "-",  # this used to be /dev/stdin, which is not Windows-friendly
+                # output
+                "-vf",
+                "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-vcodec",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-r",
+                "%d" % self.output_frames_per_sec,
+                self.output_path,
+            )
+
+        logger.debug('Starting %s with "%s"', self.backend, " ".join(self.cmdline))
+        if hasattr(os, "setsid"):  # setsid not present on Windows
+            self.proc = subprocess.Popen(
+                self.cmdline, stdin=subprocess.PIPE, preexec_fn=os.setsid
+            )
+        else:
+            self.proc = subprocess.Popen(self.cmdline, stdin=subprocess.PIPE)
+
+    def capture_frame(self, frame):
+        if not isinstance(frame, (np.ndarray, np.generic)):
+            raise TypeError(
+                "Wrong type {} for {} (must be np.ndarray or np.generic)".format(
+                    type(frame), frame
+                )
+            )
+        if frame.shape != self.frame_shape:
+            raise ValueError(
+                "Your frame has shape {}, but the VideoRecorder is configured for shape {}.".format(
+                    frame.shape, self.frame_shape
+                )
+            )
+        if frame.dtype != np.uint8:
+            raise TypeError(
+                "Your frame has data type {}, but we require uint8 (i.e. RGB values from 0-255).".format(
+                    frame.dtype
+                )
+            )
+
+        try:
+            if distutils.version.LooseVersion(
+                np.__version__
+            ) >= distutils.version.LooseVersion("1.9.0"):
+                self.proc.stdin.write(frame.tobytes())
+            else:
+                self.proc.stdin.write(frame.tostring())
+        except Exception as e:
+            stdout, stderr = self.proc.communicate()
+            logger.error("VideoRecorder encoder failed: %s", stderr)
+
+    def close(self):
+        self.proc.stdin.close()
+        ret = self.proc.wait()
+        if ret != 0:
+            logger.error("VideoRecorder encoder exited with status {}".format(ret))
