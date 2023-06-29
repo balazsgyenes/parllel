@@ -8,7 +8,7 @@ from gymnasium import spaces
 from nptyping import NDArray
 
 from parllel.arrays import Array, buffer_from_dict_example
-from parllel.buffers import Buffer, EnvSamples, NamedTuple
+from parllel.buffers import Buffer, EnvSamples, NamedTuple, buffer_method, buffer_asarray
 from parllel.types import BatchSpec
 
 
@@ -106,7 +106,14 @@ class DummyEnv(gym.Env):
             self._step_ctr = batch_ctr * self.batch_spec.T
         obs = self.observation_space.sample()
         self._samples.observation[self._step_ctr] = obs
-        return obs, {"action": None}
+        action = (
+            self._samples.env_info.action[self._step_ctr - 1]
+            if self._step_ctr > 0
+            else None
+        )
+        action = buffer_asarray(action)
+        action = buffer_method(action, "copy")
+        return obs, {"action": action}
 
     @property
     def samples(self):
