@@ -4,3 +4,6 @@ dependencies:
 - python=3.9
 - pytorch=1.12
 - cudatoolkit=11.3
+- pip
+- pip:
+  - -r requirements.txt

@@ -52,12 +52,13 @@ rlpyt is a great piece of software, but there are several pain points when it co
             - Maybe use pickle to serialize types in config (but needs to be detectable on read)
             - Maybe use cloudpickle like SB3 does
             - If serializing to yaml, ensure no collisions with wandb's config.yaml file
+        - Add vectorized rendering of environments without pixel observations, using a rendering schedule. Ensure cage correctly calls render on gymnasium environment.
     - **!!** Allocators
         - Add allocators module with user-configurable and default logic for what Array type should be used for what buffer element
         - Set parallel attribute in allocator module and then get default CageCls everywhere else
     - Callbacks?
 - Algos
-    - Refactor PPO with MinibatchBuffer to remove if statement for recurrent case.
+    - Handle termination and truncation differently, e.g. for advantage computation and in SAC
     - DDPG
     - Jax PPO :)
 - Arrays
