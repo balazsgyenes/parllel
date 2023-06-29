@@ -97,7 +97,6 @@ class EvalSampler(Sampler):
             for b, env in enumerate(self.envs):
                 env.await_step()
 
-            # print(np.logical_or(terminated[t], truncated[t]))
             done[0] = np.logical_or(terminated[0], truncated[0])
             # if environment is done, reset agent
             # environment has already been reset inside cage

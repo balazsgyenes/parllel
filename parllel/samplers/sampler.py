@@ -56,9 +56,9 @@ class Sampler(ABC):
         of the observation buffer, assuming that batch collection begins by
         rotating the batch buffer.
         """
-        logger.debug("Resetting sampler buffer state.")
+        logger.debug(f"{type(self).__name__}: Resetting sampler buffer state.")
         buffer_method(self.sample_buffer, "reset")
-        logger.debug("Resetting all environments.")
+        logger.debug(f"{type(self).__name__}: Resetting all environments.")
         observation = self.sample_buffer.env.observation
         env_info = self.sample_buffer.env.env_info
         for b, env in enumerate(self.envs):
@@ -73,9 +73,12 @@ class Sampler(ABC):
         for b, env in enumerate(self.envs):
             env.await_step()
 
+        # discard the trajectories that were just forcefully completed
+        [env.collect_completed_trajs() for env in self.envs]
+
     def reset_agent(self) -> None:
         """Reset RNN state of agent, if it has one"""
-        logger.debug("Resetting agent.")
+        logger.debug(f"{type(self).__name__}: Resetting agent.")
         self.agent.reset()
 
     def seed(self, seed) -> None:
@@ -84,7 +87,7 @@ class Sampler(ABC):
     def decorrelate_environments(self) -> None:
         """Randomly step environments so they are not all synced up."""
         logger.info(
-            "Decorrelating environments with up to "
+            f"{type(self).__name__}: Decorrelating environments with up to "
             f"{self.max_steps_decorrelate} random steps each."
         )
         # get references to buffer elements
