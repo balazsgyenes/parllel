@@ -12,6 +12,7 @@ class SharedMemoryArray(Array, storage="shared"):
     process startup only (i.e. process inheritance). Starting processes with
     the `spawn` method is also supported.
     """
+
     storage = "shared"
 
     def _allocate(self) -> None:
@@ -24,7 +25,7 @@ class SharedMemoryArray(Array, storage="shared"):
         self._raw_array = mp.RawArray(ctypes.c_char, nbytes)
 
         self._wrap_raw_array()
-        
+
     def _wrap_raw_array(self) -> None:
         size = int(np.prod(self._base_shape))
         self._base_array: np.ndarray = np.frombuffer(

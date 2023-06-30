@@ -10,7 +10,7 @@ import numpy as np
 import torch
 import wandb
 
-from parllel.arrays import buffer_from_example, buffer_from_dict_example, JaggedArray
+from parllel.arrays import buffer_from_example, buffer_from_dict_example, Array
 from parllel.buffers import (
     AgentSamples,
     Buffer,
@@ -100,10 +100,11 @@ def build(config: Dict) -> OnPolicyRunner:
         dtype = np.float32
     elif dtype == np.int64:
         dtype = np.int32
-    batch_observation = JaggedArray(
+    batch_observation = Array(
         shape=(obs_space.max_num_points,) + obs_space.shape,
         dtype=dtype,
         batch_shape=tuple(batch_spec),
+        kind="jagged",
         storage=storage,
         padding=1,
         full_size=full_size,
@@ -324,7 +325,7 @@ def main(config: DictConfig) -> None:
 
     run = wandb.init(
         anonymous="must",  # for this example, send to wandb dummy account
-        project="CartPole",
+        project="PointCloudRL",
         tags=["discrete", "state-based", "ppo", "feedforward"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
@@ -334,7 +335,7 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        # log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        # log_dir=Path(f"log_data/pointcloud-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
         output_files={
             "txt": "log.txt",

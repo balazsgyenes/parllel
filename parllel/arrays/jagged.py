@@ -98,13 +98,16 @@ class JaggedArray(Array, kind="jagged"):
             )
 
         self._allocate()
-        # TODO: move this into allocate()
-        # add an extra element to node dimension so it's always possible to
-        # access the element at t+1
-        self._ptr = np.zeros(shape=batch_shape[1:] + (base_T_size + 1,), dtype=np.int64)
 
         self._current_array = None  # not used by JaggedArray
         self._apparent_shape = batch_shape + shape  # shape of current array
+
+    def _allocate(self) -> None:
+        self._base_array = np.zeros(shape=self._base_shape, dtype=self.dtype)
+        # add an extra element to node dimension so it's always possible to
+        # access the element at t+1
+        base_batch_shape = self._virtual_base_shape[:self._n_batch_dim]
+        self._ptr = np.zeros(shape=base_batch_shape[1:] + (base_batch_shape[0] + 1,), dtype=np.int64)
 
     def _resolve_indexing_history(self) -> None:
         for location in self._index_history:
@@ -166,7 +169,7 @@ class JaggedArray(Array, kind="jagged"):
                     raise NotImplementedError
                 else:
                     # drop input
-                    logger.debug(f"JaggedArray input {value} dropped due to size exceeded.")
+                    logger.warn(f"JaggedArray input {value} dropped due to size exceeded.")
                     return
 
             # set end point at ptrs[t_loc + 1]
