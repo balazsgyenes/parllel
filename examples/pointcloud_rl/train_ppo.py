@@ -95,7 +95,7 @@ def build(config: Dict) -> OnPolicyRunner:
         logger.debug("Allocating batch buffer.")
 
     # allocate batch buffer based on examples
-    np_obs = np.asanyarray(obs.pos)
+    np_obs = np.asanyarray(obs)
     if (dtype := np_obs.dtype) == np.float64:
         dtype = np.float32
     elif dtype == np.int64:
@@ -214,7 +214,10 @@ def build(config: Dict) -> OnPolicyRunner:
 
     # write dict into namedarraytuple and read it back out. this ensures the
     # example is in a standard format (i.e. namedarraytuple).
-    batch_env.observation[0] = obs_space.sample()
+    # TODO: observation returned by obs space and by environment are different
+    # because agent tries to sample the observation space and feed it directly
+    # to the model
+    batch_env.observation[0] = obs_space.sample().pos
     example_obs = batch_env.observation[0]
 
     # get example output from agent

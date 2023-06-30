@@ -18,8 +18,9 @@ class SAModule(torch.nn.Module):
 
     def forward(self, x, pos, batch):
         idx = fps(pos, batch, ratio=self.ratio)
-        row, col = radius(pos, pos[idx], self.r, batch, batch[idx],
-                          max_num_neighbors=64)
+        row, col = radius(
+            pos, pos[idx], self.r, batch, batch[idx], max_num_neighbors=64
+        )
         edge_index = torch.stack([col, row], dim=0)
         x_dst = None if x is None else x[idx]
         x = self.conv((x, x_dst), (pos, pos[idx]), edge_index)
@@ -41,7 +42,8 @@ class GlobalSAModule(torch.nn.Module):
 
 
 class PointNetPgModel(torch.nn.Module):
-    def __init__(self,
+    def __init__(
+        self,
         obs_space: spaces.Box,
         action_space: spaces.Discrete,
         hidden_sizes: int | list[int] | None = None,
@@ -71,11 +73,13 @@ class PointNetPgModel(torch.nn.Module):
         self.value = MLP(hidden_sizes + [1], norm=None, act=hidden_nonlinearity)
 
     def forward(self, data):
-
         # convert to pytorch geometric batch representation
         pos, ptr = data.pos, data.ptr
         num_nodes = ptr[1:] - ptr[:-1]
-        batch = torch.repeat_interleave(torch.arange(len(num_nodes)), repeats=num_nodes)
+        batch = torch.repeat_interleave(
+            torch.arange(len(num_nodes), device=num_nodes.device),
+            repeats=num_nodes,
+        )
 
         sa0_out = (None, pos, batch)
         sa1_out = self.sa1_module(*sa0_out)

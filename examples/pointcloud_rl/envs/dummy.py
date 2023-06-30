@@ -31,7 +31,7 @@ class DummyEnv(gym.Env):
     def step(
         self, action: ActionType
     ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
-        obs = self.observation_space.sample()
+        obs = self.observation_space.sample().pos
         done = self.np_random.random() < self.prob_done
         return (obs, 1.0, done, False, {})
 
@@ -41,7 +41,7 @@ class DummyEnv(gym.Env):
         if seed is not None:
             self._np_random = np.random.default_rng()
 
-        return self.observation_space.sample(), {}
+        return self.observation_space.sample().pos, {}
 
 
 def build_dummy(

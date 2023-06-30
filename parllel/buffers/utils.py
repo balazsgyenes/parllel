@@ -1,7 +1,6 @@
 from typing import Any, Callable, Iterable, Union
 
 import numpy as np
-from nptyping import NDArray
 
 from .buffer import Buffer, LeafType
 from .named_tuple import NamedTuple, NamedArrayTuple, NamedTupleClass
@@ -78,8 +77,26 @@ def buffer_rotate(buffer: Union[Buffer, tuple]) -> Buffer:
     return buffer_method(buffer, "rotate")
 
 
-def buffer_asarray(buffer: Buffer) -> Buffer[NDArray]:
-    return buffer_map(np.asarray, buffer)
+def buffer_asarray(buffer: Buffer) -> Buffer[np.ndarray]:
+    """Call method ``method_name(*args, **kwargs)`` on all contents of
+    ``buffer``, and return the results. ``buffer`` can be an arbitrary
+    structure of tuples, namedtuples, namedarraytuples, NamedTuples, and
+    NamedArrayTuples, and a new, matching structure will be returned.
+    ``None`` fields remain ``None``.
+    """
+    if isinstance(buffer, tuple): # non-leaf node
+        contents = tuple(buffer_asarray(elem) for elem in buffer)
+        if isinstance(buffer, NamedTuple):
+            return buffer._make(contents)
+        # buffer is a tuple
+        return contents
+
+    # leaf node
+    if buffer is None:
+        return None
+    elif hasattr(buffer, "__buffer__"):
+        return buffer.__buffer__()
+    return np.asarray(buffer)
 
 
 def collate_buffers(buffers: Iterable[NamedTuple], names=None, typename=None):

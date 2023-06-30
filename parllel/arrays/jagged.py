@@ -138,10 +138,12 @@ class JaggedArray(Array, kind="jagged"):
             raise NotImplementedError("Cannot write a list into a JaggedArray.")
         elif isinstance(value, JaggedArray):
             raise NotImplementedError("Cannot write a JaggedArray into a JaggedArray.")
-        elif isinstance(value, (int, float)) and value == 0:
+        elif np.isscalar(value) and value == 0:
             # TODO: test this method of element deletion
-            value = np.array([])  # special value for deleting an entry
-        value = np.atleast_1d(value)  # otherwise promote scalars to 1D arrays
+            value_shape = (0,)  # delete by writing an element of 0 size
+        else:
+            value_shape = value.shape
+        value = np.atleast_1d(value)  # promote scalars to 1D arrays
 
         # split into batch locations and feature locations, which are handled differently
         batch_locs, feature_locs = destination[:self._n_batch_dim], destination[self._n_batch_dim:]
@@ -158,7 +160,7 @@ class JaggedArray(Array, kind="jagged"):
             # get lengths of all graphs stored in this "element"
             ptrs = self._ptr[batch_loc]
 
-            if (end := ptrs[t_loc] + value.shape[0]) > self._flattened_size:
+            if (end := ptrs[t_loc] + value_shape[0]) > self._flattened_size:
                 if self.on_overflow == "resize":
                     # TODO: add a resize method and call it here
                     raise NotImplementedError
@@ -184,7 +186,7 @@ class JaggedArray(Array, kind="jagged"):
             n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
             real_loc = batch_loc + (n_loc,) + feature_locs[1:]
 
-            # write to that location
+            # write to underlying array at that location
             self._base_array[real_loc] = value
 
     @property
@@ -222,9 +224,10 @@ class JaggedArray(Array, kind="jagged"):
             )
             next_previous_values = range(-self.padding, self.padding)
             b_locs = [range(size) for size in self._virtual_base_shape[1:self._n_batch_dim]]
+            full_array = self.full
             for source, destination in zip(final_values, next_previous_values):
                 for b_loc in itertools.product(*b_locs):
-                    self.full[(destination,) + b_loc] = np.asarray(self.full[(source,) + b_loc])
+                    full_array[(destination,) + b_loc] = np.asarray(full_array[(source,) + b_loc])
 
         self._offset %= self._full_size
 
