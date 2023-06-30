@@ -7,11 +7,13 @@ import numpy as np
 
 import parllel.logger as logger
 from parllel.arrays.array import Array
-from parllel.buffers import Buffer, Index, Indices
+from parllel.buffers import Buffer, Indices, NamedTupleClass
 
 from .array import Array
 from .indices import (add_locations, index_slice, init_location,
                       shape_from_location)
+
+PointBatch = NamedTupleClass("PointBatch", ["pos", "ptr"])
 
 
 class JaggedArray(Array, kind="jagged"):
@@ -279,9 +281,8 @@ class JaggedArray(Array, kind="jagged"):
 
         array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
         current_ptrs = np.cumsum(current_ptrs)
+        current_ptrs = np.insert(current_ptrs, 0, 0)  # insert 0 at beginning of ptrs
         assert array.shape[0] == current_ptrs[-1]
-        current_ptrs[1:] = current_ptrs[:-1]
-        current_ptrs[0] = 0
 
         if dtype is not None:
             array = array.astype(dtype, copy=False)
@@ -290,10 +291,12 @@ class JaggedArray(Array, kind="jagged"):
         return array
 
     def __buffer__(self) -> Buffer:
+        # TODO: hard-coded that JaggedArray is point/node positions
+        # what about point/node features?
         data = self.__array__()
-        return (
-            data,
-            self._current_ptrs,  # updated during execution of __array__
+        return PointBatch(
+            pos=data,
+            ptr=self._current_ptrs,  # updated during execution of __array__
         )
 
 

@@ -6,6 +6,8 @@ from gymnasium import spaces
 import numpy as np
 from numpy.typing import NDArray
 
+from parllel.arrays.jagged import PointBatch
+
 
 class PointCloud(spaces.Box):
     def __init__(
@@ -61,7 +63,10 @@ class PointCloud(spaces.Box):
         if self.dtype.kind == "i":
             sample = np.floor(sample)
 
-        return sample.astype(self.dtype)
+        return PointBatch(
+            pos=sample.astype(self.dtype),
+            ptr=np.array([0, n_points], dtype=np.int64)
+        )
 
     def __repr__(self) -> str:
         return f"PointCloud({self.max_num_points}, {self.low_repr}, {self.high_repr}, {self.shape}, {self.dtype})"

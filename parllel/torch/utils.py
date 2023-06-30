@@ -112,7 +112,7 @@ def restore_leading_dims(
     return tensors if is_seq else tensors[0]
 
 
-def torchify_buffer(buffer: Buffer[Union[np.ndarray, Array]],
+def torchify_buffer(buffer: Buffer[np.ndarray],
 ) -> Buffer[torch.Tensor]:
     """Convert contents of ``buffer`` from numpy arrays to torch tensors.
     ``buffer`` can be an arbitrary structure of tuples, namedtuples,
@@ -128,7 +128,7 @@ def torchify_buffer(buffer: Buffer[Union[np.ndarray, Array]],
 
     if buffer is None or isinstance(buffer, torch.Tensor):
         return buffer
-    return torch.from_numpy(np.asarray(buffer))
+    return torch.from_numpy(buffer)
 
 
 def numpify_buffer(buffer: Buffer[torch.Tensor]) -> Buffer[np.ndarray]:

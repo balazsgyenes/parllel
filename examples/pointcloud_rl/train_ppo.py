@@ -95,7 +95,7 @@ def build(config: Dict) -> OnPolicyRunner:
         logger.debug("Allocating batch buffer.")
 
     # allocate batch buffer based on examples
-    np_obs = np.asanyarray(obs)
+    np_obs = np.asanyarray(obs.pos)
     if (dtype := np_obs.dtype) == np.float64:
         dtype = np.float32
     elif dtype == np.int64:

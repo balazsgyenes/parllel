@@ -4,7 +4,7 @@ from typing import Optional
 
 import torch
 from gymnasium import spaces
-from torch_geometric.nn import MLP, PointConv, fps, global_max_pool, radius
+from torch_geometric.nn import MLP, PointNetConv, fps, global_max_pool, radius
 
 from parllel.torch.agents.categorical import ModelOutputs
 
@@ -14,7 +14,7 @@ class SAModule(torch.nn.Module):
         super().__init__()
         self.ratio = ratio
         self.r = r
-        self.conv = PointConv(nn, add_self_loops=False)
+        self.conv = PointNetConv(nn, add_self_loops=False)
 
     def forward(self, x, pos, batch):
         idx = fps(pos, batch, ratio=self.ratio)
@@ -73,7 +73,7 @@ class PointNetPgModel(torch.nn.Module):
     def forward(self, data):
 
         # convert to pytorch geometric batch representation
-        pos, ptr = data
+        pos, ptr = data.pos, data.ptr
         num_nodes = ptr[1:] - ptr[:-1]
         batch = torch.repeat_interleave(torch.arange(len(num_nodes)), repeats=num_nodes)
 

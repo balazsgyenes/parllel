@@ -4,7 +4,7 @@ from typing import Optional, Union
 import gymnasium as gym
 import torch
 
-from parllel.buffers import Buffer, buffer_map, buffer_method, dict_to_namedtuple
+from parllel.buffers import Buffer, buffer_map, buffer_method, dict_to_namedtuple, buffer_asarray
 from parllel.handlers.agent import AgentStep
 from parllel.torch.distributions.categorical import Categorical, DistInfo
 from parllel.torch.utils import buffer_to_device, torchify_buffer
@@ -61,12 +61,14 @@ class CategoricalPgAgent(TorchAgent):
 
         example_obs = self.observation_space.sample()
         example_obs = dict_to_namedtuple(example_obs, "observation")
+        example_obs = buffer_asarray(example_obs)
         example_obs = torchify_buffer(example_obs)
         example_inputs = (example_obs,)
         
         if self.recurrent:
             example_action = self.action_space.sample()
             example_action = dict_to_namedtuple(example_action, "action")
+            example_action = buffer_asarray(example_action)
             example_action = torchify_buffer(example_action)
             example_act_onehot = self.distribution.to_onehot(example_action)
             example_inputs += (example_act_onehot,)
