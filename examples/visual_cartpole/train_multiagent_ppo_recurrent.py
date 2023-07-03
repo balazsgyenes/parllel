@@ -56,6 +56,12 @@ def build(config: Dict) -> OnPolicyRunner:
     spaces = cages[0].spaces
     obs_space, action_space = spaces.observation, spaces.action
 
+    # write dict into namedarraytuple and read it back out. this ensures the
+    # example is in a standard format (i.e. namedarraytuple).
+    batch_env.observation[0] = obs_space.sample()
+    example_obs = batch_env.observation[0]
+    batch_action[0] = action_space.sample()
+
     # instantiate model and agent
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)
@@ -70,9 +76,8 @@ def build(config: Dict) -> OnPolicyRunner:
     cart_agent = CategoricalPgAgent(
         model=cart_model,
         distribution=cart_distribution,
-        observation_space=obs_space,
-        action_space=action_space["cart"],
-        n_states=batch_spec.B,
+        example_obs=example_obs,
+        example_action=batch_action.cart[0],
         device=device,
         recurrent=True,
     )
@@ -88,9 +93,8 @@ def build(config: Dict) -> OnPolicyRunner:
     camera_agent = CategoricalPgAgent(
         model=camera_model,
         distribution=camera_distribution,
-        observation_space=obs_space,
-        action_space=action_space["camera"],
-        n_states=batch_spec.B,
+        example_obs=example_obs,
+        example_action=batch_action.camera[0],
         device=device,
         recurrent=True,
     )
@@ -98,15 +102,9 @@ def build(config: Dict) -> OnPolicyRunner:
 
     agent = IndependentPgAgents(
         agent_profiles=[cart_profile, camera_profile],
-        observation_space=obs_space,
         action_space=action_space,
     )
     agent = TorchHandler(agent=agent)
-
-    # write dict into namedarraytuple and read it back out. this ensures the
-    # example is in a standard format (i.e. namedarraytuple).
-    batch_env.observation[0] = obs_space.sample()
-    example_obs = batch_env.observation[0]
 
     # get example output from agent
     _, agent_info = agent.step(example_obs)
