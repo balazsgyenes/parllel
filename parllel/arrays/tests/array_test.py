@@ -1,4 +1,5 @@
 import functools
+from operator import getitem
 
 import pytest
 import numpy as np
@@ -313,11 +314,7 @@ class TestArray:
         subarray1 = subarray1[:, -2:]
 
         # apply subarray1's index history to array again
-        subarray2 = functools.reduce(
-            lambda buf, index: buf[index],
-            subarray1.index_history,
-            array
-        )
+        subarray2 = functools.reduce(getitem, subarray1.index_history, array)
 
         assert np.array_equal(subarray1, subarray2)
         assert all(el1 == el2 for el1, el2

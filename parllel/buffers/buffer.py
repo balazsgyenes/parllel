@@ -1,13 +1,13 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Generic, Tuple, TypeVar, Union
+from typing import Generic, TypeVar, Union
 
 
 # A single index element, e.g. arr[3:6]
 Index = Union[int, slice, type(Ellipsis)]
 
 # A single indexing location, e.g. arr[2, 0] or arr[:-2]
-Indices = Union[Index, Tuple[Index, ...]]
+Indices = Union[Index, tuple[Index, ...]]
 
 # Represents the object type at the leaves of the buffer tree structure:
 # e.g. numpy array, Array, torch tensor, jax array, etc.
@@ -22,7 +22,7 @@ class Buffer(ABC, Generic[LeafType]):
     but these are not true Buffers.
     """
     @property
-    def index_history(self) -> Tuple[Indices, ...]:
+    def index_history(self) -> tuple[Indices, ...]:
         # return a copy of the list as a tuple, not the list itself
         return tuple(self._index_history)
 
