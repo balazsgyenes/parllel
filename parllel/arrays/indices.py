@@ -40,11 +40,13 @@ def compute_indices(
     curr_strides = current_array.strides
     current_indices = [None for _ in base_shape]
 
-    for (curr_size, curr_stride) in zip(curr_shape, curr_strides):
+    for curr_size, curr_stride in zip(curr_shape, curr_strides):
         # search for the corresponding stride in base_array
         # base_stride_(dim-1) > abs(current_stride_(dim)) >= base_stride_(dim)
         # the absolute value is required because the current stride might be negative
-        dim = next(index for index, elem in enumerate(base_strides) if abs(curr_stride) >= elem)
+        dim = next(
+            index for index, elem in enumerate(base_strides) if abs(curr_stride) >= elem
+        )
         base_stride = base_strides[dim]
 
         step = curr_stride // base_stride
@@ -62,15 +64,16 @@ def compute_indices(
     for dim in range(len(base_shape)):
         if current_indices[dim] is None:
             current_indices[dim] = dim_offsets[dim]
-    
+
     return current_indices
 
 
 def predict_copy_on_index(shape: Shape, new_location: Location) -> bool:
     if not isinstance(new_location, tuple):
         new_location = (new_location,)
-    return (len(new_location) == len(shape) and 
-        all(isinstance(index, int) for index in new_location))
+    return len(new_location) == len(shape) and all(
+        isinstance(index, int) for index in new_location
+    )
 
 
 def add_locations(
@@ -93,8 +96,7 @@ def add_locations(
     """
     if any(isinstance(location, np.ndarray) for location in location):
         raise IndexError(
-            "Cannot processing further indexing operations after advanced "
-            "indexing."
+            "Cannot processing further indexing operations after advanced indexing."
         )
 
     location = list(location)  # create a copy to prevent modifying inputs
@@ -105,15 +107,21 @@ def add_locations(
         new_location = [new_location]
 
     # check if Ellipsis occurs in new_location
-    ellipses = [dim for dim, new_index in enumerate(new_location) if new_index is Ellipsis]
+    ellipses = [
+        dim for dim, new_index in enumerate(new_location) if new_index is Ellipsis
+    ]
     if ellipses:
         if len(ellipses) > 1:
             raise IndexError("An index can only have a single ellipsis ('...').")
         # pad new_location with slice(None) elements until length equals the
         # apparent number of dimensions
         i = ellipses[0]
-        apparent_n_dim = len([location for location in location if isinstance(location, slice)])
-        new_location[i:i+1] = [slice(None)] * (apparent_n_dim - len(new_location) + 1)
+        apparent_n_dim = len(
+            [location for location in location if isinstance(location, slice)]
+        )
+        new_location[i : i + 1] = [slice(None)] * (
+            apparent_n_dim - len(new_location) + 1
+        )
 
     if not new_location:
         # e.g. if new_location was [...] or [()]
@@ -143,6 +151,8 @@ def add_locations(
 
 
 IndexType = TypeVar("IndexType", int, slice, np.ndarray)
+
+
 def index_slice(
     index: slice,
     new_index: IndexType,
@@ -171,29 +181,30 @@ def index_slice(
         new_index = index_slice_with_int(index, new_index, size, neg_from_end)
         if not (0 <= new_index < size):
             raise IndexError(
-                f"Index {new_index} is out of bounds for axis with size "
-                f"{size}."
+                f"Index {new_index} is out of bounds for axis with size {size}."
             )
         return new_index  # new_index should never be negative after cleaning
 
     elif new_index == slice(None):
         # no op if indexed with the trivial slice
         return index
-    
+
     else:  # new_index: slice
         # convert to numerical form for computation
         start, stop, step = index.indices(size)
 
         new_step = new_index.step if new_index.step is not None else 1
-        new_start = new_index.start if new_index.start is not None else (
-            0 if new_step > 0 else -1
+        new_start = (
+            new_index.start
+            if new_index.start is not None
+            else (0 if new_step > 0 else -1)
         )
         new_stop = new_index.stop
 
         # translate new_index.start into "world coordinates"
         new_start = index_slice_with_int(index, new_start, size, neg_from_end)
         new_start = max(0, new_start)  # lower bound at 0
-        
+
         if new_stop is not None:
             # translate new_stop into "world coordinates"
             new_stop = index_slice_with_int(index, new_stop, size, neg_from_end)
@@ -207,7 +218,7 @@ def index_slice(
             new_stop = start
             # extend new_stop one unit away from body of range
             new_stop += np.sign(step * new_step)
-        
+
         # set to None instead of -1
         # this might happen if the stop was specified as an integer, but lands
         # before the beginning of the array, or if the stop was None and the
@@ -216,7 +227,7 @@ def index_slice(
 
         # update step by multiplying new step onto it
         new_step = step * new_step
-        
+
         return slice(new_start, new_stop, new_step)
 
 
@@ -250,12 +261,12 @@ def index_slice_with_np(
     standard form.
     """
     start, stop, step = slice_.indices(size)
-    
+
     if neg_from_end:
-    # if the index is negative, the start is the end of the slice, or the
-    # end of the array
-    # correction if step does not evenly divide into size of array
-    # find effective end of slice by counting from start of slice
+        # if the index is negative, the start is the end of the slice, or the
+        # end of the array
+        # correction if step does not evenly divide into size of array
+        # find effective end of slice by counting from start of slice
         end = start + step * math.ceil((stop - start) / step)
 
         new_index = np.zeros_like(index)
@@ -296,24 +307,21 @@ def shape_from_location(location: StandardLocation, base_shape: Shape) -> Shape:
     # dimension is invisible if indexed with int
     visible_dims = [
         (index, size)
-        for index, size
-        in zip(location, base_shape)
+        for index, size in zip(location, base_shape)
         if not isinstance(index, int)
     ]
-    
+
     # filter out arrays, as they must be handled differently
     arrays = [
         (dim, index)
-        for dim, (index, size)
-        in enumerate(visible_dims)
+        for dim, (index, size) in enumerate(visible_dims)
         if isinstance(index, np.ndarray)
     ]
     if arrays:
         broadcasted_shape = np.broadcast(*(arr for _, arr in arrays)).shape
         visible_dims = [
             (index, size)
-            for index, size
-            in visible_dims
+            for index, size in visible_dims
             if not isinstance(index, np.ndarray)
         ]
 

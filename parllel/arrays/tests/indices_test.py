@@ -16,10 +16,13 @@ PROB_INDEX_NEGATIVE = 0.5
 PROB_STEP_NEGATIVE = 0.5
 MAX_STEP = 3
 PROB_SLICE_EL_NONE = 0.2
+
+
 def random_int(rng: random.Generator, size: int) -> int:
     assert size > 0
     index = int(rng.integers(size))
     return -index if rng.random() < PROB_INDEX_NEGATIVE else index
+
 
 def random_slice(
     rng: random.Generator,
@@ -45,7 +48,7 @@ def random_slice(
             stop = None
         else:
             stop = int(rng.integers(0, high=max_stop, endpoint=True))
-            stop = None if rng.random() < PROB_SLICE_EL_NONE else stop        
+            stop = None if rng.random() < PROB_SLICE_EL_NONE else stop
 
     else:
         # ensures that min_start is 0 if size==1
@@ -55,19 +58,25 @@ def random_slice(
 
         min_stop = start + 1 if start is not None else 1
         stop = int(rng.integers(min_stop, high=size, endpoint=True))
-        stop = None if rng.random() < PROB_SLICE_EL_NONE else stop        
-    
-    start = start - size if (
-        rng.random() < prob_start_stop_negative and
-        start is not None
-    ) else start
-    stop = stop - size if (
-        rng.random() < prob_start_stop_negative and 
-        stop is not None and 
-        stop < size  # if stop==size, cannot be converted to negative index
-    ) else stop
+        stop = None if rng.random() < PROB_SLICE_EL_NONE else stop
+
+    start = (
+        start - size
+        if (rng.random() < prob_start_stop_negative and start is not None)
+        else start
+    )
+    stop = (
+        stop - size
+        if (
+            rng.random() < prob_start_stop_negative
+            and stop is not None
+            and stop < size  # if stop==size, cannot be converted to negative index
+        )
+        else stop
+    )
 
     return slice(start, stop, step)
+
 
 def random_location(
     rng: random.Generator,
@@ -78,9 +87,15 @@ def random_location(
 ) -> Location:
     return tuple(
         (
-            random_slice(rng, size, max_step, prob_step_negative, prob_start_stop_negative)
-            if rng.random() < PROB_SLICE else
-            random_int(rng, size)
+            random_slice(
+                rng,
+                size,
+                max_step,
+                prob_step_negative,
+                prob_start_stop_negative,
+            )
+            if rng.random() < PROB_SLICE
+            else random_int(rng, size)
         )
         for size in islice(
             shape,
@@ -89,6 +104,7 @@ def random_location(
     )
 
 
+# fmt: off
 @pytest.fixture(params=[
     (20, 22, 24, 26)
 ], scope="module")
