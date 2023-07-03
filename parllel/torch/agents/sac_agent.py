@@ -12,7 +12,7 @@ from parllel.torch.distributions.squashed_gaussian import SquashedGaussian, Dist
 from parllel.torch.utils import buffer_to_device, update_state_dict
 
 
-AgentInfo = NamedArrayTupleClass("AgentInfo", ["dist_info"])
+AgentInfo = NamedArrayTupleClass("AgentInfo", [])
 
 @dataclass(frozen=True)
 class PiModelOutputs:
@@ -61,7 +61,7 @@ class SacAgent(TorchAgent):
         dist_info = DistInfoStd(mean=model_outputs.mean,
                                 log_std=model_outputs.log_std)
         action = self.distribution.sample(dist_info)
-        agent_info = AgentInfo(dist_info=dist_info)
+        agent_info = AgentInfo()
         action, agent_info = buffer_to_device((action, agent_info), device="cpu")
         return AgentStep(action=action, agent_info=agent_info)
 
