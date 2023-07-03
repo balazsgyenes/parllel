@@ -11,6 +11,6 @@ from .sharedmemory import SharedMemoryArray
 
 
 __all__ = [
-    Array,
-    buffer_from_example, buffer_from_dict_example,
+    "Array",
+    "buffer_from_example", "buffer_from_dict_example",
 ]

@@ -225,8 +225,7 @@ def build(config: Dict) -> OnPolicyRunner:
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    storage = "shared" if parallel else "local"
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), storage=storage)
+    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,))
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 

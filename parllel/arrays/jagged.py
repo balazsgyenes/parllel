@@ -110,12 +110,13 @@ class JaggedArray(Array, kind="jagged"):
 
     def _allocate(self) -> None:
         self._base_array = np.zeros(shape=self._base_shape, dtype=self.dtype)
+        
         # add an extra element to node dimension so it's always possible to
         # access the element at t+1
         base_batch_shape = self._virtual_base_shape[: self._n_batch_dim]
-        self._ptr = np.zeros(
-            shape=base_batch_shape[1:] + (base_batch_shape[0] + 1,), dtype=np.int64
-        )
+        ptr_shape = base_batch_shape[1:] + (base_batch_shape[0] + 1,)
+        
+        self._ptr = np.zeros(shape=ptr_shape, dtype=np.int64)
 
     def _resolve_indexing_history(self) -> None:
         for location in self._index_history:
