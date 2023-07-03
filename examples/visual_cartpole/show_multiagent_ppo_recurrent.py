@@ -19,7 +19,6 @@ from parllel.torch.agents.ensemble import AgentProfile
 from parllel.torch.agents.independent import IndependentPgAgents
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
-from parllel.types import BatchSpec
 
 from hera_gym.builds.multi_agent_cartpole import build_multi_agent_cartpole
 from models.atari_lstm_model import AtariLstmPgModel
@@ -29,11 +28,6 @@ from models.atari_lstm_model import AtariLstmPgModel
 def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
 
     TrajInfo.set_discount(config["discount"])  # use the discount provided for evaluation
-
-    batch_spec = BatchSpec(
-        T=config["max_steps"],
-        B=1,
-    )
 
     cage_kwargs = dict(
         EnvClass=build_multi_agent_cartpole,
@@ -46,18 +40,26 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
 
     # get example output from env
     cage.random_step_async()
-    action, obs, reward, done, info = cage.await_step()
+    action, obs, reward, terminated, truncated, info = cage.await_step()
 
     obs_space, action_space = cage.spaces.observation, cage.spaces.action
 
     # allocate batch buffer based on examples
     step_observation = buffer_from_dict_example(obs, (1, 1), name="obs", padding=1)
     step_reward = buffer_from_dict_example(reward, (1, 1), name="reward")
-    step_done = buffer_from_dict_example(done, (1, 1), name="done", padding=1)
+    step_terminated = buffer_from_dict_example(terminated, (1, 1), name="done", padding=1)
+    step_truncated = buffer_from_dict_example(truncated, (1, 1), name="done", padding=1)
+    step_done = buffer_from_dict_example(terminated, (1, 1), name="done", padding=1)
     step_info = buffer_from_dict_example(info, (1, 1), name="envinfo")
-    step_env = EnvSamples(step_observation, step_reward, step_done, step_info)
+    step_env = EnvSamples(step_observation, step_reward, step_done, step_terminated, step_truncated, step_info)
 
     step_action = buffer_from_dict_example(action, (1, 1), name="action")
+
+    # write dict into namedarraytuple and read it back out. this ensures the
+    # example is in a standard format (i.e. namedarraytuple).
+    step_env.observation[0] = obs_space.sample()
+    example_obs = step_env.observation[0]
+    step_action[0] = action_space.sample()
 
     # instantiate model and agent
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -72,9 +74,8 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
     cart_agent = CategoricalPgAgent(
         model=cart_model,
         distribution=cart_distribution,
-        observation_space=obs_space,
-        action_space=action_space["cart"],
-        n_states=batch_spec.B,
+        example_obs=example_obs,
+        example_action=step_action.cart[0],
         device=device,
         recurrent=True,
     )
@@ -90,9 +91,8 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
     camera_agent = CategoricalPgAgent(
         model=camera_model,
         distribution=camera_distribution,
-        observation_space=obs_space,
-        action_space=action_space["camera"],
-        n_states=batch_spec.B,
+        example_obs=example_obs,
+        example_action=step_action.camera[0],
         device=device,
         recurrent=True,
     )
@@ -100,17 +100,11 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
 
     agent = IndependentPgAgents(
         agent_profiles=[cart_profile, camera_profile],
-        observation_space=obs_space,
         action_space=action_space,
     )
     agent = TorchHandler(agent=agent)
 
     agent.load_model(model_checkpoint_path, device)
-
-    # write dict into namedarraytuple and read it back out. this ensures the
-    # example is in a standard format (i.e. namedarraytuple).
-    step_env.observation[0] = obs_space.sample()
-    example_obs = step_env.observation[0]
 
     # get example output from agent
     _, agent_info = agent.step(example_obs)

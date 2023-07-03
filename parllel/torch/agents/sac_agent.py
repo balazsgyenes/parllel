@@ -2,7 +2,6 @@ import copy
 from dataclasses import dataclass
 from typing import Tuple, Union
 
-import gymnasium as gym
 import torch
 
 from parllel.buffers import Buffer, NamedArrayTupleClass
@@ -13,7 +12,7 @@ from parllel.torch.distributions.squashed_gaussian import SquashedGaussian, Dist
 from parllel.torch.utils import buffer_to_device, update_state_dict
 
 
-AgentInfo = NamedArrayTupleClass("AgentInfo", ["dist_info"])
+AgentInfo = NamedArrayTupleClass("AgentInfo", [])
 
 @dataclass(frozen=True)
 class PiModelOutputs:
@@ -28,12 +27,11 @@ class QModelOutputs:
 class SacAgent(TorchAgent):
     """Agent for SAC algorithm, including action-squashing, using twin Q-values."""
 
+    # TODO: remove agent info, as it is not needed for SAC
     def __init__(self,
-        model: torch.nn.Module,
+        model: torch.nn.ModuleDict,
         distribution: SquashedGaussian,
         device: torch.device,
-        observation_space: gym.Space,
-        action_space: gym.Space,
         learning_starts: int = 0,
         pretrain_std: float = 0.75,  # With squash 0.75 is near uniform.
     ) -> None:
@@ -45,8 +43,6 @@ class SacAgent(TorchAgent):
 
         super().__init__(model, distribution, device)
 
-        self.obs_space = observation_space
-        self.action_space = action_space
         self.learning_starts = learning_starts
         self.pretrain_std = pretrain_std
 
@@ -65,7 +61,7 @@ class SacAgent(TorchAgent):
         dist_info = DistInfoStd(mean=model_outputs.mean,
                                 log_std=model_outputs.log_std)
         action = self.distribution.sample(dist_info)
-        agent_info = AgentInfo(dist_info=dist_info)
+        agent_info = AgentInfo()
         action, agent_info = buffer_to_device((action, agent_info), device="cpu")
         return AgentStep(action=action, agent_info=agent_info)
 

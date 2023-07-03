@@ -1,10 +1,9 @@
 from dataclasses import dataclass
 from typing import Optional, Union
 
-import gymnasium as gym
 import torch
 
-from parllel.buffers import Buffer, buffer_map, buffer_method, dict_to_namedtuple
+from parllel.buffers import Buffer, buffer_method, buffer_asarray
 from parllel.handlers.agent import AgentStep
 from parllel.torch.distributions.categorical import Categorical, DistInfo
 from parllel.torch.utils import buffer_to_device, torchify_buffer
@@ -40,33 +39,25 @@ class CategoricalPgAgent(TorchAgent):
     def __init__(self,
             model: torch.nn.Module,
             distribution: Categorical,
-            observation_space: gym.Space,
-            action_space: gym.Space,
-            n_states: Optional[int] = None,
+            example_obs: Buffer,
+            example_action: Optional[Buffer] = None,
             device: Optional[torch.device] = None,
             recurrent: bool = False,
         ) -> None:
         super().__init__(model, distribution, device)
 
-        self.observation_space = observation_space
-        self.action_space = action_space
         self.recurrent = recurrent
 
-        if recurrent and n_states is None:
-            raise ValueError(
-                "For a recurrent model, please pass the number of recurrent "
-                "states this agent should store (this is usually the number "
-                "of environments)."
-            )
-
-        example_obs = self.observation_space.sample()
-        example_obs = dict_to_namedtuple(example_obs, "observation")
+        example_obs = buffer_asarray(example_obs)
         example_obs = torchify_buffer(example_obs)
         example_inputs = (example_obs,)
         
         if self.recurrent:
-            example_action = self.action_space.sample()
-            example_action = dict_to_namedtuple(example_action, "action")
+            if example_action is None:
+                raise ValueError(
+                    "An example of an action is required for recurrent models."
+                )
+            example_action = buffer_asarray(example_action)
             example_action = torchify_buffer(example_action)
             example_act_onehot = self.distribution.to_onehot(example_action)
             example_inputs += (example_act_onehot,)
@@ -82,21 +73,9 @@ class CategoricalPgAgent(TorchAgent):
                     " when creating this agent.") from e
 
         if self.recurrent:
-            # Extend an rnn_state to allocate a slot for each env.
-            # repeat in batch dimension (shape should be [N,B,H])
-            rnn_state = model_outputs.next_rnn_state
-            self.rnn_states = buffer_map(
-                lambda t: torch.cat((t,) * n_states, dim=1),
-                rnn_state,
-            )
-
-            # Stack previous action to allocate a slot for each env
-            # Add a new leading dimension
-            previous_action = buffer_map(
-                lambda t: torch.stack((t,) * n_states, dim=0),
-                example_action,
-            )
-            self.previous_action = buffer_to_device(previous_action,
+            # store persistent agent state on device for next step
+            self.rnn_states = model_outputs.next_rnn_state
+            self.previous_action = buffer_to_device(example_action,
                 device=self.device)
 
     @torch.no_grad()

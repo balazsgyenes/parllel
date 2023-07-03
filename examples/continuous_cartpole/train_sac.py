@@ -11,7 +11,7 @@ import torch
 import wandb
 
 from parllel.arrays import buffer_from_example
-from parllel.buffers import AgentSamples, buffer_method, Samples
+from parllel.buffers import AgentSamples, buffer_method, Samples, buffer_asarray
 from parllel.cages import TrajInfo
 import parllel.logger as logger
 from parllel.logger import Verbosity
@@ -20,10 +20,10 @@ from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.sac_agent import SacAgent
-from parllel.torch.algos.sac import SAC, SamplesForLoss
+from parllel.torch.algos.sac import SAC, build_replay_buffer
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.torch.handler import TorchHandler
-from parllel.torch.utils import torchify_buffer
+from parllel.torch.utils import buffer_to_device, torchify_buffer
 from parllel.types import BatchSpec
 
 from envs.continuous_cartpole import build_cartpole
@@ -53,7 +53,7 @@ def build(config: Dict) -> OffPolicyRunner:
     spaces = cages[0].spaces
     obs_space, action_space = spaces.observation, spaces.action
 
-    # instantiate model and agent
+    # instantiate models
     pi_model = PiMlpModel(
         obs_space=obs_space,
         action_space=action_space,
@@ -82,12 +82,10 @@ def build(config: Dict) -> OffPolicyRunner:
     wandb.config.update({"device": device}, allow_val_change=True)
     device = torch.device(device)
 
-    # instantiate model and agent
+    # instantiate agent
     agent = SacAgent(
         model=model,
         distribution=distribution,
-        observation_space=obs_space,
-        action_space=action_space,
         device=device,
         learning_starts=config["algo"]["learning_starts"],
     )
@@ -102,8 +100,7 @@ def build(config: Dict) -> OffPolicyRunner:
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    storage = "shared" if parallel else "local"
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), storage=storage)
+    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,))
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 
@@ -116,17 +113,12 @@ def build(config: Dict) -> OffPolicyRunner:
         get_bootstrap_value=False,
     )
 
-    batch_obs = batch_buffer.env.observation
-    replay_buffer = SamplesForLoss(
-        observation=batch_obs.full,
-        action=batch_buffer.agent.action.full,
-        reward=batch_buffer.env.reward.full,
-        done=batch_buffer.env.done.full,
-        next_observation=batch_obs.full.next,
-    )
-    # because we are not using frame stacks, we can optionally convert the
-    # entire replay buffer to torch Tensors here
-    # replay_buffer = torchify_buffer(replay_buffer)
+    replay_buffer = build_replay_buffer(batch_buffer)
+    # because we are only using standard Array types which behave the same as
+    # torch Tensors, we can torchify the entire replay buffer here instead of
+    # doing it for each batch individually
+    replay_buffer = buffer_asarray(replay_buffer)
+    replay_buffer = torchify_buffer(replay_buffer)
 
     replay_buffer = ReplayBuffer(
         buffer=replay_buffer,
@@ -135,6 +127,7 @@ def build(config: Dict) -> OffPolicyRunner:
         replay_batch_size=config["algo"]["batch_size"],
         newest_n_samples_invalid=0,
         oldest_n_samples_invalid=1,
+        batch_transform=lambda x: buffer_to_device(x, device=device)
     )
 
     optimizers = {

@@ -210,6 +210,7 @@ class NamedArrayTuple(NamedTuple, Buffer):
             and getattr(value, "_fields", None) == self._fields):
             # Repeat value, assigning it to each field
             # e.g. tup[:] = 0
+            # TODO: is this a bug?
             value = repeat(value)
         try:
             for i, (elem, v) in enumerate(zip(self, value)):

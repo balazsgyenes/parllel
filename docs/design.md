@@ -39,9 +39,7 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - Seeding
         - Add seeding module that maintains a SeedSequence and spawns a new seed sequence each time an entity requests a new seed. Seeds are saved by name so they can be reloaded. Seeds are logged to a json file.
         - If a seed is requested twice for the same name, an error is thrown
-    - To deal with parameters reused by multiple entities (e.g. discount, batch spec), maybe implement search method to avoid having to define a "canonical" position for these parameters (e.g. discount belongs in the algorithm parameters).
     - Logging
-        - Add support for recording a grid of videos of rollouts
         - Log random seeds to enable repeatable runs
         - Enable loading random seeds from log to repeat a previous run
         - Log mean and std_dev of obs normalization, std_dev of reward normalization
@@ -68,14 +66,13 @@ rlpyt is a great piece of software, but there are several pain points when it co
     - SwitchingArray wraps two arrays and switches between them on `rotate`. This is useful for asynchronous sampling, where different parts of the array are simultaneously written to by the sampler and read from by the algorithm.
         - Overloading `rotate` is useful because the batch buffer is already rotated before each batch.
         - SwitchingRotatingArray needs to add 4x padding or maybe we should just allocate 2 arrays.
-    - Write algorithm enabling Array types to keep track of their current indices. This value will be internal only, since it will not match the index_history for RotatingArray, but will enable many features:
-        - implement `previous` and `next` for `Array` objects with indexing history, returning an array of the same shape but with the time index shifting backward or forward by one, respectively
-        - `LazyFramesArray`, which only saves the most recent frame in a LazyFrames object, and recreates the frame stack in its `__array__` method
-        - `Array` already abstracts indexing items of arrays, where for numpy arrays this results in a copy. Add support for indexing Array with an array or list of integers without copying (this also results in a copy when used on numpy arrays)
-        - Array equality check verifies that buffer ids and (internal) current_indices are the same (because indices in standard form should be equivalent). This allows the `SynchronizedProcessCage` to check whether the expected array slice was passed.
+    - implement `previous` and `next` for `Array` objects with indexing history, returning an array of the same shape but with the time index shifting backward or forward by one, respectively
+    - `LazyFramesArray`, which only saves the most recent frame in a LazyFrames object, and recreates the frame stack in its `__array__` method
+    - Array equality check verifies that buffer ids and (internal) current_indices are the same (because indices in standard form should be equivalent). This allows the `SynchronizedProcessCage` to check whether the expected array slice was passed.
 - Buffers
     - `buffer_get_attr` and `buffer_set_attr`
     - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
+    - **!!** Replace NamedTuple and NamedArrayTuple with ArrayDict based on TensorDict.
 - Cages:
     - Add `__getattr__`, `__setattr__`, and `env_method` methods to Cage, allowing direct access to env.
     - If `set_samples_buffer` is called on a SharedMemoryArray, it verifies that the buffers are registered before sending the reduced buffer across the pipe. This allows for consistent use in all cases, and supports configurations like a replay buffer in shared memory with ProcessCage.
@@ -107,7 +104,6 @@ rlpyt is a great piece of software, but there are several pain points when it co
 
 - BUG: CartPole with pixel observations hangs when using headless rendering in parallel environments without the SubprocessWrapper.
 - BUG: fix memory leak when using `fork` start method and ManagedMemoryArrays ( https://bugs.python.org/issue38119 )
-- BUG: debugging in VS Code in parallel mode fails because NamedTuple has no `__getstate__` method.
 
 ## To benchmark
 - Reading/writing to arrays in shared/managed memory vs. local memory

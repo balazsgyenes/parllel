@@ -1,6 +1,6 @@
 from typing import Optional, Sequence, Union
 
-import gymnasium as gym
+from gymnasium import spaces
 import torch
 
 from parllel.buffers import Buffer, NamedTupleClass
@@ -14,8 +14,7 @@ class IndependentPgAgents(EnsembleAgent):
 
     def __init__(self,
         agent_profiles: Sequence[AgentProfile],
-        observation_space: gym.Space,
-        action_space: gym.Space,
+        action_space: spaces.Dict,
     ) -> None:
 
         # order agent profiles according to elements in action space
@@ -32,8 +31,6 @@ class IndependentPgAgents(EnsembleAgent):
             agent_profiles_ordered.append(agent_profiles[i])
 
         super().__init__(agent_profiles_ordered)
-        self._observation_space = observation_space
-        self._action_space = action_space
 
         # actions must be in environment order, so use keys from action space
         self.MultiAction = NamedTupleClass(

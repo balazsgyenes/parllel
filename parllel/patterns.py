@@ -182,7 +182,7 @@ def add_bootstrap_value(batch_buffer: Samples) -> Samples:
     )
 
     # Create an array with only (B,) leading dimension
-    batch_bootstrap_value = Array.like(batch_agent_info.value[0])
+    batch_bootstrap_value = Array.like(batch_agent_info.value[0], storage="local")
 
     batch_agent = AgentSamplesClass(
         **batch_agent._asdict(),
@@ -203,7 +203,7 @@ def add_valid(batch_buffer: Samples) -> Samples:
     )
 
     # allocate new Array objects for valid
-    batch_valid = Array.like(done)
+    batch_valid = Array.like(done, storage="local")
 
     batch_buffer_env = EnvSamplesClass(
         **batch_buffer_env._asdict(),
@@ -245,9 +245,9 @@ def add_advantage_estimation(
         advantage_shape = value.shape
 
     # allocate new Array objects for advantage and return_
-    batch_advantage = Array.like(value, shape=advantage_shape)
+    batch_advantage = Array.like(value, shape=advantage_shape, storage="local")
     # in algo, return_ must broadcast with value
-    batch_return_ = Array.like(value)
+    batch_return_ = Array.like(value, storage="local")
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(
@@ -315,7 +315,7 @@ def add_reward_normalization(
     )
 
     # allocate new Array for past discounted returns
-    batch_past_return = Array.like(reward, padding=1)
+    batch_past_return = Array.like(reward, padding=1, storage="local")
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(

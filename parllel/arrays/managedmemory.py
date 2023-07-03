@@ -10,6 +10,7 @@ class ManagedMemoryArray(Array, storage="managed"):
     """An array in OS shared memory that can be shared between processes at any
     time.
     """
+
     storage = "managed"
 
     def _allocate(self) -> None:
@@ -21,10 +22,14 @@ class ManagedMemoryArray(Array, storage="managed"):
         self._raw_array = shared_memory.SharedMemory(create=True, size=nbytes)
 
         self._wrap_raw_array()
-        
+
     def _wrap_raw_array(self) -> None:
         size = int(np.prod(self._base_shape))
-        self._base_array = np.frombuffer(self._raw_array.buf, dtype=self.dtype, count=size)
+        self._base_array = np.frombuffer(
+            self._raw_array.buf,
+            dtype=self.dtype,
+            count=size,
+        )
 
         # assign to shape attribute so that error is raised when data is copied
         # array.reshape might silently copy the data
