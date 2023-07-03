@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Optional, Sequence, SupportsFloat
 
-from gymnasium import spaces
 import numpy as np
+from gymnasium import spaces
 from numpy.typing import NDArray
 
 
@@ -21,7 +21,9 @@ class PointCloud(spaces.Box):
         self.max_num_points = max_num_points
 
     def sample(self):
-        n_points = self.np_random.integers(self.max_num_points // 2, self.max_num_points)
+        n_points = self.np_random.integers(
+            self.max_num_points // 2, self.max_num_points
+        )
 
         sample_shape = (n_points,) + self.shape
 

@@ -1,34 +1,23 @@
+import multiprocessing as mp
 from contextlib import contextmanager
 from datetime import datetime
-import multiprocessing as mp
 from pathlib import Path
 from typing import Dict
 
 import hydra
-from omegaconf import DictConfig, OmegaConf
 import numpy as np
 import torch
 import wandb
+from omegaconf import DictConfig, OmegaConf
 
-from parllel.arrays import buffer_from_example, buffer_from_dict_example, Array
-from parllel.buffers import (
-    AgentSamples,
-    Buffer,
-    buffer_asarray,
-    buffer_method,
-    Samples,
-    EnvSamples,
-)
-from parllel.cages import TrajInfo, ProcessCage, SerialCage
 import parllel.logger as logger
+from parllel.arrays import Array, buffer_from_dict_example, buffer_from_example
+from parllel.buffers import (AgentSamples, Buffer, EnvSamples, Samples,
+                             buffer_asarray, buffer_method)
+from parllel.cages import ProcessCage, SerialCage, TrajInfo
 from parllel.logger import Verbosity
-from parllel.patterns import (
-    add_advantage_estimation,
-    add_bootstrap_value,
-    add_reward_clipping,
-    add_reward_normalization,
-    build_cages_and_env_buffers,
-)
+from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
+                              add_reward_clipping, add_reward_normalization)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
 from parllel.samplers import BasicSampler
@@ -330,7 +319,7 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        # log_dir=Path(f"log_data/pointcloud-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        log_dir=Path(f"log_data/pointcloud-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
         tensorboard=True,
         output_files={
             "txt": "log.txt",

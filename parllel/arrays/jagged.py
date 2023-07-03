@@ -10,7 +10,8 @@ from parllel.arrays.array import Array
 from parllel.buffers import Buffer, Indices, NamedTupleClass
 
 from .array import Array
-from .indices import add_locations, index_slice, init_location, shape_from_location
+from .indices import (add_locations, index_slice, init_location,
+                      shape_from_location)
 
 PointBatch = NamedTupleClass("PointBatch", ["pos", "ptr"])
 
@@ -77,13 +78,13 @@ class JaggedArray(Array, kind="jagged"):
 
         base_T_size = full_size + 2 * padding
         N_size = shape[0]
-        
+
         # shape that base array appears to be
         self._virtual_base_shape = (base_T_size,) + batch_shape[1:] + shape
-        
+
         # size of leading dim of full array, without padding
         self._full_size = full_size
-        
+
         # multiply the T dimension into the node dimension
         self._flattened_size = base_T_size * N_size
         self._base_shape = batch_shape[1:] + (self._flattened_size,) + shape[1:]
@@ -110,12 +111,12 @@ class JaggedArray(Array, kind="jagged"):
 
     def _allocate(self) -> None:
         self._base_array = np.zeros(shape=self._base_shape, dtype=self.dtype)
-        
+
         # add an extra element to node dimension so it's always possible to
         # access the element at t+1
         base_batch_shape = self._virtual_base_shape[: self._n_batch_dim]
         ptr_shape = base_batch_shape[1:] + (base_batch_shape[0] + 1,)
-        
+
         self._ptr = np.zeros(shape=ptr_shape, dtype=np.int64)
 
     def _resolve_indexing_history(self) -> None:

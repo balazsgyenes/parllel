@@ -1,16 +1,16 @@
 import functools
 
-import pytest
 import numpy as np
 import numpy.random as random
+import pytest
 
 from parllel.arrays import JaggedArray
-
 
 MEAN = 0.0
 STD = 2.0
 
 
+# fmt: off
 @pytest.fixture(params=[
     JaggedArray,
 ], scope="module")

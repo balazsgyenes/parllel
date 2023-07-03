@@ -3,11 +3,10 @@ from __future__ import annotations
 from typing import Any, SupportsFloat, SupportsInt
 
 import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
+from gymnasium import spaces
 
 from .pointcloud import PointCloud
-
 
 ObsType = np.ndarray
 ActionType = SupportsInt

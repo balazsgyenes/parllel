@@ -1,12 +1,13 @@
 import functools
 from operator import getitem
 
-import pytest
 import numpy as np
+import pytest
 
-from parllel.arrays import Array, SharedMemoryArray, ManagedMemoryArray
+from parllel.arrays import Array, ManagedMemoryArray, SharedMemoryArray
 
 
+# fmt: off
 @pytest.fixture(params=[
     Array,
 ], scope="module")
