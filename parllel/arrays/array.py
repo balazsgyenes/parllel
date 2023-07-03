@@ -1,11 +1,13 @@
 from __future__ import annotations  # full returns another Array
 
 from functools import reduce
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, TypeVar
 
 import numpy as np
 
 from parllel.buffers import Buffer, Index, Indices
+
+Self = TypeVar("Self", bound="Array")
 
 
 class Array(Buffer):
@@ -174,7 +176,7 @@ class Array(Buffer):
         
         return self._apparent_shape[0] - 1
 
-    def __getitem__(self, location: Indices) -> Array:
+    def __getitem__(self, location: Indices) -> Self:
         # new Array object initialized through a (shallow) copy. Attributes
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
