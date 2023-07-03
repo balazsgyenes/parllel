@@ -1,4 +1,4 @@
-from typing import Generic, Iterator, Optional, TypeVar
+from typing import Callable, Generic, Iterator, Optional, TypeVar
 
 from numpy import random
 
@@ -17,11 +17,11 @@ class ReplayBuffer(Generic[BufferType]):
         replay_batch_size: int,
         newest_n_samples_invalid: int = 0,
         oldest_n_samples_invalid: int = 0,
+        batch_transform: Optional[Callable] = None,
     ) -> None:
         """Stores more than a batch's worth of samples in a circular buffer for
         off-policy algorithms to sample from.
         """
-        # convert to ndarray because Array cannot handle indexing with an array
         self.buffer = buffer
         self.batch_spec = sampler_batch_spec
         self.size_T = size_T
@@ -32,6 +32,10 @@ class ReplayBuffer(Generic[BufferType]):
         self._cursor: int = 0 # index of next sample to write
         self._full = False # has the entire buffer been written to at least once?
         
+        if batch_transform is None:
+            batch_transform = lambda x: x
+        self.batch_transform = batch_transform
+
         self.seed()
     
     def seed(self, seed: Optional[int] = None) -> None:
@@ -64,7 +68,9 @@ class ReplayBuffer(Generic[BufferType]):
 
         B_idxs = self._rng.integers(0, self.batch_spec.B, size=(self.batch_size,))
 
-        return self.buffer[T_idxs, B_idxs]
+        batch = self.buffer[T_idxs, B_idxs]
+        batch = self.batch_transform(batch)
+        return batch
 
     def batches(self) -> Iterator[BufferType]:
         while True:

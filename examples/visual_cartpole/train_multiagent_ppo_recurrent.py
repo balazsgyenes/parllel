@@ -10,7 +10,7 @@ import torch
 import wandb
 
 from parllel.arrays import buffer_from_example
-from parllel.buffers import AgentSamples, buffer_method, Samples
+from parllel.buffers import AgentSamples, buffer_asarray, buffer_method, Samples
 from parllel.cages import TrajInfo
 import parllel.logger as logger
 from parllel.logger import Verbosity
@@ -26,6 +26,7 @@ from parllel.torch.agents.independent import IndependentPgAgents
 from parllel.torch.algos.ppo import PPO, build_dataloader_buffer
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
+from parllel.torch.utils import torchify_buffer, buffer_to_device
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
@@ -55,6 +56,12 @@ def build(config: Dict) -> OnPolicyRunner:
     spaces = cages[0].spaces
     obs_space, action_space = spaces.observation, spaces.action
 
+    # write dict into namedarraytuple and read it back out. this ensures the
+    # example is in a standard format (i.e. namedarraytuple).
+    batch_env.observation[0] = obs_space.sample()
+    example_obs = batch_env.observation[0]
+    batch_action[0] = action_space.sample()
+
     # instantiate model and agent
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)
@@ -69,9 +76,8 @@ def build(config: Dict) -> OnPolicyRunner:
     cart_agent = CategoricalPgAgent(
         model=cart_model,
         distribution=cart_distribution,
-        observation_space=obs_space,
-        action_space=action_space["cart"],
-        n_states=batch_spec.B,
+        example_obs=example_obs,
+        example_action=batch_action.cart[0],
         device=device,
         recurrent=True,
     )
@@ -87,9 +93,8 @@ def build(config: Dict) -> OnPolicyRunner:
     camera_agent = CategoricalPgAgent(
         model=camera_model,
         distribution=camera_distribution,
-        observation_space=obs_space,
-        action_space=action_space["camera"],
-        n_states=batch_spec.B,
+        example_obs=example_obs,
+        example_action=batch_action.camera[0],
         device=device,
         recurrent=True,
     )
@@ -97,22 +102,15 @@ def build(config: Dict) -> OnPolicyRunner:
 
     agent = IndependentPgAgents(
         agent_profiles=[cart_profile, camera_profile],
-        observation_space=obs_space,
         action_space=action_space,
     )
     agent = TorchHandler(agent=agent)
-
-    # write dict into namedarraytuple and read it back out. this ensures the
-    # example is in a standard format (i.e. namedarraytuple).
-    batch_env.observation[0] = obs_space.sample()
-    example_obs = batch_env.observation[0]
 
     # get example output from agent
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    storage = "shared" if parallel else "local"
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,), storage=storage)
+    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,))
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 
@@ -164,6 +162,8 @@ def build(config: Dict) -> OnPolicyRunner:
     )
 
     dataloader_buffer = build_dataloader_buffer(batch_buffer, recurrent=True)
+    dataloader_buffer = buffer_asarray(dataloader_buffer)
+    dataloader_buffer = torchify_buffer(dataloader_buffer)
 
     dataloader = BatchedDataLoader(
         buffer=dataloader_buffer,
@@ -171,6 +171,7 @@ def build(config: Dict) -> OnPolicyRunner:
         n_batches=config["algo"]["minibatches"],
         batch_only_fields=["init_rnn_state"],
         recurrent=True,
+        pre_batches_transform=lambda x: buffer_to_device(x, device=device),
     )
 
     optimizer = torch.optim.Adam(

@@ -26,6 +26,8 @@ class BatchedDataLoader(Generic[BufferType]):
         recurrent: bool = False,
         shuffle: bool = True,
         drop_last: bool = True,
+        pre_batches_transform: Optional[Callable] = None,
+        batch_transform: Optional[Callable] = None,
     ) -> None:
         self.buffer = self.source_buffer = buffer
         self.batch_only_fields = batch_only_fields
@@ -48,6 +50,14 @@ class BatchedDataLoader(Generic[BufferType]):
                 "BatchedDataLoader. "
             )
 
+        if pre_batches_transform is None:
+            pre_batches_transform = lambda x: x
+        self.pre_batches_transform = pre_batches_transform
+
+        if batch_transform is None:
+            batch_transform = lambda x: x
+        self.batch_transform = batch_transform
+
         self.seed(None)
 
     def seed(self, seed: Optional[int]) -> None:
@@ -59,9 +69,9 @@ class BatchedDataLoader(Generic[BufferType]):
 
     def __getitem__(self, location: Indices) -> BufferType:
         if not isinstance(location, tuple):
-            location = (location, Ellipsis)
+            location = (location,)
         if (loc_len := len(location)) < 2:
-            location = location + (Ellipsis,) * (2 - loc_len)
+            location = location + (slice(None),) * (2 - loc_len)
         
         buffer = self.buffer
         if self.batch_only_fields:
@@ -73,13 +83,9 @@ class BatchedDataLoader(Generic[BufferType]):
             item = item._replace(**batch_only_elems)
         return item
 
-    def apply_func(self, func: Callable) -> None:
-        """Apply func to the wrapped buffer and store the result. Future
-        samples are drawn from this stored result.
-        """
-        self.buffer = func(self.source_buffer)
-
     def batches(self) -> Iterator[BufferType]:
+        self.buffer = self.pre_batches_transform(self.source_buffer)
+
         all_indices = np.arange(self.size, dtype=np.int32)
         if self.shuffle:
             self.rng.shuffle(all_indices)
@@ -95,13 +101,16 @@ class BatchedDataLoader(Generic[BufferType]):
             batch_indices = all_indices[start : min(self.size, start + self.batch_size)]
             if self.recurrent:
                 # take entire trajectories, indexing only B dimension
-                yield self[:, batch_indices]
+                batch = self[:, batch_indices]
             else:
                 # split indices into T and B indices using modulo and remainder
                 # in this case, T and B dimensions will be flattened into one
                 T_indices = batch_indices % self.sampler_batch_spec.T
                 B_indices = batch_indices // self.sampler_batch_spec.T
-                yield self[T_indices, B_indices]
+                batch = self[T_indices, B_indices]
+
+            batch = self.batch_transform(batch)
+            yield batch
 
     def __iter__(self) -> Iterator[BufferType]:
         # calling batches() explicitly is better, but we don't want Python's
