@@ -11,7 +11,7 @@ import torch
 import wandb
 
 from parllel.arrays import buffer_from_example
-from parllel.buffers import AgentSamples, buffer_method, Samples
+from parllel.buffers import AgentSamples, buffer_method, Samples, buffer_asarray
 from parllel.cages import TrajInfo
 import parllel.logger as logger
 from parllel.logger import Verbosity
@@ -53,7 +53,7 @@ def build(config: Dict) -> OffPolicyRunner:
     spaces = cages[0].spaces
     obs_space, action_space = spaces.observation, spaces.action
 
-    # instantiate model and agent
+    # instantiate models
     pi_model = PiMlpModel(
         obs_space=obs_space,
         action_space=action_space,
@@ -82,12 +82,10 @@ def build(config: Dict) -> OffPolicyRunner:
     wandb.config.update({"device": device}, allow_val_change=True)
     device = torch.device(device)
 
-    # instantiate model and agent
+    # instantiate agent
     agent = SacAgent(
         model=model,
         distribution=distribution,
-        observation_space=obs_space,
-        action_space=action_space,
         device=device,
         learning_starts=config["algo"]["learning_starts"],
     )
@@ -119,6 +117,7 @@ def build(config: Dict) -> OffPolicyRunner:
     # because we are only using standard Array types which behave the same as
     # torch Tensors, we can torchify the entire replay buffer here instead of
     # doing it for each batch individually
+    replay_buffer = buffer_asarray(replay_buffer)
     replay_buffer = torchify_buffer(replay_buffer)
 
     replay_buffer = ReplayBuffer(

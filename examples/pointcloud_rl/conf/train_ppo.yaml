@@ -2,7 +2,7 @@ defaults:
   - ppo@algo
   - _self_
 
-parallel: False
+parallel: True
 batch_T: 128
 batch_B: 16
 reward_clip_min: -5

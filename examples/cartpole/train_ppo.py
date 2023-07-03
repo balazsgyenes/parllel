@@ -54,7 +54,7 @@ def build(config: Dict) -> OnPolicyRunner:
     spaces = cages[0].spaces
     obs_space, action_space = spaces.observation, spaces.action
 
-    # instantiate model and agent
+    # instantiate model
     model = CartPoleFfPgModel(
         obs_space=obs_space,
         action_space=action_space,
@@ -65,20 +65,19 @@ def build(config: Dict) -> OnPolicyRunner:
     wandb.config.update({"device": device}, allow_val_change=True)
     device = torch.device(device)
 
-    # instantiate model and agent
-    agent = CategoricalPgAgent(
-        model=model,
-        distribution=distribution,
-        observation_space=obs_space,
-        action_space=action_space,
-        device=device,
-    )
-    agent = TorchHandler(agent=agent)
-
     # write dict into namedarraytuple and read it back out. this ensures the
     # example is in a standard format (i.e. namedarraytuple).
     batch_env.observation[0] = obs_space.sample()
     example_obs = batch_env.observation[0]
+
+    # instantiate agent
+    agent = CategoricalPgAgent(
+        model=model,
+        distribution=distribution,
+        example_obs=example_obs,
+        device=device,
+    )
+    agent = TorchHandler(agent=agent)
 
     # get example output from agent
     _, agent_info = agent.step(example_obs)
