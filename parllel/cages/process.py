@@ -45,6 +45,9 @@ class ProcessCage(Cage, mp.Process):
     immediately when done is True, replacing the returned observation with the
     reset observation. If False, environment is not reset and the
     `needs_reset` flag is set to True.
+    ;param ignore_reset_info (bool): If True (default), the info dictionary 
+    returned by env.reset() gets ignored. If False, the dict is treated the
+    same way as info dicts returned by env.step() calls
     """
 
     def __init__(
@@ -53,6 +56,7 @@ class ProcessCage(Cage, mp.Process):
         env_kwargs: Dict,
         TrajInfoClass: Callable,
         reset_automatically: bool = False,
+        ignore_reset_info: bool = True,
         buffers: Optional[Sequence[Buffer]] = None,
     ) -> None:
         mp.Process.__init__(self)
@@ -62,6 +66,7 @@ class ProcessCage(Cage, mp.Process):
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
             reset_automatically=reset_automatically,
+            ignore_reset_info=ignore_reset_info,
         )
 
         # pipe is used for communication between main and child processes
@@ -222,7 +227,9 @@ class ProcessCage(Cage, mp.Process):
                 if done:
                     if self.reset_automatically:
                         # reset immediately and overwrite last observation
-                        obs, env_info = self._reset_env()
+                        obs, reset_info = self._reset_env()
+                        if not self.ignore_reset_info:
+                            env_info = reset_info
                     else:
                         # store done state
                         self._needs_reset = True
@@ -317,7 +324,8 @@ class ProcessCage(Cage, mp.Process):
                     self._child_pipe.send((reset_obs, reset_info))
                 else:
                     out_obs[:] = reset_obs
-                    out_info[:] = reset_info
+                    if not self.ignore_reset_info:
+                        out_info[:] = reset_info
                 self._needs_reset = False
                 self._child_pipe.send(self.needs_reset)
 
