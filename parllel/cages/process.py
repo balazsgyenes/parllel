@@ -126,7 +126,7 @@ class ProcessCage(Cage, mp.Process):
         self._parent_pipe.send(Message(Command.step, args))
         self.waiting = True
 
-    def await_step(self) -> Union[EnvStepType, EnvRandomStepType, ObsType]:
+    def await_step(self) -> Union[EnvStepType, EnvRandomStepType, ObsType, None]:
         assert self.waiting
         result = self._parent_pipe.recv()
         self.waiting = False

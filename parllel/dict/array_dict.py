@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import MutableMapping
 import dataclasses
+from collections.abc import MutableMapping
 from operator import getitem
-from typing import Any, Callable, Generic, Iterator, Iterable, TypeVar
+from typing import Any, Callable, Generic, Iterable, Iterator, TypeVar, Union
 
-# from parllel.dict.arraylike import ArrayLike
+from parllel.dict import ArrayLike
+
+ArrayType = TypeVar("ArrayType", bound=ArrayLike)
+NodeType = Union[ArrayType, "ArrayDict[ArrayType]", None]
+ValueType = Union[ArrayType, "ArrayDict[ArrayType]", dict[str, "ValueType"], None]
 
 
-LeafType = TypeVar("LeafType")
-
-
-class ArrayDict(MutableMapping, Generic[LeafType]):
+class ArrayDict(MutableMapping, Generic[ArrayType]):
     """A batched dictionary of array-like objects.
 
     ArrayDict is a container for array-like objects (e.g. np.ndarray,
@@ -21,12 +22,16 @@ class ArrayDict(MutableMapping, Generic[LeafType]):
     This class is heavily inspired by torch's TensorDict.
     """
 
-    def __init__(self, items: dict[str, LeafType] | Iterable[tuple[str, LeafType]], /) -> None:
+    def __init__(
+        self,
+        items: dict[str, ValueType] | Iterable[tuple[str, ValueType]],
+        /,
+    ) -> None:
         # TODO: clean items to ensure only leaf nodes or ArrayDicts
 
-        self._dict = dict(items)
+        self._dict: dict[str, NodeType] = dict(items)
 
-    def __getitem__(self, key: Any) -> Any:
+    def __getitem__(self, key: Any) -> NodeType:
         if isinstance(key, str):
             return self._dict[key]
 
@@ -44,7 +49,7 @@ class ArrayDict(MutableMapping, Generic[LeafType]):
                         f"Index error in field '{field}' for index '{key}'"
                     ) from e
 
-    def __setitem__(self, key: Any, value: Any) -> None:
+    def __setitem__(self, key: Any, value: ValueType) -> None:
         if isinstance(key, str):
             self._dict[key] = value
             return
@@ -69,7 +74,7 @@ class ArrayDict(MutableMapping, Generic[LeafType]):
                         f"Index error in field '{field}' for index '{key}'"
                     ) from e
 
-    def __delitem__(self, __key: Any) -> None:
+    def __delitem__(self, __key: str) -> None:
         if isinstance(__key, str):
             del self._dict[__key]
         else:
@@ -98,6 +103,7 @@ class ArrayDict(MutableMapping, Generic[LeafType]):
                     raise IndexError(
                         f"Attribute error in field '{field}' for attribute '{name}'"
                     ) from e
+            raise e
 
     @property
     def shape(self) -> tuple[int, ...]:
