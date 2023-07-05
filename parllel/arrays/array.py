@@ -1,7 +1,7 @@
 from __future__ import annotations  # full returns another Array
 
 from functools import reduce
-from typing import Any, Optional, Tuple, TypeVar
+from typing import Any, Literal, Optional, TypeVar, Union
 
 import numpy as np
 
@@ -19,17 +19,30 @@ class Array(Buffer):
         >>> array = Array(shape=(4, 4, 4), dtype=np.float32)
         >>> array[:, slice(1, 3), 2] = 5.
     """
+
     _subclasses = {}
     storage = "local"
     kind = "default"
 
-    def __init_subclass__(cls, /, kind: Optional[str] = None, storage: Optional[str] = None, **kwargs) -> None:
+    def __init_subclass__(
+        cls,
+        *,
+        kind: Optional[str] = None,
+        storage: Optional[str] = None,
+        **kwargs,
+    ) -> None:
         super().__init_subclass__(**kwargs)
         kind = kind if kind is not None else "default"
         storage = storage if storage is not None else "local"
         cls._subclasses[(kind, storage)] = cls
 
-    def __new__(cls, *args, kind: Optional[str] = None, storage: Optional[str] = None, **kwargs):
+    def __new__(
+        cls,
+        *args,
+        kind: Optional[str] = None,
+        storage: Optional[str] = None,
+        **kwargs,
+    ):
         # fill in empty arguments with values from class used to instantiate
         # can instantiate a subclass directly by just not passing kind/storage
         # e.g. SharedMemoryArray(shape=(4,4), dtype=np.float32)
@@ -43,11 +56,14 @@ class Array(Buffer):
         try:
             subcls = cls._subclasses[(kind, storage)]
         except KeyError:
-            raise ValueError(f"No array registered under storage type '{storage}'")
+            raise ValueError(
+                f"No array subclass registered under {kind=} and {storage=}"
+            )
         return super().__new__(subcls)
 
-    def __init__(self,
-        shape: Tuple[int, ...],
+    def __init__(
+        self,
+        shape: tuple[int, ...],
         dtype: np.dtype,
         *,
         kind: Optional[str] = None,  # consumed by __new__
@@ -55,7 +71,6 @@ class Array(Buffer):
         padding: int = 0,
         full_size: Optional[int] = None,
     ) -> None:
-
         if not shape:
             raise ValueError("Non-empty shape required.")
 
@@ -88,9 +103,11 @@ class Array(Buffer):
         self.padding = padding
 
         self._default_size = shape[0]  # size of leading dim of unindexed array
-        self._full_size = full_size  # size of leading dim of full array, without padding
+        # size of leading dim of full array, without padding
+        self._full_size = full_size
         self._offset = 0  # offset of visible region within full array, without padding
-        self._shift = self._offset + padding  # offset of visible region within base array
+        # offset of visible region within base array
+        self._shift = self._offset + padding
         # add padding onto both ends of first dimension
         self._base_shape = (full_size + 2 * padding,) + shape[1:]
 
@@ -108,10 +125,9 @@ class Array(Buffer):
 
         self._resolve_indexing_history()
 
-    @classmethod
-    def like(cls,
-        template: Array,
-        shape: Optional[Tuple[int, ...]] = None,
+    def new_array(
+        self,
+        shape: Optional[tuple[int, ...]] = None,
         dtype: Optional[np.dtype] = None,
         kind: Optional[str] = None,
         storage: Optional[str] = None,
@@ -120,27 +136,58 @@ class Array(Buffer):
         inherit_full_size: bool = False,
     ) -> Array:
         """Creates an Array with the same shape and type as a given Array
-        (similar to numpy's zeros_like function). By default, the full size of
+        (similar to torch's new_zeros function). By default, the full size of
         the created Array is just the apparent size of the template. To set it
         to another value, either pass it manually or set the
         `inherit_full_size` flag to True to use the template's full size.
-
-        # TODO: turn this into a normal method called new_array
         """
-        shape = shape if shape is not None else template.shape
-        dtype = dtype or template.dtype
-        kind = kind or template.kind
-        storage = storage or template.storage
-        padding = padding if padding is not None else template.padding
-        # only inherit full_size from template if full_size is not the default and flag set to true
-        full_size = full_size if full_size is not None else (
-            template._full_size
-            if (inherit_full_size and template._full_size > template._default_size) else
-            None
+        shape = shape if shape is not None else self.shape
+        dtype = dtype or self.dtype
+        kind = kind if kind is not None else self.kind
+        storage = storage if storage is not None else self.storage
+        padding = padding if padding is not None else self.padding
+        # only inherit full_size from self if full_size is not the default and flag set to true
+        full_size = (
+            full_size
+            if full_size is not None
+            else (
+                self._full_size
+                if (inherit_full_size and self._full_size > self._default_size)
+                else None
+            )
         )
-        return cls(
+        return type(self)(
             shape,
             dtype,
+            kind=kind,
+            storage=storage,
+            padding=padding,
+            full_size=full_size,
+        )
+
+    @classmethod
+    def from_numpy(
+        cls,
+        example: Any,
+        shape: Optional[tuple[int, ...]] = None,
+        dtype: Optional[np.dtype] = None,
+        force_32bit: Literal[True, "float", "int", False] = True,
+        kind: Optional[str] = None,
+        storage: Optional[str] = None,
+        padding: int = 0,
+        full_size: Optional[int] = None,
+    ) -> Array:
+        np_example = np.asanyarray(example)  # promote scalars to 0d arrays
+        if dtype is None:
+            dtype = np_example.dtype
+            if dtype == np.int64 and force_32bit in {True, "int"}:
+                dtype = np.int32
+            elif dtype == np.float64 and force_32bit in {True, "float"}:
+                dtype = np.float32
+        return cls(
+            # TODO: replace shape with feature_shape
+            shape=shape if shape is not None else np_example.shape,
+            dtype=dtype,
             kind=kind,
             storage=storage,
             padding=padding,
@@ -157,7 +204,7 @@ class Array(Buffer):
             self._resolve_indexing_history()
 
         return self._apparent_shape
-        
+
     @property
     def first(self) -> int:
         """The index of the first element in the array, not including padding.
@@ -173,10 +220,10 @@ class Array(Buffer):
         """
         if self._apparent_shape is None:
             self._resolve_indexing_history()
-        
+
         return self._apparent_shape[0] - 1
 
-    def __getitem__(self, location: Indices) -> Self:
+    def __getitem__(self, key: Indices) -> Self:
         # new Array object initialized through a (shallow) copy. Attributes
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
@@ -185,7 +232,7 @@ class Array(Buffer):
         result.__dict__.update(self.__dict__)
         # assign *copy* of _index_history with additional element for this
         # indexing operation
-        result._index_history = result._index_history + [location]
+        result._index_history = result._index_history + [key]
         # current array and shape are not computed until needed
         result._current_array = None
         result._apparent_shape = None
@@ -200,11 +247,13 @@ class Array(Buffer):
 
         if self._index_history:
             # shift only the first indices, leave the rest (if there are more)
-            index_history = [shift_indices(
-                self._index_history[0],
-                shift,
-                self._default_size,
-            )] + self._index_history[1:]
+            index_history = [
+                shift_indices(
+                    self._index_history[0],
+                    shift,
+                    self._default_size,
+                )
+            ] + self._index_history[1:]
         else:
             # even if the array was never indexed, only this slice of the array
             # should be returned by __array__
@@ -213,15 +262,15 @@ class Array(Buffer):
         # if index history has only 1 element, this has no effect
         array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
         self._previous_array = array
-        
+
         # we guarantee that index_history has at least 1 element
         array = array[index_history[-1]]
 
         self._current_array = array
         self._apparent_shape = array.shape
-    
-    def __setitem__(self, location: Indices, value: Any) -> None:
-        # TODO: optimize this method to avoid resolving history if location
+
+    def __setitem__(self, key: Indices, value: Any) -> None:
+        # TODO: optimize this method to avoid resolving history if key
         # is slice(None) or Ellipsis and history only has one element
         # in this case, only previous_array is required
         if self._current_array is None:
@@ -231,20 +280,20 @@ class Array(Buffer):
             if self._apparent_shape == ():
                 # Need to avoid item assignment on a scalar (0-D) array, so we assign
                 # into previous array using the last indices used
-                if not (location == slice(None) or location == ...):
+                if not (key == slice(None) or key == ...):
                     raise IndexError("Cannot take slice of 0-D array.")
-                location = self._index_history[-1]
+                key = self._index_history[-1]
                 # indices must be shifted if they were the first indices
                 if len(self._index_history) == 1:
-                    location = shift_indices(location, self._shift, self._default_size)
+                    key = shift_indices(key, self._shift, self._default_size)
                 destination = self._previous_array
             else:
                 destination = self._current_array
         else:
-            location = shift_indices(location, self._shift, self._default_size)
+            key = shift_indices(key, self._shift, self._default_size)
             destination = self._base_array
-        destination[location] = value
-    
+        destination[key] = value
+
     @property
     def full(self) -> Array:
         full: Array = self.__new__(type(self))
@@ -290,7 +339,7 @@ class Array(Buffer):
         """
         if self._index_history:
             raise RuntimeError("Only allowed to call `reset()` on original array")
-        
+
         # if apparent size is not smaller, sets offset to 0
         self._offset = self._full_size - self._default_size
 
@@ -299,7 +348,6 @@ class Array(Buffer):
         self._current_array = None
 
     def rotate(self) -> None:
-
         if self._index_history:
             raise RuntimeError("Only allowed to call `rotate()` on original array")
 
@@ -323,7 +371,7 @@ class Array(Buffer):
     def __array__(self, dtype=None) -> np.ndarray:
         if self._current_array is None:
             self._resolve_indexing_history()
-        
+
         array = np.asarray(self._current_array)  # promote scalars to 0d arrays
         if dtype is not None:
             array = array.astype(dtype, copy=False)
@@ -341,14 +389,14 @@ class Array(Buffer):
             ")"
         )
         return (
-            prefix +
-            np.array2string(
+            prefix
+            + np.array2string(
                 self.__array__(),
                 separator=",",
                 prefix=prefix,
-                suffix=suffix
-            ) +
-            suffix
+                suffix=suffix,
+            )
+            + suffix
         )
 
     def __bool__(self) -> bool:
@@ -361,8 +409,11 @@ class Array(Buffer):
         pass
 
 
-def shift_indices(indices: Indices, shift: int, size: int,
-) -> Tuple[Index, ...]:
+def shift_indices(
+    indices: Indices,
+    shift: int,
+    size: int,
+) -> tuple[Index, ...]:
     if isinstance(indices, tuple):
         first, rest = indices[0], indices[1:]
     else:
@@ -370,10 +421,12 @@ def shift_indices(indices: Indices, shift: int, size: int,
     return shift_index(first, shift, size) + rest
 
 
-def shift_index(index: Index, shift: int, size: int,
-) -> Tuple[Index, ...]:
-    """Shifts an array index up by an integer value.
-    """
+def shift_index(
+    index: Index,
+    shift: int,
+    size: int,
+) -> tuple[Index, ...]:
+    """Shifts an array index up by an integer value."""
     if isinstance(index, int):
         if index < -shift:
             raise IndexError(
@@ -399,7 +452,7 @@ def shift_index(index: Index, shift: int, size: int,
             start = index.start + shift
         else:
             start = shift + size - 1 if flipped else shift
-        
+
         if index.stop is not None:
             stop = index.stop + shift
         else:
