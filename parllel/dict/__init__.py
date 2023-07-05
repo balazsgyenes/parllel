@@ -12,8 +12,13 @@ class ArrayLike(Protocol):
     def shape(self) -> tuple[int, ...]:
         ...
 
+    @property
+    def dtype(self) -> Any:
+        ...
+
 
 from .array_dict import ArrayDict
+from .utils import dict_map
 
 ArrayTree = Union[ArrayLike, ArrayDict, None]
 
@@ -22,4 +27,5 @@ __all__ = [
     "ArrayLike",
     "ArrayDict",
     "ArrayTree",
+    "dict_map",
 ]

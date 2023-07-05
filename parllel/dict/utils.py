@@ -1,34 +1,29 @@
-from typing import Any, Callable, Iterable, Union
+from __future__ import annotations
+
+from collections.abc import MutableMapping
+from typing import Any, Callable, Iterable
 
 import numpy as np
 
 from parllel.buffers import NamedTuple, NamedTupleClass, Buffer, LeafType
 
-from .array_dict import ArrayDict
+from parllel.dict import ArrayDict, ArrayLike, ArrayTree
 
 
 def dict_map(
-    func: Callable[[ArrayDict, Any], Any],
-    arraydict: Union[ArrayDict, tuple],
-    *args, **kwargs,
-) -> ArrayDict:
-    """Call function ``func(buf, *args, **kwargs)`` on all contents of
-    ``buffer_``, and return the results.  ``buffer_`` can be an arbitrary
-    structure of tuples, namedtuples, namedarraytuples, NamedTuples, and
-    NamedArrayTuples, and a new, matching structure will be returned.
-    ``None`` fields remain ``None``.
-    """
-    if isinstance(arraydict, ArrayDict): # non-leaf node
-        contents = tuple(dict_map(func, elem, *args, **kwargs) for elem in arraydict)
-        if isinstance(arraydict, ArrayDict):
-            return arraydict._make(contents)
-        # buffer is a tuple
-        return contents
-
+    func: Callable[[ArrayLike], Any],
+    tree: ArrayTree,
+    *args,
+    **kwargs,
+) -> ArrayTree:
+    if isinstance(tree, MutableMapping):  # non-leaf node
+        return ArrayDict(
+            {field: dict_map(func, arr, *args, **kwargs) for field, arr in tree.items()}
+        )
     # leaf node
-    if arraydict is None:
+    if tree is None:
         return None
-    return func(arraydict, *args, **kwargs)
+    return func(tree, *args, **kwargs)
 
 
 def dict_all(buffer: Buffer, predicate: Callable[[LeafType], bool]) -> bool:

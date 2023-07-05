@@ -5,11 +5,13 @@ from collections.abc import MutableMapping
 from operator import getitem
 from typing import Any, Callable, Generic, Iterable, Iterator, TypeVar, Union
 
+import numpy as np
+
 from parllel.dict import ArrayLike
 
 ArrayType = TypeVar("ArrayType", bound=ArrayLike)
 NodeType = Union[ArrayType, "ArrayDict[ArrayType]", None]
-ValueType = Union[ArrayType, "ArrayDict[ArrayType]", dict[str, "ValueType"], None]
+ValueType = Union[ArrayType, "ArrayDict[ArrayType]", MutableMapping[str, "ValueType"], None]
 
 
 class ArrayDict(MutableMapping, Generic[ArrayType]):
@@ -124,6 +126,19 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
                 items.append((field, fn(arr, **kwargs) if arr is not None else None))
 
         return ArrayDict(items)
+
+    def to_ndarray(self) -> ArrayDict[np.ndarray]:
+        return self.apply(to_ndarray)
+
+
+def to_ndarray(
+    leaf: Union[ArrayLike, None],
+) -> Union[np.ndarray, ArrayDict[np.ndarray], None]:
+    if leaf is None:
+        return
+    elif hasattr(leaf, "to_ndarray"):
+        return leaf.to_ndarray()
+    return np.asarray(leaf)
 
 
 class ArrayAttrDict(ArrayDict):

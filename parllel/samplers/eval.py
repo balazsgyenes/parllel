@@ -1,4 +1,6 @@
-from typing import List, Optional, Sequence, Tuple
+from __future__ import annotations
+
+from typing import List, Sequence
 
 import numpy as np
 
@@ -6,7 +8,7 @@ from parllel.buffers import Samples
 from parllel.buffers.utils import buffer_rotate
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
-from parllel.transforms import StepTransform
+from parllel.transforms import StepTransform, Transform
 from parllel.types import BatchSpec
 
 from .sampler import Sampler
@@ -20,7 +22,7 @@ class EvalSampler(Sampler):
         envs: Sequence[Cage],
         agent: Handler,
         step_buffer: Samples,
-        obs_transform: Optional[StepTransform] = None,
+        obs_transform: StepTransform | Transform | None = None,
     ) -> None:
         for cage in envs:
             if not cage.reset_automatically:
