@@ -6,6 +6,7 @@ import torch
 from gymnasium import spaces
 from torch_geometric.nn import MLP, PointNetConv, fps, global_max_pool, radius
 
+import parllel.logger as logger
 from parllel.arrays.jagged import PointBatch
 from parllel.torch.agents.categorical import ModelOutputs
 
@@ -94,6 +95,14 @@ def namedtuple_to_batched_data(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     pos, ptr = namedtup.pos, namedtup.ptr
     num_nodes = ptr[1:] - ptr[:-1]
+
+    if (num_nodes == 0).any():
+        empty_indices = (num_nodes == 0).nonzero(as_tuple=True)[0].tolist()
+        logger.warn(
+            f"The following point clouds in this batch are empty: {empty_indices}. This will cause a floating point error in the fps function, so they will be removed from the batch. However, this will probably still cause an error elsewhere."
+        )
+        num_nodes = num_nodes[num_nodes != 0]
+
     batch = torch.repeat_interleave(
         torch.arange(len(num_nodes), device=num_nodes.device),
         repeats=num_nodes,
