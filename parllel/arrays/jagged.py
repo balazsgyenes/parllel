@@ -148,14 +148,16 @@ class JaggedArray(Array, kind="jagged"):
         if self._apparent_shape is None:
             self._resolve_indexing_history()
 
-        destination = tuple(
-            add_locations(
-                self._current_location,
-                location,
-                self._virtual_base_shape,
-                neg_from_end=False,
-            )
+        destination = add_locations(
+            self._current_location,
+            location,
+            self._virtual_base_shape,
+            neg_from_end=False,
         )
+        n_destination = destination[self._n_batch_dim]
+        if isinstance(n_destination, slice) and n_destination.stop == self._virtual_base_shape[self._n_batch_dim]:
+            destination[self._n_batch_dim] = slice(n_destination.start, None, n_destination.step)
+        destination = tuple(destination)
 
         if isinstance(value, list):
             # TODO: zip and iterate over value and location
