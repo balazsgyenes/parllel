@@ -1,5 +1,5 @@
 import math
-from typing import TypeVar, Union
+from typing import Optional, TypeVar, Union
 
 import numpy as np
 
@@ -12,7 +12,8 @@ BasicIndex = Union[int, slice]
 Location = Union[Index, tuple[Index, ...]]
 StandardLocation = list[StandardIndex]
 
-Shape = tuple[int, ...]
+Size = Union[int, None]
+Shape = tuple[Size, ...]
 
 
 def compute_indices(
@@ -157,7 +158,7 @@ IndexType = TypeVar("IndexType", int, slice, np.ndarray)
 def index_slice(
     index: slice,
     new_index: IndexType,
-    size: int,
+    size: Size,
     neg_from_end: bool = True,
 ) -> IndexType:
     """Takes the current indexing state of a single dimension and a new index,
@@ -166,9 +167,12 @@ def index_slice(
 
     index must be a slice in standard form (see `clean_slice`).
     """
+    if index == slice(None):
+        return clean_slice(new_index, size)
+
     if isinstance(new_index, np.ndarray):
         new_index = index_slice_with_np(index, new_index, size, neg_from_end)
-        if not np.all((0 <= new_index) & (new_index < size)):
+        if size is not None and not np.all((0 <= new_index) & (new_index < size)):
             out_of_bounds = new_index[~(0 <= new_index)]
             if out_of_bounds.shape[0] == 0:
                 out_of_bounds = new_index[~(new_index < size)]
@@ -180,7 +184,7 @@ def index_slice(
 
     elif isinstance(new_index, int):
         new_index = index_slice_with_int(index, new_index, size, neg_from_end)
-        if not (0 <= new_index < size):
+        if size is not None and not (0 <= new_index < size):
             raise IndexError(
                 f"Index {new_index} is out of bounds for axis with size {size}."
             )
@@ -193,6 +197,7 @@ def index_slice(
 
         else:
             # convert to numerical form for computation
+            # size = max(index.start, index.stop)
             start, stop, step = index.indices(size)
 
             new_step = new_index.step if new_index.step is not None else 1
@@ -242,7 +247,10 @@ def index_slice(
 
 
 def index_slice_with_int(
-    slice_: slice, index: int, size: int, neg_from_end: bool = True
+    slice_: slice,
+    index: int,
+    size: Size,
+    neg_from_end: bool = True,
 ) -> int:
     """Compute the index of the element that would be returned if a vector was
     first indexed with a slice and then an integer. The slice must be given in
@@ -254,6 +262,7 @@ def index_slice_with_int(
     else:
         # if the index is negative, the start is the end of the slice, or the
         # end of the array
+        assert size is not None
         start, stop, step = slice_.indices(size)
 
         # correction if step does not evenly divide into size of array
@@ -264,17 +273,21 @@ def index_slice_with_int(
 
 
 def index_slice_with_np(
-    slice_: slice, index: np.ndarray, size: int, neg_from_end: bool = True
+    slice_: slice,
+    index: np.ndarray,
+    size: Size,
+    neg_from_end: bool = True,
 ) -> np.ndarray:
     """Compute the index of the element that would be returned if a vector was
     first indexed with a slice and then an integer. The slice must be given in
     standard form.
     """
-    start, stop, step = slice_.indices(size)
-
     if neg_from_end:
         # if the index is negative, the start is the end of the slice, or the
         # end of the array
+        assert size is not None
+        start, stop, step = slice_.indices(size)
+
         # correction if step does not evenly divide into size of array
         # find effective end of slice by counting from start of slice
         end = start + step * math.ceil((stop - start) / step)
@@ -283,12 +296,12 @@ def index_slice_with_np(
         new_index[index >= 0] = start + index[index >= 0] * step
         new_index[index < 0] = end + index[index < 0] * step
     else:
-        new_index = start + index * step
+        new_index = slice_.start + index * slice_.step
 
     return new_index
 
 
-def clean_slice(slice_: slice, size: int) -> slice:
+def clean_slice(slice_: slice, size: Size) -> slice:
     """Return a slice in standard form, with:
         - start, a positive integer
         - stop, a positive integer or None
@@ -298,8 +311,18 @@ def clean_slice(slice_: slice, size: int) -> slice:
     to represent at the beginning of the array when the step is negative.
     A slice with stop=-1 has a different interpretation.
     """
-    start, stop, step = slice_.indices(size)
-    stop = None if stop < 0 else stop
+    if size is not None:
+        start, stop, step = slice_.indices(size)
+        stop = None if stop < 0 else stop
+    else:
+        start: Optional[int]
+        stop: Optional[int]
+        step: Optional[int]
+        start, stop, step = slice_.start, slice_.stop, slice_.step
+        step = step if step is not None else 1
+        if step < 0:
+            raise ValueError("Cannot reverse dimension with undefined size.")
+        start = start if start is not None else 0
     return slice(start, stop, step)
 
 
