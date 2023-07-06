@@ -90,7 +90,7 @@ def build(config: Dict) -> OnPolicyRunner:
     elif dtype == np.int64:
         dtype = np.int32
     batch_observation = Array(
-        shape=(obs_space.max_num_points,) + obs_space.shape,
+        shape=(150,) + obs_space.shape,
         dtype=dtype,
         batch_shape=tuple(batch_spec),
         kind="jagged",
