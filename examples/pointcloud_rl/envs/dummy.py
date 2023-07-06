@@ -16,9 +16,10 @@ class DummyEnv(gym.Env):
         self,
         prob_done: float,
         actions: Literal["discrete", "continuous"],
+        max_num_points: int = 50,
     ) -> None:
         self.observation_space = PointCloudSpace(
-            max_num_points=50,
+            max_num_points=max_num_points,
             low=-np.inf,
             high=np.inf,
             feature_shape=(3,),
