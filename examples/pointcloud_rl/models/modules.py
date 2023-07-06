@@ -107,6 +107,14 @@ def dict_to_batched_data(
 ) -> tuple[Tensor, Tensor]:
     pos, ptr = array_dict["pos"], array_dict["ptr"]
     num_nodes = ptr[1:] - ptr[:-1]
+
+    if (num_nodes == 0).any():
+        empty_indices = (num_nodes == 0).nonzero(as_tuple=True)[0].tolist()
+        logger.warn(
+            f"The following point clouds in this batch are empty: {empty_indices}. This will cause a floating point error in the fps function, so they will be removed from the batch. However, this will probably still cause an error elsewhere."
+        )
+        num_nodes = num_nodes[num_nodes != 0]
+
     batch = torch.repeat_interleave(
         torch.arange(len(num_nodes), device=num_nodes.device),
         repeats=num_nodes,
