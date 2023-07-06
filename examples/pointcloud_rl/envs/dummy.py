@@ -16,9 +16,10 @@ class DummyEnv(gym.Env):
     def __init__(
         self,
         prob_done: float,
+        max_num_points: int = 50,
     ) -> None:
         self.observation_space = PointCloud(
-            max_num_points=50,
+            max_num_points=max_num_points,
             low=-np.inf,
             high=np.inf,
             feature_shape=(3,),
@@ -45,7 +46,8 @@ class DummyEnv(gym.Env):
 
 def build_dummy(
     prob_done: float,
+    max_num_points: int = 50,
 ) -> gym.Env:
-    env = DummyEnv(prob_done=prob_done)
+    env = DummyEnv(prob_done=prob_done, max_num_points=max_num_points)
 
     return env
