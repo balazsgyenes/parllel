@@ -24,7 +24,7 @@ class QModelOutputs:
     q_value: Buffer
 
 
-class SacAgent(TorchAgent):
+class SacAgent(TorchAgent[torch.nn.ModuleDict, SquashedGaussian]):
     """Agent for SAC algorithm, including action-squashing, using twin Q-values."""
 
     # TODO: remove agent info, as it is not needed for SAC
