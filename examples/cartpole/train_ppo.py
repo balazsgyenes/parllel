@@ -188,6 +188,7 @@ def build(config: Dict) -> OnPolicyRunner:
         for cage in cages:
             cage.close()
         buffer_method(batch_buffer, "close")
+        buffer_method(step_buffer, "close")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo")
