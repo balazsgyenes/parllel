@@ -33,6 +33,10 @@ class TorchAgent(Agent):
         self.recurrent = False
         self.rnn_states = None
         self.previous_action = None
+        # TODO: I don't know if this makes sense, but I don't think every agent should have a deterministic_eval parameter in their __init__ method
+        # I do it this way for now because it leads to the least amount of changes in the codebase.
+        # Another alternative would be to pass a bool to the eval_mode methods.
+        self.deterministic_eval = False # set by EvalSampler
 
     def reset(self) -> None:
         if self.rnn_states is not None:
@@ -106,6 +110,9 @@ class TorchAgent(Agent):
     def eval_mode(self, elapsed_steps: int) -> None:
         """Go into evaluation mode.  Example use could be to adjust epsilon-greedy."""
         self.model.eval()
+        # TODO: I'm not sure if hasattr is the way to go
+        if self.deterministic_eval and hasattr(self.distribution, "set_std"): 
+            self.distribution.set_std(0.)
 
         # if coming from sampling, store states and set new blank states
         if self.recurrent and self.mode == "sample":

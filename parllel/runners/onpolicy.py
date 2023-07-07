@@ -3,7 +3,7 @@ from tqdm import tqdm
 from parllel.algorithm import Algorithm
 from parllel.handlers import Agent
 import parllel.logger as logger
-from parllel.samplers import Sampler
+from parllel.samplers import Sampler, EvalSampler
 from parllel.types import BatchSpec
 
 from .runner import Runner
@@ -12,15 +12,18 @@ from .runner import Runner
 class OnPolicyRunner(Runner):
     def __init__(self,
         sampler: Sampler,
+        eval_sampler: EvalSampler,
         agent: Agent,
         algorithm: Algorithm,
         batch_spec: BatchSpec,
         n_steps: int,
         log_interval_steps: int,
+        eval_interval_steps: int,
     ) -> None:
         super().__init__()
 
         self.sampler = sampler
+        self.eval_sampler = eval_sampler
         self.agent = agent
         self.algorithm = algorithm
         self.batch_spec = batch_spec
@@ -28,6 +31,7 @@ class OnPolicyRunner(Runner):
 
         self.n_iterations = max(1, int(n_steps // batch_spec.size))
         self.log_interval_iters = max(1, int(log_interval_steps // batch_spec.size))
+        self.eval_interval_iters = max(1, int(eval_interval_steps // batch_spec.size))
 
     def run(self) -> None:
         logger.info("Starting training...")
@@ -40,6 +44,9 @@ class OnPolicyRunner(Runner):
 
             if itr > 0 and itr % self.log_interval_iters == 0:
                 self.log_progress(elapsed_steps, itr)
+
+            if itr % self.eval_interval_iters == 0:
+                self.evaluate_agent(elapsed_steps)
 
             batch_samples, completed_trajs = self.sampler.collect_batch(
                 elapsed_steps,
@@ -63,3 +70,8 @@ class OnPolicyRunner(Runner):
         logger.info("Finished training.")
         if logger.log_dir is not None:
             logger.info(f"Log files saved to {logger.log_dir}")
+
+    def evaluate_agent(self, elapsed_steps: int) -> None:
+        logger.debug("Evaluating agent.")
+        eval_trajs = self.eval_sampler.collect_batch(elapsed_steps)
+        self.record_eval_trajectories(eval_trajs)
