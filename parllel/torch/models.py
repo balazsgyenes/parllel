@@ -20,7 +20,7 @@ class MlpModel(torch.nn.Module):
             input_size: int,
             hidden_sizes: Union[int, List[int], None],
             output_size: Optional[int],  # if None, last layer has nonlinearity applied.
-            hidden_nonlinearity: torch.nn.Module = torch.nn.ReLU,  # Module, not Functional.
+            hidden_nonlinearity: type[torch.nn.Module] = torch.nn.ReLU,  # Module, not Functional.
             ):
         super().__init__()
         if isinstance(hidden_sizes, int):
