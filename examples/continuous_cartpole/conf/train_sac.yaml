@@ -25,6 +25,8 @@ eval_sampler:
     max_traj_length: 2000
     min_trajectories: 20
     n_eval_envs: 8
+    deterministic_actions: False
 runner:
   n_steps: 204800  # 100 iterations
   log_interval_steps: 10240  # log every 5 iterations
+  eval_interval_steps: 10240
