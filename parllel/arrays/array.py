@@ -42,7 +42,7 @@ class Array(Buffer):
         kind: Optional[str] = None,
         storage: Optional[str] = None,
         **kwargs,
-    ):
+    ) -> Array:
         # fill in empty arguments with values from class used to instantiate
         # can instantiate a subclass directly by just not passing kind/storage
         # e.g. SharedMemoryArray(shape=(4,4), dtype=np.float32)
@@ -199,7 +199,7 @@ class Array(Buffer):
         self._base_array = np.zeros(shape=self._base_shape, dtype=self.dtype)
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...]:
         if self._apparent_shape is None:
             self._resolve_indexing_history()
 
@@ -223,16 +223,16 @@ class Array(Buffer):
 
         return self._apparent_shape[0] - 1
 
-    def __getitem__(self, key: Indices) -> Self:
+    def __getitem__(self: Self, indices: Indices) -> Self:
         # new Array object initialized through a (shallow) copy. Attributes
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
         # need to be modified.
-        result: Array = self.__new__(type(self))
+        result: Self = self.__new__(type(self))
         result.__dict__.update(self.__dict__)
         # assign *copy* of _index_history with additional element for this
         # indexing operation
-        result._index_history = result._index_history + [key]
+        result._index_history = result._index_history + [indices]
         # current array and shape are not computed until needed
         result._current_array = None
         result._apparent_shape = None
@@ -269,8 +269,8 @@ class Array(Buffer):
         self._current_array = array
         self._apparent_shape = array.shape
 
-    def __setitem__(self, key: Indices, value: Any) -> None:
-        # TODO: optimize this method to avoid resolving history if key
+    def __setitem__(self, indices: Indices, value: Any) -> None:
+        # TODO: optimize this method to avoid resolving history if indices
         # is slice(None) or Ellipsis and history only has one element
         # in this case, only previous_array is required
         if self._current_array is None:
@@ -280,19 +280,19 @@ class Array(Buffer):
             if self._apparent_shape == ():
                 # Need to avoid item assignment on a scalar (0-D) array, so we assign
                 # into previous array using the last indices used
-                if not (key == slice(None) or key == ...):
+                if not (indices == slice(None) or indices == ...):
                     raise IndexError("Cannot take slice of 0-D array.")
-                key = self._index_history[-1]
+                indices = self._index_history[-1]
                 # indices must be shifted if they were the first indices
                 if len(self._index_history) == 1:
-                    key = shift_indices(key, self._shift, self._default_size)
+                    indices = shift_indices(indices, self._shift, self._default_size)
                 destination = self._previous_array
             else:
                 destination = self._current_array
         else:
-            key = shift_indices(key, self._shift, self._default_size)
+            indices = shift_indices(indices, self._shift, self._default_size)
             destination = self._base_array
-        destination[key] = value
+        destination[indices] = value
 
     @property
     def full(self) -> Array:
