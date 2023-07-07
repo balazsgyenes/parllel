@@ -62,6 +62,7 @@ class OffPolicyRunner(Runner):
 
         # log final progress
         elapsed_steps = self.n_iterations * batch_size
+        self.log_progress(elapsed_steps, self.n_iterations)
         self.evaluate_agent(elapsed_steps)
 
         progress_bar.close()
