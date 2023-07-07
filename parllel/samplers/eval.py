@@ -1,4 +1,4 @@
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
 
 import numpy as np
 
@@ -21,6 +21,7 @@ class EvalSampler(Sampler):
         agent: Handler,
         step_buffer: Samples,
         obs_transform: Optional[StepTransform] = None,
+        deterministic_actions: bool = False,
     ) -> None:
         for cage in envs:
             if not cage.reset_automatically:
@@ -39,6 +40,8 @@ class EvalSampler(Sampler):
         self.max_traj_length = max_traj_length
         self.min_trajectories = min_trajectories
         self.obs_transform = obs_transform
+        # TODO: This is probably bad.
+        self.agent.deterministic_eval = deterministic_actions
 
         # prepare cages for sampling
         self.reset_envs()
