@@ -185,7 +185,6 @@ def batch_buffer(
     yield batch_buffer
 
     buffer_method(batch_buffer, "close")
-    buffer_method(batch_buffer, "destroy")
 
 
 @pytest.fixture(params=[BasicSampler])

@@ -59,7 +59,6 @@ def blank_array(ArrayClass, max_points, feature_shape, dtype, batch_shape, stora
     )
     yield array
     array.close()
-    array.destroy()
 
 @pytest.fixture(scope="module")
 def rng():

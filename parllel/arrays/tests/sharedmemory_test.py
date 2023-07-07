@@ -29,8 +29,8 @@ def dtype(request):
 
 @pytest.fixture(params=[
     "shared",
-    pytest.param("managed", marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    ], scope="module")
+    "managed",
+], scope="module")
 def storage(request):
     return request.param
 

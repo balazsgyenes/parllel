@@ -360,9 +360,6 @@ class Array(Buffer):
     def close(self):
         pass
 
-    def destroy(self):
-        pass
-
 
 def shift_indices(indices: Indices, shift: int, size: int,
 ) -> Tuple[Index, ...]:

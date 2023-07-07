@@ -47,8 +47,8 @@ class Logger:
     call parllel.logger.init().
     """
     def __init__(self,
-        stdout: bool = True,
-        verbosity: Verbosity = Verbosity.INFO,
+        stdout: bool,
+        verbosity: Verbosity,
     ):
         self.writers: Dict[str, LogWriter] = {}
 

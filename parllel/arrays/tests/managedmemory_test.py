@@ -51,7 +51,6 @@ def get_piped_array_shape(pipe):
     pipe.send(subarray.shape)
 
 
-@pytest.mark.skip("Currently broken: 'BufferError: cannot close exported pointers exist'")
 class TestManagedMemoryArray:
     def test_setitem_single(self, array, np_array, mp_ctx):
         location = (0, 1, 2)
