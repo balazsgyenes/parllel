@@ -363,6 +363,7 @@ def build_eval_sampler(
     max_traj_length: int,
     min_trajectories: int,
     step_transforms: Optional[List[Transform]] = None,
+    deterministic_actions: bool = False,
 ) -> tuple[EvalSampler, Buffer[Array]]:
     # allocate a step buffer with space for a single step
     # first, collect only the elements needed for evaluation
@@ -403,6 +404,7 @@ def build_eval_sampler(
         agent=agent,
         step_buffer=step_buffer,
         obs_transform=step_transforms,
+        deterministic_actions=deterministic_actions,
     )
 
     return eval_sampler, step_buffer
