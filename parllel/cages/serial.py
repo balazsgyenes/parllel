@@ -22,6 +22,9 @@ class SerialCage(Cage):
     immediately when done is True, replacing the returned observation with the
     reset observation. If False, environment is not reset and the
     `needs_reset` flag is set to True.
+    ;param ignore_reset_info (bool): If True (default), the info dictionary 
+    returned by env.reset() gets ignored. If False, the dict is treated the
+    same way as info dicts returned by env.step() calls
     """
 
     def __init__(
@@ -30,12 +33,14 @@ class SerialCage(Cage):
         env_kwargs: Dict,
         TrajInfoClass: Callable,
         reset_automatically: bool = True,
+        ignore_reset_info: bool = True,
     ) -> None:
         super().__init__(
             EnvClass=EnvClass,
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
             reset_automatically=reset_automatically,
+            ignore_reset_info=ignore_reset_info,
         )
         # create env immediately in the local process
         self._create_env()
@@ -69,7 +74,9 @@ class SerialCage(Cage):
         if done:
             if self.reset_automatically:
                 # reset immediately and overwrite last observation and info
-                obs, env_info = self._reset_env()
+                obs, reset_info = self._reset_env()
+                if not self.ignore_reset_info:
+                    env_info = reset_info
             else:
                 # store done state
                 self._needs_reset = True
@@ -131,7 +138,8 @@ class SerialCage(Cage):
             self._step_result = (reset_obs, reset_info)
         else:
             out_obs[:] = reset_obs
-            out_info[:] = reset_info
+            if not self.ignore_reset_info:
+                out_info[:] = reset_info
 
     def close(self) -> None:
         self._close_env()
