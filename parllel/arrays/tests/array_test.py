@@ -25,8 +25,8 @@ def dtype(request):
 @pytest.fixture(params=[
     "local",
     "shared",
-    pytest.param("managed", marks=pytest.mark.skip(reason="Currently broken: 'BufferError: cannot close exported pointers exist'")),
-    ], scope="module")
+    "managed",
+], scope="module")
 def storage(request):
     return request.param
 
@@ -49,7 +49,6 @@ def blank_array(ArrayClass, shape, dtype, storage, padding, full_size):
     )
     yield array
     array.close()
-    array.destroy()
 
 @pytest.fixture
 def np_array(shape, dtype):
@@ -108,7 +107,6 @@ class TestArrayCreation:
         array = ArrayClass.like(template, storage="shared")
         assert array.storage == "shared"
         array.close()
-        array.destroy()
 
         array = ArrayClass.like(template, padding=1)
         assert array.padding == 1
@@ -136,7 +134,6 @@ class TestArrayCreation:
         array = ArrayClass.like(template, storage="shared")
         assert array.storage == "shared"
         array.close()
-        array.destroy()
 
         array = ArrayClass.like(template, padding=1)
         assert array.padding == 1

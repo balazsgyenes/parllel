@@ -1,8 +1,11 @@
+import os
 from multiprocessing import shared_memory
-from typing import Dict
+from typing import Any
+import weakref
 
 import numpy as np
 
+import parllel.logger as logger
 from .array import Array
 
 
@@ -17,51 +20,63 @@ class ManagedMemoryArray(Array, storage="managed"):
         # allocate array in OS shared memory
         size = int(np.prod(self._base_shape))
         nbytes = size * np.dtype(self.dtype).itemsize
+
+        # keep track of which process created this (presumably the main process)
+        self._spawning_process = os.getpid()
+
         # SharedMemory is given a unique name that other processes can use to
         # attach to it.
-        self._raw_array = shared_memory.SharedMemory(create=True, size=nbytes)
+        self._shmem = shared_memory.SharedMemory(create=True, size=nbytes)
+        logger.debug(
+            f"Process {self._spawning_process} allocated {self._shmem.size} "
+            f"bytes of shared memory with name {self._shmem.name}"
+        )
+
+        # create a finalizer to ensure that shared memory is cleaned up
+        self._finalizer = weakref.finalize(self, self._cleanup_shmem)
 
         self._wrap_raw_array()
 
+    def _cleanup_shmem(self) -> None:
+        # close must be called by each instance (i.e. each process) on cleanup
+        # calling close on shared memory that has already been unlinked appears
+        # not to throw an error
+        self._shmem.close()
+        # these debug statements may not print if the finalizer is called during
+        # process shutdown
+        logger.debug(f"Process {os.getpid()} closed shared memory {self._shmem.name}")
+        if os.getpid() == self._spawning_process:
+            # unlink must be called once and only once to release shared memory
+            self._shmem.unlink()
+            logger.debug(f"Process {os.getpid()} unlinked shared memory {self._shmem.name}")
+
     def _wrap_raw_array(self) -> None:
-        size = int(np.prod(self._base_shape))
-        self._base_array = np.frombuffer(
-            self._raw_array.buf,
+        self._base_array = np.ndarray(
+            shape=self._base_shape,
             dtype=self.dtype,
-            count=size,
+            buffer=self._shmem.buf,
         )
 
-        # assign to shape attribute so that error is raised when data is copied
-        # array.reshape might silently copy the data
-        self._base_array.shape = self._base_shape
-
-    def __getstate__(self) -> Dict:
+    def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
+        # finalizers are marked dead when transferred between processes
+        del state["_finalizer"]
         # remove arrays which cannot be pickled
-        del state["_raw_array"]
         del state["_base_array"]
         del state["_current_array"]
         del state["_previous_array"]
-        state["_memory_name"] = self._raw_array.name
         return state
 
-    def __setstate__(self, state: Dict) -> None:
+    def __setstate__(self, state: dict[str, Any]) -> None:
         # restore state dict entries
-        name = state.pop("_memory_name")
         self.__dict__.update(state)
-        # restore _raw_array
-        self._raw_array = shared_memory.SharedMemory(name=name)
-        # restore _base_array array
+        # recreate finalizer
+        self._finalizer = weakref.finalize(self, self._cleanup_shmem)
+        # restore _base_array
         self._wrap_raw_array()
         # other arrays will be resolved when required
         self._previous_array = None
         self._current_array = None
 
     def close(self):
-        # close must be called by each instance (i.e. each process) on cleanup
-        self._raw_array.close()
-
-    def destroy(self):
-        # unlink must be called once and only once to release shared memory
-        # TODO: make sure this called properly
-        self._raw_array.unlink()
+        self._finalizer()

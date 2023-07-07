@@ -19,6 +19,3 @@ class VoidBuffer(Buffer):
 
     def close(self) -> None:
         pass
-
-    def destroy(self) -> None:
-        pass

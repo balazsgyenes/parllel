@@ -136,7 +136,6 @@ def build(config: Dict, model_checkpoint_path: PathLike) -> ShowPolicy:
         sampler.close()
         agent.close()
         buffer_method(step_buffer, "close")
-        buffer_method(step_buffer, "destroy")
         cage.close()
 
 

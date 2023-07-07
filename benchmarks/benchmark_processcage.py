@@ -158,7 +158,6 @@ def build(config, parallel, profile_path):
         for cage in cages:
             cage.close()
         buffer_method(batch_samples, "close")
-        buffer_method(batch_samples, "destroy")
 
 
 if __name__ == "__main__":

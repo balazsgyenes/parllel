@@ -184,14 +184,12 @@ def build(config: Dict) -> OffPolicyRunner:
         for cage in eval_cages:
             cage.close()
         buffer_method(step_buffer, "close")
-        buffer_method(step_buffer, "destroy")
     
         sampler.close()
         agent.close()
         for cage in cages:
             cage.close()
         buffer_method(batch_buffer, "close")
-        buffer_method(batch_buffer, "destroy")
     
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_sac")
