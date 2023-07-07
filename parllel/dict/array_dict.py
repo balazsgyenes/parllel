@@ -28,6 +28,7 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
         self,
         items: dict[str, ValueType] | Iterable[tuple[str, ValueType]],
         /,
+        batch_size: tuple[int, ...] = (),
     ) -> None:
         # TODO: clean items to ensure only leaf nodes or ArrayDicts
 
@@ -129,6 +130,8 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
 
     def to_ndarray(self) -> ArrayDict[np.ndarray]:
         return self.apply(to_ndarray)
+
+    map = apply
 
 
 def to_ndarray(

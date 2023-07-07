@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
 
 import numpy as np
 from numpy import random
 
+from parllel import Array, ArrayDict
 import parllel.logger as logger
-from parllel.buffers import Samples, buffer_method
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
 from parllel.types import BatchSpec
@@ -17,7 +17,7 @@ class Sampler(ABC):
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
         agent: Handler,
-        sample_buffer: Samples,
+        sample_buffer: ArrayDict[Array],
         max_steps_decorrelate: Optional[int] = None,
     ) -> None:
         self.batch_spec = batch_spec
@@ -29,10 +29,10 @@ class Sampler(ABC):
 
         try:
             # try writing beyond the expected bounds of the observation buffer
-            sample_buffer.env.observation[self.batch_spec.T] = 0
+            sample_buffer["observation"][self.batch_spec.T] = 0
         except IndexError:
             raise ValueError(
-                "Size mismatch: sample_buffer.env.observation must be a "
+                "Size mismatch: sample_buffer['observation'] must be a "
                 "RotatingArray with leading dimension of at least "
                 f"{self.batch_spec.T}."
             )
@@ -57,10 +57,10 @@ class Sampler(ABC):
         rotating the batch buffer.
         """
         logger.debug(f"{type(self).__name__}: Resetting sampler buffer state.")
-        buffer_method(self.sample_buffer, "reset")
+        self.sample_buffer.reset()
         logger.debug(f"{type(self).__name__}: Resetting all environments.")
-        observation = self.sample_buffer.env.observation
-        env_info = self.sample_buffer.env.env_info
+        observation = self.sample_buffer["observation"]
+        env_info = self.sample_buffer["env_info"]
         for b, env in enumerate(self.envs):
             # save reset observation to the end of buffer, since it will be
             # rotated to the beginning
@@ -91,15 +91,13 @@ class Sampler(ABC):
             f"{self.max_steps_decorrelate} random steps each."
         )
         # get references to buffer elements
-        action = self.sample_buffer.agent.action
-        observation, reward, done, terminated, truncated, env_info = (
-            self.sample_buffer.env.observation,
-            self.sample_buffer.env.reward,
-            self.sample_buffer.env.done,
-            self.sample_buffer.env.terminated,
-            self.sample_buffer.env.truncated,
-            self.sample_buffer.env.env_info,
-        )
+        action = self.sample_buffer["action"]
+        observation = self.sample_buffer["observation"]
+        reward = self.sample_buffer["reward"]
+        done = self.sample_buffer["done"]
+        terminated = self.sample_buffer["terminated"]
+        truncated = self.sample_buffer["truncated"]
+        env_info = self.sample_buffer["env_info"]
         T_last = self.batch_spec.T - 1
 
         # get random number of steps between 0 and max for each env
@@ -144,7 +142,7 @@ class Sampler(ABC):
         [env.collect_completed_trajs() for env in self.envs]
 
     @abstractmethod
-    def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
+    def collect_batch(self, elapsed_steps: int) -> tuple[ArrayDict[Array], List[TrajInfo]]:
         pass
 
     def close(self) -> None:

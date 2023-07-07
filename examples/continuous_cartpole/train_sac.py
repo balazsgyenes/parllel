@@ -10,9 +10,9 @@ from omegaconf import DictConfig, OmegaConf
 import torch
 import wandb
 
-from parllel.arrays import buffer_from_example
-from parllel.buffers import AgentSamples, buffer_method, Samples, buffer_asarray
+from parllel import Array
 from parllel.cages import TrajInfo
+from parllel.dict import dict_map
 import parllel.logger as logger
 from parllel.logger import Verbosity
 from parllel.patterns import (build_cages_and_env_buffers, build_eval_sampler)
@@ -40,7 +40,7 @@ def build(config: Dict) -> OffPolicyRunner:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    cages, batch_action, batch_env = build_cages_and_env_buffers(
+    cages, batch_buffer = build_cages_and_env_buffers(
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
@@ -93,16 +93,18 @@ def build(config: Dict) -> OffPolicyRunner:
 
     # write dict into namedarraytuple and read it back out. this ensures the
     # example is in a standard format (i.e. namedarraytuple).
-    batch_env.observation[0] = obs_space.sample()
-    example_obs = batch_env.observation[0]
+    batch_buffer["observation"][0] = obs_space.sample()
+    example_obs = batch_buffer["observation"][0]
 
     # get example output from agent
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    batch_agent_info = buffer_from_example(agent_info[0], batch_shape=tuple(batch_spec))
-    batch_agent = AgentSamples(batch_action, batch_agent_info)
-    batch_buffer = Samples(batch_agent, batch_env)
+    batch_buffer["agent_info"] = dict_map(
+        Array.from_numpy,
+        agent_info[0],
+        batch_shape=tuple(batch_spec),
+    )
 
     sampler = BasicSampler(
         batch_spec=batch_spec,
@@ -117,8 +119,8 @@ def build(config: Dict) -> OffPolicyRunner:
     # because we are only using standard Array types which behave the same as
     # torch Tensors, we can torchify the entire replay buffer here instead of
     # doing it for each batch individually
-    replay_buffer = buffer_asarray(replay_buffer)
-    replay_buffer = torchify_buffer(replay_buffer)
+    replay_buffer = replay_buffer.to_ndarray()
+    replay_buffer = replay_buffer.apply(torch.from_numpy)
 
     replay_buffer = ReplayBuffer(
         buffer=replay_buffer,
@@ -127,7 +129,7 @@ def build(config: Dict) -> OffPolicyRunner:
         replay_batch_size=config["algo"]["batch_size"],
         newest_n_samples_invalid=0,
         oldest_n_samples_invalid=1,
-        batch_transform=lambda x: buffer_to_device(x, device=device)
+        batch_transform=lambda x: buffer_to_device(x, device=device),
     )
 
     optimizers = {

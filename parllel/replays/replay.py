@@ -2,7 +2,7 @@ from typing import Callable, Generic, Iterator, Optional, TypeVar
 
 from numpy import random
 
-from parllel.buffers import NamedArrayTuple
+from parllel import ArrayDict
 from parllel.types import BatchSpec
 
 
@@ -11,7 +11,7 @@ BufferType = TypeVar("BufferType")
 
 class ReplayBuffer(Generic[BufferType]):
     def __init__(self,
-        buffer: NamedArrayTuple,
+        buffer: ArrayDict,
         sampler_batch_spec: BatchSpec,
         size_T: int, # TODO: infer from inputs
         replay_batch_size: int,

@@ -1,9 +1,8 @@
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
 
 import numpy as np
 
-from parllel.buffers import Samples
-from parllel.buffers.utils import buffer_rotate
+from parllel import Array, ArrayDict
 from parllel.cages import Cage, TrajInfo
 from parllel.handlers import Handler
 from parllel.transforms import BatchTransform, StepTransform
@@ -22,7 +21,7 @@ class BasicSampler(Sampler):
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
         agent: Handler,
-        sample_buffer: Samples,
+        sample_buffer: ArrayDict[Array],
         max_steps_decorrelate: Optional[int] = None,
         get_bootstrap_value: bool = False,
         obs_transform: Optional[StepTransform] = None,
@@ -59,7 +58,7 @@ class BasicSampler(Sampler):
         # prepare cages and agent for sampling
         self.reset()
 
-    def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
+    def collect_batch(self, elapsed_steps: int) -> tuple[ArrayDict[Array], List[TrajInfo]]:
         # get references to buffer elements
         action, agent_info = (
             self.sample_buffer.agent.action,
@@ -76,7 +75,7 @@ class BasicSampler(Sampler):
         sample_buffer = self.sample_buffer
 
         # rotate last values from previous batch to become previous values
-        buffer_rotate(sample_buffer)
+        sample_buffer.rotate()
 
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)

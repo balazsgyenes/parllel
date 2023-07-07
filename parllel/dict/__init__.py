@@ -2,10 +2,10 @@ from typing import Any, Protocol, Union
 
 
 class ArrayLike(Protocol):
-    def __getitem__(self, key: Any) -> Any:
+    def __getitem__(self, indices: Any) -> Any:
         ...
 
-    def __setitem__(self, key: Any, value: Any) -> None:
+    def __setitem__(self, indices: Any, value: Any) -> None:
         ...
 
     @property

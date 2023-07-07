@@ -3,18 +3,13 @@ from typing import Dict, List, Union
 
 import torch
 
+from parllel import Array, ArrayDict
 from parllel.algorithm import Algorithm
-from parllel.arrays import Array
-from parllel.buffers import NamedArrayTupleClass, Samples
 import parllel.logger as logger
 from parllel.replays.replay import ReplayBuffer
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.types.batch_spec import BatchSpec
 from parllel.torch.utils import valid_mean
-
-
-SamplesForLoss = NamedArrayTupleClass("SamplesForLoss",
-    ["observation", "action", "reward", "done", "next_observation"])
 
 
 class SAC(Algorithm):
@@ -60,7 +55,7 @@ class SAC(Algorithm):
 
     def optimize_agent(self,
         elapsed_steps: int,
-        samples: Samples[Array],
+        samples: ArrayDict[Array],
     ) -> Dict[str, Union[int, List[float]]]:
         """
         Extracts the needed fields from input samples and stores them in the 
@@ -92,7 +87,7 @@ class SAC(Algorithm):
 
         return self.algo_log_info
 
-    def train_once(self, samples: SamplesForLoss) -> None:
+    def train_once(self, samples: ArrayDict[torch.Tensor]) -> None:
         """
         Computes losses for twin Q-values against the min of twin target Q-values
         and an entropy term.  Computes reparameterized policy loss, and loss for
@@ -151,12 +146,12 @@ class SAC(Algorithm):
         self.algo_log_info["q1_grad_norm"].append(pi_grad_norm.item())
 
 
-def build_replay_buffer(sample_buffer: Samples) -> SamplesForLoss:
-    replay_buffer = SamplesForLoss(
-        observation=sample_buffer.env.observation.full,
-        action=sample_buffer.agent.action.full,
-        reward=sample_buffer.env.reward.full,
-        done=sample_buffer.env.done.full,
-        next_observation=sample_buffer.env.observation.full.next,
-    )
+def build_replay_buffer(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array]:
+    replay_buffer = ArrayDict({
+        "observation": sample_buffer["observation"].full,
+        "action": sample_buffer["action"].full,
+        "reward": sample_buffer["reward"].full,
+        "done": sample_buffer["done"].full,
+        "next_observation": sample_buffer["observation"].full.next,
+    })
     return replay_buffer

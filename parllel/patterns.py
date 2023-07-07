@@ -248,6 +248,8 @@ def add_reward_normalization(
             "NormalizeRewards"
         )
 
+    # TODO: handle multi-reward case
+
     # allocate new Array for past discounted returns
     batch_buffer["past_return"] = batch_buffer["reward"].new_array(
         padding=1,
