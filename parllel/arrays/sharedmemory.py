@@ -43,8 +43,9 @@ class SharedMemoryArray(Array, storage="shared"):
         state = self.__dict__.copy()
         # remove this numpy array which cannot be pickled
         del state["_base_array"]
-        del state["_current_array"]
-        del state["_previous_array"]
+        # subprocesses should not be able to call rotate()
+        # if processes are started by fork, this is not guaranteed to be called
+        state["_rotatable"] = False
         return state
 
     def __setstate__(self, state: Dict) -> None:
@@ -52,9 +53,6 @@ class SharedMemoryArray(Array, storage="shared"):
         self.__dict__.update(state)
         # restore _base_array array
         self._wrap_raw_array()
-        # other arrays will be resolved when required
-        self._previous_array = None
-        self._current_array = None
 
 
 class SharedMemoryJaggedArray(

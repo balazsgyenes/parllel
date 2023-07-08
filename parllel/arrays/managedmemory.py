@@ -63,8 +63,9 @@ class ManagedMemoryArray(Array, storage="managed"):
         del state["_finalizer"]
         # remove arrays which cannot be pickled
         del state["_base_array"]
-        del state["_current_array"]
-        del state["_previous_array"]
+        # subprocesses should not be able to call rotate()
+        # if processes are started by fork, this is not guaranteed to be called
+        state["_rotatable"] = False
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
@@ -74,9 +75,6 @@ class ManagedMemoryArray(Array, storage="managed"):
         self._finalizer = weakref.finalize(self, self._cleanup_shmem)
         # restore _base_array
         self._wrap_raw_array()
-        # other arrays will be resolved when required
-        self._previous_array = None
-        self._current_array = None
 
     def close(self):
         self._finalizer()

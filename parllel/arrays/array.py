@@ -1,16 +1,16 @@
-from __future__ import annotations  # full returns another Array
+from __future__ import annotations
 
-from functools import reduce
 from typing import Any, Literal, Optional, TypeVar, Union
 
 import numpy as np
 
-from parllel.buffers import Buffer, Index, Indices
+from parllel.arrays.indices import (Index, Location, add_locations,
+                                    init_location, shape_from_location)
 
 Self = TypeVar("Self", bound="Array")
 
 
-class Array(Buffer):
+class Array:
     """An object wrapping a numpy array for use in sampling. An Array remembers
     indexing operations used to get subarrays. Math operations are generally
     not supported, use `np.asarray(arr)` to get the underlying numpy array.
@@ -101,29 +101,25 @@ class Array(Buffer):
 
         self.dtype = dtype
         self.padding = padding
-
-        self._default_size = shape[0]  # size of leading dim of unindexed array
         # size of leading dim of full array, without padding
         self._full_size = full_size
-        self._offset = 0  # offset of visible region within full array, without padding
-        # offset of visible region within base array
-        self._shift = self._offset + padding
-        # add padding onto both ends of first dimension
-        self._base_shape = (full_size + 2 * padding,) + shape[1:]
-
-        self._buffer_id: int = id(self)
-        self._index_history: list[Indices] = []
+        base_T_size = full_size + 2 * padding
+        self._base_shape = (base_T_size,) + shape[1:]
 
         self._allocate()
 
-        self._current_array = self._base_array  # the result of np.asarray()
-        self._apparent_shape = shape  # shape of current array
+        self._current_location = init_location(self._base_shape)
+        init_slice = slice(padding, shape[0] + padding)
+        self._current_location = add_locations(
+            self._current_location,
+            init_slice,
+            self._base_shape,
+            neg_from_end=False,
+        )
+        self._index_history: list[Location] = []
 
-        # used to enable indexing into a single element like element[:] = 0
-        # set to the previous value of current_array, or the base_array
-        self._previous_array = self._base_array
-
-        self._resolve_indexing_history()
+        self._shape = shape  # shape of current array
+        self._rotatable = True
 
     def new_array(
         self,
@@ -146,13 +142,19 @@ class Array(Buffer):
         kind = kind if kind is not None else self.kind
         storage = storage if storage is not None else self.storage
         padding = padding if padding is not None else self.padding
-        # only inherit full_size from self if full_size is not the default and flag set to true
         full_size = (
             full_size
             if full_size is not None
             else (
+                # only inherit full_size from self if the user explicitly
+                # requests it, the array has not been indexed, and full_size
+                # is not the default
                 self._full_size
-                if (inherit_full_size and self._full_size > self._default_size)
+                if (
+                    inherit_full_size
+                    and self._rotatable
+                    and self._full_size > self.shape[0]
+                )
                 else None
             )
         )
@@ -200,10 +202,10 @@ class Array(Buffer):
 
     @property
     def shape(self) -> tuple[int, ...]:
-        if self._apparent_shape is None:
+        if self._shape is None:
             self._resolve_indexing_history()
 
-        return self._apparent_shape
+        return self._shape
 
     @property
     def first(self) -> int:
@@ -218,142 +220,147 @@ class Array(Buffer):
         Replaces indexing at -1 in numpy arrays.
         e.g. array[-1] -> rot_array[rot_array.last]
         """
-        if self._apparent_shape is None:
+        if self._shape is None:
             self._resolve_indexing_history()
 
-        return self._apparent_shape[0] - 1
+        return self._shape[0] - 1
 
-    def __getitem__(self: Self, indices: Indices) -> Self:
+    def __getitem__(self: Self, indices: Location) -> Self:
         # new Array object initialized through a (shallow) copy. Attributes
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
         # need to be modified.
-        result: Self = self.__new__(type(self))
-        result.__dict__.update(self.__dict__)
+        subarray: Self = self.__new__(type(self))
+        subarray.__dict__.update(self.__dict__)
+        # disallow rotate and reset on subarrays
+        subarray._rotatable = False
         # assign *copy* of _index_history with additional element for this
         # indexing operation
-        result._index_history = result._index_history + [indices]
-        # current array and shape are not computed until needed
-        result._current_array = None
-        result._apparent_shape = None
-        # if self._current_array is not None, saves extra computation
-        # if it is None, then it must be recomputed anyway
-        result._previous_array = self._current_array
-        return result
+        subarray._index_history = subarray._index_history + [indices]
+        # set shape to None to indicate that indexing must be resolved
+        subarray._shape = None
+        return subarray
 
     def _resolve_indexing_history(self) -> None:
-        array = self._base_array
-        self._shift = shift = self._offset + self.padding
+        for location in self._index_history:
+            self._current_location = add_locations(
+                self._current_location,
+                location,
+                self._base_shape,
+                neg_from_end=False,
+            )
 
-        if self._index_history:
-            # shift only the first indices, leave the rest (if there are more)
-            index_history = [
-                shift_indices(
-                    self._index_history[0],
-                    shift,
-                    self._default_size,
-                )
-            ] + self._index_history[1:]
-        else:
-            # even if the array was never indexed, only this slice of the array
-            # should be returned by __array__
-            index_history = [slice(shift, shift + self._default_size)]
+        self._index_history.clear()
 
-        # if index history has only 1 element, this has no effect
-        array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
-        self._previous_array = array
+        self._shape = shape_from_location(self._current_location, self._base_shape)
 
-        # we guarantee that index_history has at least 1 element
-        array = array[index_history[-1]]
-
-        self._current_array = array
-        self._apparent_shape = array.shape
-
-    def __setitem__(self, indices: Indices, value: Any) -> None:
-        # TODO: optimize this method to avoid resolving history if indices
-        # is slice(None) or Ellipsis and history only has one element
-        # in this case, only previous_array is required
-        if self._current_array is None:
+    def __setitem__(self, indices: Location, value: Any) -> None:
+        if self._shape is None:
             self._resolve_indexing_history()
 
-        if self._index_history:
-            if self._apparent_shape == ():
-                # Need to avoid item assignment on a scalar (0-D) array, so we assign
-                # into previous array using the last indices used
-                if not (indices == slice(None) or indices == ...):
-                    raise IndexError("Cannot take slice of 0-D array.")
-                indices = self._index_history[-1]
-                # indices must be shifted if they were the first indices
-                if len(self._index_history) == 1:
-                    indices = shift_indices(indices, self._shift, self._default_size)
-                destination = self._previous_array
-            else:
-                destination = self._current_array
-        else:
-            indices = shift_indices(indices, self._shift, self._default_size)
-            destination = self._base_array
-        destination[indices] = value
+        destination = tuple(
+            add_locations(
+                self._current_location,
+                indices,
+                self._base_shape,
+                neg_from_end=False,
+            )
+        )
+
+        # write to underlying array at that location
+        self._base_array[destination] = value
 
     @property
-    def full(self) -> Array:
-        full: Array = self.__new__(type(self))
+    def full(self: Self) -> Self:
+        # no need to resolve indexing history since we clear it
+
+        full: Self = self.__new__(type(self))
         full.__dict__.update(self.__dict__)
+        full._rotatable = False
 
-        full._default_size = full._full_size
-        full._offset = 0
+        # clear any unresolved indexing history
+        full._index_history.clear()
 
-        full._index_history = []
-        full._current_array = None
-        full._apparent_shape = None
+        # assign current location so that full array except padding is visible
+        full._current_location = init_location(full._base_shape)
+        init_slice = slice(full.padding, full._full_size + full.padding)
+        full._current_location = add_locations(
+            full._current_location,
+            init_slice,
+            full._base_shape,
+            neg_from_end=False,
+        )
+
+        # explicitly compute shape, since we know what it will be
+        full._shape = (full._full_size,) + full._base_shape[1:]
+
         return full
 
     @property
-    def next(self) -> Array:
+    def next(self: Self) -> Self:
         return self._get_at_offset(offset=1)
 
     @property
-    def previous(self) -> Array:
+    def previous(self: Self) -> Self:
         return self._get_at_offset(offset=-1)
 
-    def _get_at_offset(self, offset: int) -> Array:
-        if self._index_history:
-            raise RuntimeError("Only allowed to get at offset from unindexed array")
+    def _get_at_offset(self: Self, offset: int) -> Self:
+        if self._shape is None:
+            self._resolve_indexing_history()
 
-        new: Array = self.__new__(type(self))
-        new.__dict__.update(self.__dict__)
+        offsetted: Array = self.__new__(type(self))
+        offsetted.__dict__.update(self.__dict__)
+        offsetted._rotatable = False
 
-        # total shift of offset cannot exceed +/-padding, but we do not check
-        # if padding is exceeded, getitem/setitem may throw error
-        new._offset += offset
+        leading_loc = offsetted._current_location[0]
+        if isinstance(leading_loc, slice):
+            offset_slice = slice(offset, offsetted.shape[0] + offset)
+            offsetted._current_location = add_locations(
+                offsetted._current_location,
+                offset_slice,
+                offsetted._base_shape,
+                neg_from_end=False,
+            )
+        else:
+            offsetted._current_location[0] = leading_loc + offset
 
-        # index_history is already empty
-        # current array is now invalid, but apparent shape should still be
-        # correct
-        new._current_array = None
-        return new
+        return offsetted
 
     def reset(self) -> None:
         """Resets array, such that the offset will be 0 after the next time
         that `rotate()` is called. This is useful in the sampler, which calls
         `rotate()` before every batch.
         """
-        if self._index_history:
-            raise RuntimeError("Only allowed to call `reset()` on original array")
+        if not self._rotatable:
+            raise ValueError("reset() is only allowed on unindexed array.")
 
-        # if apparent size is not smaller, sets offset to 0
-        self._offset = self._full_size - self._default_size
-
-        # current array is now invalid, but apparent shape should still be
-        # correct
-        self._current_array = None
+        self._current_location[0] = slice(
+            self._full_size + self.padding - self.shape[0],
+            self._full_size + self.padding,
+            1,
+        )
 
     def rotate(self) -> None:
-        if self._index_history:
-            raise RuntimeError("Only allowed to call `rotate()` on original array")
+        if not self._rotatable:
+            raise ValueError("rotate() is only allowed on unindexed array.")
 
-        self._offset += self._default_size
+        leading_loc = self._current_location[0]
+        start = leading_loc.start
+        stop = leading_loc.stop
 
-        if self.padding and self._offset >= self._full_size:
+        start += self.shape[0]
+        if wrap_bounds := start >= self._full_size:
+            # wrap both start and stop simultaneously
+            start %= self._full_size
+            stop %= self._full_size
+        # mod and increment stop in opposite order
+        # because stop - start = self.shape[0], we can be sure that stop will
+        # be reduced by mod even before incrementing
+        stop += self.shape[0]
+
+        self._current_location[0] = slice(start, stop, 1)
+
+        if self.padding and wrap_bounds:
             # copy values from end of base array to beginning
             final_values = slice(
                 self._full_size - self.padding,
@@ -362,22 +369,17 @@ class Array(Buffer):
             next_previous_values = slice(-self.padding, self.padding)
             self.full[next_previous_values] = self.full[final_values]
 
-        self._offset %= self._full_size
-
-        # current array is now invalid, but apparent shape should still be
-        # correct
-        self._current_array = None
-
     def __array__(self, dtype=None) -> np.ndarray:
-        if self._current_array is None:
+        if self._shape is None:
             self._resolve_indexing_history()
 
-        array = np.asarray(self._current_array)  # promote scalars to 0d arrays
+        array = self._base_array[tuple(self._current_location)]
+        array = np.asarray(array)  # promote scalars to 0d arrays
         if dtype is not None:
             array = array.astype(dtype, copy=False)
         return array
 
-    def __buffer__(self) -> Buffer:
+    def to_tree(self) -> Union[np.ndarray, dict[str, np.ndarray]]:
         return self.__array__()
 
     def __repr__(self) -> str:
@@ -410,7 +412,7 @@ class Array(Buffer):
 
 
 def shift_indices(
-    indices: Indices,
+    indices: Location,
     shift: int,
     size: int,
 ) -> tuple[Index, ...]:

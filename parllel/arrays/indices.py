@@ -211,8 +211,9 @@ def index_slice(
         if (new_stop := new_index.stop) is not None:
             # translate new_stop into "world coordinates"
             new_stop = index_slice_with_int(index, new_stop, size, neg_from_end)
-            # find the stop that results in the shorter sequence
-            new_stop = min(stop, new_stop) if step > 0 else max(stop, new_stop)
+            if neg_from_end:
+                # find the stop that results in the shorter sequence
+                new_stop = min(stop, new_stop) if step > 0 else max(stop, new_stop)
             # lower bound at 0 only if positive step. negative stops for
             # negative steps are converted into Nones later
             new_stop = max(0, new_stop) if step > 0 else new_stop

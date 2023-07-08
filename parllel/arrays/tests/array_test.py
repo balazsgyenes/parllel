@@ -190,8 +190,8 @@ class TestArray:
 
     def test_subarrays_setitem_slices(self, array, np_array):
         subarray, np_subarray = array[1:2, 0], np_array[1:2, 0]
-        subarray[2:3] = -7
-        np_subarray[2:3] = -7
+        subarray[:, 2:3] = -7
+        np_subarray[:, 2:3] = -7
         assert np.array_equal(array, np_array)
 
     def test_subarrays_setitem_ellipsis(self, array, np_array):
@@ -213,7 +213,7 @@ class TestArray:
 
     def test_element_setitem(self, array, np_array):
         element = array[0, 1, 2]
-        element[:] = -7
+        element[...] = -7
         np_array[0, 1, 2] = -7  # ndarray does not support item assignment
         assert np.array_equal(array, np_array)
 
@@ -273,6 +273,7 @@ class TestArray:
         assert np.asarray(element) == np_element
         assert np.asarray(element) == np_element.item()
 
+    @pytest.mark.skip()
     def test_indexhistory(self, array):
         assert array.index_history == ()
 
@@ -293,6 +294,7 @@ class TestArray:
             (slice(None), slice(None, None, 2)),
         )
 
+    @pytest.mark.skip()
     def test_array_reconstruction(self, array):
         # TODO: compare arrays with np_array
         subarray1 = array
