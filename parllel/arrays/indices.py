@@ -194,39 +194,43 @@ def index_slice(
         start, stop, step = index.indices(size)
 
         new_step = new_index.step if new_index.step is not None else 1
-        new_start = (
-            new_index.start
-            if new_index.start is not None
-            else (0 if new_step > 0 else -1)
-        )
-        new_stop = new_index.stop
 
-        # translate new_index.start into "world coordinates"
-        new_start = index_slice_with_int(index, new_start, size, neg_from_end)
-        new_start = max(0, new_start)  # lower bound at 0
+        if (new_start := new_index.start) is not None:
+            # translate new_index.start into "world coordinates"
+            new_start = index_slice_with_int(index, new_start, size, neg_from_end)
+            # lower bound at 0, preventing out-of-bounds slices from turning
+            # into in-bounds slices
+            new_start = max(0, new_start)
+        elif new_step > 0:
+            new_start = start
+        else:
+            # compute true end point of slice, taking into account that step
+            # might not evenly divide the length of the array
+            new_start = start + step * math.ceil((stop - start) / step) - step
 
-        if new_stop is not None:
+        if (new_stop := new_index.stop) is not None:
             # translate new_stop into "world coordinates"
             new_stop = index_slice_with_int(index, new_stop, size, neg_from_end)
             # find the stop that results in the shorter sequence
             new_stop = min(stop, new_stop) if step > 0 else max(stop, new_stop)
-            # bound at the relevant end of the array, preserving empty slices
-            new_stop = max(0, new_stop) if step > 0 else min(new_stop, size)
+            # lower bound at 0 only if positive step. negative stops for
+            # negative steps are converted into Nones later
+            new_stop = max(0, new_stop) if step > 0 else new_stop
         elif new_step > 0:
             new_stop = stop
         else:
             new_stop = start
-            # extend new_stop one unit away from body of range
-            new_stop += np.sign(step * new_step)
+            # extend new_stop one step away from body of range
+            new_stop += step * np.sign(new_step)
+
+        # update step by multiplying new step onto it
+        new_step = step * new_step
 
         # set to None instead of -1
         # this might happen if the stop was specified as an integer, but lands
         # before the beginning of the array, or if the stop was None and the
         # start/stop of index was -1 (i.e. None with negative step)
         new_stop = None if new_stop < 0 else new_stop
-
-        # update step by multiplying new step onto it
-        new_step = step * new_step
 
         return slice(new_start, new_stop, new_step)
 
