@@ -104,7 +104,7 @@ class Array:
         # size of leading dim of full array, without padding
         self._full_size = full_size
         base_T_size = full_size + 2 * padding
-        self._base_shape = (base_T_size,) + shape[1:]
+        self._base_shape = self._allocate_shape = (base_T_size,) + shape[1:]
 
         self._allocate()
 
@@ -198,7 +198,7 @@ class Array:
 
     def _allocate(self) -> None:
         # initialize numpy array
-        self._base_array = np.zeros(shape=self._base_shape, dtype=self.dtype)
+        self._base_array = np.zeros(shape=self._allocate_shape, dtype=self.dtype)
 
     @property
     def shape(self) -> tuple[int, ...]:

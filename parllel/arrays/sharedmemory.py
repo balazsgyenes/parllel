@@ -18,7 +18,7 @@ class SharedMemoryArray(Array, storage="shared"):
 
     def _allocate(self) -> None:
         # allocate array in OS shared memory
-        size = int(np.prod(self._base_shape))
+        size = int(np.prod(self._allocate_shape))
         nbytes = size * np.dtype(self.dtype).itemsize
         # mp.RawArray can be safely passed between processes on startup, even
         # when using the "spawn" start method. However, it cannot be sent
@@ -28,7 +28,7 @@ class SharedMemoryArray(Array, storage="shared"):
         self._wrap_raw_array()
 
     def _wrap_raw_array(self) -> None:
-        size = int(np.prod(self._base_shape))
+        size = int(np.prod(self._allocate_shape))
         self._base_array: np.ndarray = np.frombuffer(
             self._raw_array,
             dtype=self.dtype,
@@ -37,7 +37,7 @@ class SharedMemoryArray(Array, storage="shared"):
 
         # assign to shape attribute so that error is raised when data is
         # copied array.reshape might silently copy the data
-        self._base_array.shape = self._base_shape
+        self._base_array.shape = self._allocate_shape
 
     def __getstate__(self) -> Dict:
         state = self.__dict__.copy()
@@ -63,14 +63,14 @@ class SharedMemoryJaggedArray(
 ):
     def _allocate(self) -> None:
         # allocate array in OS shared memory
-        size = int(np.prod(self._base_shape))
+        size = int(np.prod(self._allocate_shape))
         nbytes = size * np.dtype(self.dtype).itemsize
         # mp.RawArray can be safely passed between processes on startup, even
         # when using the "spawn" start method. However, it cannot be sent
         # through a Pipe or Queue
         self._raw_array = mp.RawArray(ctypes.c_char, nbytes)
 
-        base_batch_shape = self._virtual_base_shape[: self._n_batch_dim]
+        base_batch_shape = self._base_shape[: self._n_batch_dim]
         ptr_shape = base_batch_shape[1:] + (base_batch_shape[0] + 1,)
         ptr_size = int(np.prod(ptr_shape))
         ptr_bytes = ptr_size * np.dtype(np.int64).itemsize
@@ -79,7 +79,7 @@ class SharedMemoryJaggedArray(
         self._wrap_raw_array()
 
     def _wrap_raw_array(self) -> None:
-        size = int(np.prod(self._base_shape))
+        size = int(np.prod(self._allocate_shape))
         self._base_array: np.ndarray = np.frombuffer(
             self._raw_array,
             dtype=self.dtype,
@@ -88,9 +88,9 @@ class SharedMemoryJaggedArray(
 
         # assign to shape attribute so that error is raised when data is
         # copied array.reshape might silently copy the data
-        self._base_array.shape = self._base_shape
+        self._base_array.shape = self._allocate_shape
 
-        base_batch_shape = self._virtual_base_shape[: self._n_batch_dim]
+        base_batch_shape = self._base_shape[: self._n_batch_dim]
         ptr_shape = base_batch_shape[1:] + (base_batch_shape[0] + 1,)
         ptr_size = int(np.prod(ptr_shape))
         self._ptr: np.ndarray = np.frombuffer(

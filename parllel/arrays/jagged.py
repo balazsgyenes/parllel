@@ -76,15 +76,15 @@ class JaggedArray(Array, kind="jagged"):
         base_T_size = full_size + 2 * padding
         N_size = shape[0]
         # shape that base array appears to be
-        self._virtual_base_shape = (base_T_size,) + batch_shape[1:] + shape
+        self._base_shape = (base_T_size,) + batch_shape[1:] + shape
         # multiply the T dimension into the node dimension
         self._flattened_size = base_T_size * N_size
-        self._base_shape = batch_shape[1:] + (self._flattened_size,) + shape[1:]
+        self._allocate_shape = batch_shape[1:] + (self._flattened_size,) + shape[1:]
         self._n_batch_dim = len(batch_shape)
 
         self._allocate()
 
-        self._current_location = init_location(self._virtual_base_shape)
+        self._current_location = init_location(self._base_shape)
         init_slice = slice(padding, batch_shape[0] + padding)
         self._current_location = add_locations(
             self._current_location,
@@ -98,35 +98,23 @@ class JaggedArray(Array, kind="jagged"):
         self._rotatable = True
 
     def _allocate(self) -> None:
-        self._base_array = np.zeros(shape=self._base_shape, dtype=self.dtype)
+        self._base_array = np.zeros(shape=self._allocate_shape, dtype=self.dtype)
 
         # add an extra element to node dimension so it's always possible to
         # access the element at t+1
-        base_batch_shape = self._virtual_base_shape[: self._n_batch_dim]
+        base_batch_shape = self._base_shape[: self._n_batch_dim]
         ptr_shape = base_batch_shape[1:] + (base_batch_shape[0] + 1,)
 
         self._ptr = np.zeros(shape=ptr_shape, dtype=np.int64)
 
     def _resolve_indexing_history(self) -> None:
-        for location in self._index_history:
-            self._current_location = add_locations(
-                self._current_location,
-                location,
-                self._virtual_base_shape,
-                neg_from_end=False,
-            )
-
-        self._index_history.clear()
-
-        self._shape = shape_from_location(
-            self._current_location, self._virtual_base_shape
-        )
+        super()._resolve_indexing_history()
 
         # TODO: if current location is a single graph, set real size of that graph
         # as apparent size
 
     def __setitem__(
-        self, location: Location, value: Union[float, int, np.number, list, JaggedArray]
+        self, indices: Location, value: Union[float, int, np.number, list, JaggedArray],
     ) -> None:
         if self._shape is None:
             self._resolve_indexing_history()
@@ -134,8 +122,8 @@ class JaggedArray(Array, kind="jagged"):
         destination = tuple(
             add_locations(
                 self._current_location,
-                location,
-                self._virtual_base_shape,
+                indices,
+                self._base_shape,
                 neg_from_end=False,
             )
         )
@@ -202,34 +190,6 @@ class JaggedArray(Array, kind="jagged"):
             # write to underlying array at that location
             self._base_array[real_loc] = value
 
-    @property
-    def full(self: Self) -> Self:
-        # refactor Array so it understands the different between the shape
-        # of base array and its own virtual shape
-
-        # no need to resolve indexing history since we clear it
-
-        full: Self = self.__new__(type(self))
-        full.__dict__.update(self.__dict__)
-        full._rotatable = False
-
-        # clear any unresolved indexing history
-        full._index_history.clear()
-
-        # assign current location so that full array except padding is visible
-        full._current_location = init_location(full._virtual_base_shape)
-        init_slice = slice(full.padding, full._full_size + full.padding)
-        full._current_location = add_locations(
-            full._current_location,
-            init_slice,
-            full._virtual_base_shape,
-            neg_from_end=False,
-        )
-
-        # explicitly compute shape, since we know what it will be
-        full._shape = (full._full_size,) + full._virtual_base_shape[1:]
-
-        return full
 
     def rotate(self) -> None:
         # TODO: once setitem supports JaggedArray, no override needed
@@ -260,7 +220,7 @@ class JaggedArray(Array, kind="jagged"):
             )
             next_previous_values = range(-self.padding, self.padding)
             b_locs = [
-                range(size) for size in self._virtual_base_shape[1 : self._n_batch_dim]
+                range(size) for size in self._base_shape[1 : self._n_batch_dim]
             ]
             full_array = self.full
             for source, destination in zip(final_values, next_previous_values):
