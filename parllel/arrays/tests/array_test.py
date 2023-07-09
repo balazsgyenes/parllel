@@ -41,7 +41,7 @@ def full_size(request):
 @pytest.fixture
 def blank_array(ArrayClass, shape, dtype, storage, padding, full_size):
     array = ArrayClass(
-        shape=shape,
+        feature_shape=shape,
         dtype=dtype,
         storage=storage,
         padding=padding,
@@ -67,14 +67,14 @@ class TestArrayCreation:
 
     def test_empty_shape(self, ArrayClass, dtype):
         with pytest.raises(ValueError):
-            _ = ArrayClass(shape=(), dtype=dtype)
+            _ = ArrayClass(feature_shape=(), dtype=dtype)
 
     def test_wrong_dtype(self, ArrayClass, shape):
         with pytest.raises(ValueError):
-            _ = ArrayClass(shape=shape, dtype=list)
+            _ = ArrayClass(feature_shape=shape, dtype=list)
 
     def test_calling_array(self, ArrayClass, shape, dtype, storage, padding):
-        array = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=padding)
+        array = ArrayClass(feature_shape=shape, dtype=dtype, storage=storage, padding=padding)
         assert array.shape == shape
         assert array.dtype == dtype
         assert array.storage == storage
@@ -86,16 +86,16 @@ class TestArrayCreation:
         elif storage == "managed":
             ArrayClass = ManagedMemoryArray
 
-        array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
+        array = ArrayClass(feature_shape=shape, dtype=dtype, padding=padding)
         assert array.shape == shape
         assert array.dtype == dtype
         assert array.storage == storage
         assert array.padding == padding
 
     def test_new_array(self):
-        template = Array(shape=(10, 4), dtype=np.float32)
+        template = Array(feature_shape=(10, 4), dtype=np.float32)
         
-        array = template.new_array(shape=(20, 4))
+        array = template.new_array(feature_shape=(20, 4))
         assert array.shape == (20, 4)
         assert array.dtype == np.float32
         assert array.full.shape == (20, 4)
@@ -116,14 +116,14 @@ class TestArrayCreation:
         assert array.full.shape == (20, 4)
 
     def test_new_array_windowed(self):
-        template = Array(shape=(10, 4), dtype=np.float32, full_size=20)
+        template = Array(feature_shape=(10, 4), dtype=np.float32, full_size=20)
 
-        array = template.new_array(shape=(5, 4))
+        array = template.new_array(feature_shape=(5, 4))
         assert array.shape == (5, 4)
         assert array.dtype == np.float32
         assert array.full.shape == (5, 4)
 
-        array = template.new_array(shape=(5, 4), inherit_full_size=True)
+        array = template.new_array(feature_shape=(5, 4), inherit_full_size=True)
         assert array.shape == (5, 4)
         assert array.full.shape == (20, 4)
 

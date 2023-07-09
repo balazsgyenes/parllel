@@ -5,6 +5,7 @@ from typing import Any, Literal, Optional, TypeVar, Union
 import numpy as np
 
 from parllel.arrays.indices import (Index, Location, add_locations,
+                                    batch_dims_from_location, index_slice,
                                     init_location, shape_from_location)
 
 Self = TypeVar("Self", bound="Array")
@@ -64,14 +65,17 @@ class Array:
 
     def __init__(
         self,
-        shape: tuple[int, ...],
+        feature_shape: tuple[int, ...],
         dtype: np.dtype,
         *,
+        batch_shape: tuple[int, ...] = (),
         kind: Optional[str] = None,  # consumed by __new__
         storage: Optional[str] = None,  # consumed by __new__
         padding: int = 0,
         full_size: Optional[int] = None,
     ) -> None:
+        shape = batch_shape + feature_shape
+
         if not shape:
             raise ValueError("Non-empty shape required.")
 
@@ -103,29 +107,24 @@ class Array:
         self.dtype = dtype
         self.padding = padding
         # size of leading dim of full array, without padding
-        self._full_size = full_size
-        base_T_size = full_size + 2 * padding
-        self._base_shape = self._allocate_shape = (base_T_size,) + shape[1:]
+        self.full_size = full_size
+        self._base_shape = (full_size + 2 * padding,) + shape[1:]
+        self._base_batch_dims = len(batch_shape)
 
         self._allocate(shape=self._base_shape, dtype=dtype, name="_base_array")
 
         self._current_location = init_location(self._base_shape)
         init_slice = slice(padding, shape[0] + padding)
-        self._current_location = add_locations(
-            self._current_location,
-            init_slice,
-            self._base_shape,
-            neg_from_end=False,
-        )
-        self._index_history: list[Location] = []
+        self._index_history: list[Location] = [init_slice]
+        self._resolve_indexing_history()
 
-        self._shape = shape  # shape of current array
         self._rotatable = True
 
     def new_array(
         self,
-        shape: Optional[tuple[int, ...]] = None,
+        feature_shape: Optional[tuple[int, ...]] = None,
         dtype: Optional[np.dtype] = None,
+        batch_shape: Optional[tuple[int, ...]] = None,
         kind: Optional[str] = None,
         storage: Optional[str] = None,
         padding: Optional[int] = None,
@@ -138,7 +137,12 @@ class Array:
         to another value, either pass it manually or set the
         `inherit_full_size` flag to True to use the template's full size.
         """
-        shape = shape if shape is not None else self.shape
+        batch_shape = batch_shape if batch_shape is not None else self.batch_shape
+        feature_shape = (
+            feature_shape
+            if feature_shape is not None
+            else self.shape[self.n_batch_dims :]
+        )
         dtype = dtype or self.dtype
         kind = kind if kind is not None else self.kind
         storage = storage if storage is not None else self.storage
@@ -150,18 +154,19 @@ class Array:
                 # only inherit full_size from self if the user explicitly
                 # requests it, the array has not been indexed, and full_size
                 # is not the default
-                self._full_size
+                self.full_size
                 if (
                     inherit_full_size
                     and self._rotatable
-                    and self._full_size > self.shape[0]
+                    and self.full_size > self.shape[0]
                 )
                 else None
             )
         )
         return type(self)(
-            shape,
-            dtype,
+            feature_shape=feature_shape,
+            dtype=dtype,
+            batch_shape=batch_shape,
             kind=kind,
             storage=storage,
             padding=padding,
@@ -172,8 +177,9 @@ class Array:
     def from_numpy(
         cls,
         example: Any,
-        shape: Optional[tuple[int, ...]] = None,
+        feature_shape: Optional[tuple[int, ...]] = None,
         dtype: Optional[np.dtype] = None,
+        batch_shape: tuple[int, ...] = (),
         force_32bit: Literal[True, "float", "int", False] = True,
         kind: Optional[str] = None,
         storage: Optional[str] = None,
@@ -181,6 +187,7 @@ class Array:
         full_size: Optional[int] = None,
     ) -> Array:
         np_example = np.asanyarray(example)  # promote scalars to 0d arrays
+        feature_shape = feature_shape if feature_shape is not None else np_example.shape
         if dtype is None:
             dtype = np_example.dtype
             if dtype == np.int64 and force_32bit in {True, "int"}:
@@ -188,9 +195,9 @@ class Array:
             elif dtype == np.float64 and force_32bit in {True, "float"}:
                 dtype = np.float32
         return cls(
-            # TODO: replace shape with feature_shape
-            shape=shape if shape is not None else np_example.shape,
+            feature_shape=feature_shape,
             dtype=dtype,
+            batch_shape=batch_shape,
             kind=kind,
             storage=storage,
             padding=padding,
@@ -207,6 +214,20 @@ class Array:
             self._resolve_indexing_history()
 
         return self._shape
+
+    @property
+    def n_batch_dims(self) -> int:
+        if self._shape is None:
+            self._resolve_indexing_history()
+
+        return self._n_batch_dims
+
+    @property
+    def batch_shape(self) -> tuple[int, ...]:
+        if self._shape is None:
+            self._resolve_indexing_history()
+
+        return self._batch_shape
 
     @property
     def first(self) -> int:
@@ -254,6 +275,10 @@ class Array:
         self._index_history.clear()
 
         self._shape = shape_from_location(self._current_location, self._base_shape)
+        self._n_batch_dims = batch_dims_from_location(
+            self._current_location, self._base_batch_dims
+        )
+        self._batch_shape = self._shape[: self._n_batch_dims]
 
     def __setitem__(self, indices: Location, value: Any) -> None:
         if self._shape is None:
@@ -284,16 +309,9 @@ class Array:
 
         # assign current location so that full array except padding is visible
         full._current_location = init_location(full._base_shape)
-        init_slice = slice(full.padding, full._full_size + full.padding)
-        full._current_location = add_locations(
-            full._current_location,
-            init_slice,
-            full._base_shape,
-            neg_from_end=False,
-        )
-
-        # explicitly compute shape, since we know what it will be
-        full._shape = (full._full_size,) + full._base_shape[1:]
+        init_slice = slice(full.padding, full.full_size + full.padding)
+        full._index_history.append(init_slice)
+        full._resolve_indexing_history()
 
         return full
 
@@ -316,15 +334,16 @@ class Array:
         leading_loc = offsetted._current_location[0]
         if isinstance(leading_loc, slice):
             offset_slice = slice(offset, offsetted.shape[0] + offset)
-            offsetted._current_location = add_locations(
-                offsetted._current_location,
+            offsetted._current_location[0] = index_slice(
+                leading_loc,
                 offset_slice,
-                offsetted._base_shape,
+                offsetted._base_shape[0],
                 neg_from_end=False,
             )
         else:
             offsetted._current_location[0] = leading_loc + offset
 
+        offsetted._resolve_indexing_history()
         return offsetted
 
     def reset(self) -> None:
@@ -336,8 +355,8 @@ class Array:
             raise ValueError("reset() is only allowed on unindexed array.")
 
         self._current_location[0] = slice(
-            self._full_size + self.padding - self.shape[0],
-            self._full_size + self.padding,
+            self.full_size + self.padding - self.shape[0],
+            self.full_size + self.padding,
             1,
         )
 
@@ -345,15 +364,15 @@ class Array:
         if not self._rotatable:
             raise ValueError("rotate() is only allowed on unindexed array.")
 
-        leading_loc = self._current_location[0]
+        leading_loc: slice = self._current_location[0]
         start = leading_loc.start
         stop = leading_loc.stop
 
         start += self.shape[0]
-        if wrap_bounds := start >= self._full_size:
+        if wrap_bounds := start >= self.full_size:
             # wrap both start and stop simultaneously
-            start %= self._full_size
-            stop %= self._full_size
+            start %= self.full_size
+            stop %= self.full_size
         # mod and increment stop in opposite order
         # because stop - start = self.shape[0], we can be sure that stop will
         # be reduced by mod even before incrementing
@@ -364,8 +383,8 @@ class Array:
         if self.padding and wrap_bounds:
             # copy values from end of base array to beginning
             final_values = slice(
-                self._full_size - self.padding,
-                self._full_size + self.padding,
+                self.full_size - self.padding,
+                self.full_size + self.padding,
             )
             next_previous_values = slice(-self.padding, self.padding)
             self.full[next_previous_values] = self.full[final_values]

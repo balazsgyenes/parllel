@@ -20,30 +20,33 @@ class JaggedArray(Array, kind="jagged"):
     """
 
     # TODO: maybe create a repr that doesn't call __array__, as this can be expensive
-    # TODO: ensure consistent init args between this and Array
-    # TODO: ensure that shape and batch_shape are stored
     kind = "jagged"
     _base_array: np.ndarray
     _ptr: np.ndarray
 
     def __init__(
         self,
-        shape: tuple[int, ...],
+        feature_shape: tuple[int, ...],
         dtype: np.dtype,
         *,
+        batch_shape: tuple[int, ...],
         kind: Optional[str] = None,
         storage: Optional[str] = None,
-        batch_shape: tuple[int, ...],
         padding: int = 0,
         full_size: Optional[int] = None,
         on_overflow: Literal["drop", "resize", "wrap"] = "drop",
     ) -> None:
-        dtype = np.dtype(dtype)
-        if dtype == np.object_:
-            raise ValueError("Data type should not be object.")
+        if not feature_shape:
+            raise ValueError("Non-empty feature shape required.")
 
         if batch_shape == ():
             batch_shape = (1,)
+
+        shape = batch_shape + feature_shape
+
+        dtype = np.dtype(dtype)
+        if dtype == np.object_:
+            raise ValueError("Data type should not be object.")
 
         if padding < 0:
             raise ValueError("Padding must be non-negative.")
@@ -53,56 +56,48 @@ class JaggedArray(Array, kind="jagged"):
                 f"dimension {shape[0]}."
             )
 
+        if full_size is None:
+            full_size = shape[0]
+        if full_size < shape[0]:
+            raise ValueError(
+                f"Full size ({full_size}) cannot be less than "
+                f"leading dimension {shape[0]}."
+            )
+        if full_size % shape[0] != 0:
+            raise ValueError(
+                f"The leading dimension {shape[0]} must divide the full "
+                f"size ({full_size}) evenly."
+            )
+
         if on_overflow not in {"drop", "resize", "wrap"}:
             raise ValueError(f"Unknown on_overflow option {on_overflow}")
         elif on_overflow in {"resize", "wrap"}:
             raise NotImplementedError(f"{on_overflow=}")
 
-        if full_size is None:
-            full_size = batch_shape[0]
-        if full_size < batch_shape[0]:
-            raise ValueError(
-                f"Full size ({full_size}) cannot be less than "
-                f"leading batch dimension {batch_shape[0]}."
-            )
-        if full_size % batch_shape[0] != 0:
-            raise ValueError(
-                f"The leading dimension {batch_shape[0]} must divide the full "
-                f"size ({full_size}) evenly."
-            )
-
         self.dtype = dtype
         self.padding = padding
         self.on_overflow = on_overflow
         # size of leading dim of full array, without padding
-        self._full_size = full_size
-        base_T_size = full_size + 2 * padding
-        N_size = shape[0]
+        self.full_size = full_size
         # shape that base array appears to be
-        self._base_shape = (base_T_size,) + batch_shape[1:] + shape
+        self._base_shape = (full_size + 2 * padding,) + shape[1:]
+        self._base_batch_dims = len(batch_shape)
         # multiply the T dimension into the node dimension
-        self._flattened_size = base_T_size * N_size
-        self._n_batch_dim = len(batch_shape)
+        self._flattened_size = self._base_shape[0] * feature_shape[0]
 
-        allocate_shape = batch_shape[1:] + (self._flattened_size,) + shape[1:]
+        allocate_shape = batch_shape[1:] + (self._flattened_size,) + feature_shape[1:]
         self._allocate(shape=allocate_shape, dtype=self.dtype, name="_base_array")
 
         # add an extra element to node dimension so it's always possible to
         # access the element at t+1
-        ptr_shape = batch_shape[1:] + (base_T_size + 1,)
+        ptr_shape = batch_shape[1:] + (self._base_shape[0] + 1,)
         self._allocate(shape=ptr_shape, dtype=np.int64, name="_ptr")
 
         self._current_location = init_location(self._base_shape)
-        init_slice = slice(padding, batch_shape[0] + padding)
-        self._current_location = add_locations(
-            self._current_location,
-            init_slice,
-            self._base_shape,
-            neg_from_end=False,
-        )
-        self._index_history: list[Location] = []
+        init_slice = slice(padding, shape[0] + padding)
+        self._index_history: list[Location] = [init_slice]
+        self._resolve_indexing_history()
 
-        self._shape = batch_shape + shape  # shape of current array
         self._rotatable = True
 
     def _resolve_indexing_history(self) -> None:
@@ -142,8 +137,8 @@ class JaggedArray(Array, kind="jagged"):
 
         # split into batch locations and feature locations, which are handled differently
         batch_locs, feature_locs = (
-            destination[: self._n_batch_dim],
-            destination[self._n_batch_dim :],
+            destination[: self._base_batch_dims],
+            destination[self._base_batch_dims :],
         )
 
         # loop over all batch locations by taking the product of slices
@@ -200,10 +195,10 @@ class JaggedArray(Array, kind="jagged"):
         stop = leading_loc.stop
 
         start += self.shape[0]
-        if wrap_bounds := start >= self._full_size:
+        if wrap_bounds := start >= self.full_size:
             # wrap both start and stop simultaneously
-            start %= self._full_size
-            stop %= self._full_size
+            start %= self.full_size
+            stop %= self.full_size
         # mod and increment stop in opposite order
         # because stop - start = self.shape[0], we can be sure that stop will
         # be reduced by mod even before incrementing
@@ -214,11 +209,11 @@ class JaggedArray(Array, kind="jagged"):
         if self.padding and wrap_bounds:
             # copy values from end of base array to beginning
             final_values = range(
-                self._full_size - self.padding,
-                self._full_size + self.padding,
+                self.full_size - self.padding,
+                self.full_size + self.padding,
             )
             next_previous_values = range(-self.padding, self.padding)
-            b_locs = [range(size) for size in self._base_shape[1 : self._n_batch_dim]]
+            b_locs = [range(size) for size in self._base_shape[1 : self._base_batch_dims]]
             full_array = self.full
             for source, destination in zip(final_values, next_previous_values):
                 for b_loc in itertools.product(*b_locs):
@@ -232,8 +227,8 @@ class JaggedArray(Array, kind="jagged"):
 
         current_location = tuple(self._current_location)
         batch_locs, feature_locs = (
-            current_location[: self._n_batch_dim],
-            current_location[self._n_batch_dim :],
+            current_location[: self._base_batch_dims],
+            current_location[self._base_batch_dims :],
         )
 
         if any(isinstance(loc, np.ndarray) for loc in feature_locs):

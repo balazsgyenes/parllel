@@ -33,7 +33,7 @@ def array(blank_array, np_array, padding, previous_region, next_region):
 class TestPaddedArray:
     def test_negative_padding(self, ArrayClass, shape, dtype, storage):
         with pytest.raises(ValueError):
-            _ = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=-1)
+            _ = ArrayClass(feature_shape=shape, dtype=dtype, storage=storage, padding=-1)
 
     def test_init(self, blank_array, shape, dtype):
         assert blank_array.shape == shape
