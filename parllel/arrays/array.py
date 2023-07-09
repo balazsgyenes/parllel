@@ -23,6 +23,7 @@ class Array:
     _subclasses = {}
     storage = "local"
     kind = "default"
+    _base_array: np.ndarray
 
     def __init_subclass__(
         cls,
@@ -106,7 +107,7 @@ class Array:
         base_T_size = full_size + 2 * padding
         self._base_shape = self._allocate_shape = (base_T_size,) + shape[1:]
 
-        self._allocate()
+        self._allocate(shape=self._base_shape, dtype=dtype, name="_base_array")
 
         self._current_location = init_location(self._base_shape)
         init_slice = slice(padding, shape[0] + padding)
@@ -196,9 +197,9 @@ class Array:
             full_size=full_size,
         )
 
-    def _allocate(self) -> None:
+    def _allocate(self, shape: tuple[int, ...], dtype: np.dtype, name: str) -> None:
         # initialize numpy array
-        self._base_array = np.zeros(shape=self._allocate_shape, dtype=self.dtype)
+        setattr(self, name, np.zeros(shape=shape, dtype=dtype))
 
     @property
     def shape(self) -> tuple[int, ...]:
