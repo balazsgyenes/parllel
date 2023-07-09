@@ -341,3 +341,19 @@ def shape_from_location(location: StandardLocation, base_shape: Shape) -> Shape:
         shape[first_array:first_array] = list(broadcasted_shape)
 
     return tuple(shape)
+
+
+def batch_dims_from_location(location: StandardLocation, n_batch_dims: int) -> int:
+
+    array_indexing = False
+    current_batch_dims = n_batch_dims
+
+    for index in location[:n_batch_dims]:
+        if isinstance(index, int):
+            current_batch_dims -= 1
+        elif isinstance(index, np.ndarray):
+            if array_indexing:
+                current_batch_dims -= 1
+            array_indexing = True
+    
+    return current_batch_dims
