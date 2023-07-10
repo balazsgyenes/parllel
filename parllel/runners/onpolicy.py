@@ -47,8 +47,7 @@ class OnPolicyRunner(Runner):
             if itr > 0 and itr % self.log_interval_iters == 0:
                 self.log_progress(elapsed_steps, itr)
 
-            if self.eval_sampler is not None:
-                if itr % self.eval_interval_iters == 0:
+            if self.eval_sampler is not None and itr % self.eval_interval_iters == 0:
                     self.evaluate_agent(elapsed_steps)
 
             batch_samples, completed_trajs = self.sampler.collect_batch(
