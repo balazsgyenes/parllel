@@ -43,6 +43,14 @@ class Runner(ABC):
                 continue # do not log these "private" variables
             values = np.array(values)
             logger.record_mean("trajectory/" + key, values)
+    
+    def record_eval_trajectories(self, trajectories: List[TrajInfo]) -> None:
+        # TODO: this does not need to be a separate method
+        for key, *values in zip_trajectories(*trajectories):
+            if key[0] == "_":
+                continue # do not log these "private" variables
+            values = np.array(values)
+            logger.record_mean("eval/" + key, values)
 
     def record_algo_info(self, info: Dict[str, Any]) -> None:
         for key, value in info.items():

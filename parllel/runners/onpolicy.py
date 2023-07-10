@@ -5,6 +5,7 @@ from parllel.handlers import Agent
 import parllel.logger as logger
 from parllel.samplers import Sampler, EvalSampler
 from parllel.types import BatchSpec
+from typing import Optional
 
 from .runner import Runner
 
@@ -12,16 +13,17 @@ from .runner import Runner
 class OnPolicyRunner(Runner):
     def __init__(self,
         sampler: Sampler,
-        eval_sampler: EvalSampler,
         agent: Agent,
         algorithm: Algorithm,
         batch_spec: BatchSpec,
         n_steps: int,
         log_interval_steps: int,
-        eval_interval_steps: int,
+        eval_sampler: Optional[EvalSampler] = None,
+        eval_interval_steps: Optional[int] = None,
     ) -> None:
         super().__init__()
-
+        if eval_sampler is not None:
+            assert eval_interval_steps is not None
         self.sampler = sampler
         self.eval_sampler = eval_sampler
         self.agent = agent
@@ -45,8 +47,9 @@ class OnPolicyRunner(Runner):
             if itr > 0 and itr % self.log_interval_iters == 0:
                 self.log_progress(elapsed_steps, itr)
 
-            if itr % self.eval_interval_iters == 0:
-                self.evaluate_agent(elapsed_steps)
+            if self.eval_sampler is not None:
+                if itr % self.eval_interval_iters == 0:
+                    self.evaluate_agent(elapsed_steps)
 
             batch_samples, completed_trajs = self.sampler.collect_batch(
                 elapsed_steps,
