@@ -24,16 +24,16 @@ class OnPolicyRunner(Runner):
         super().__init__()
         if eval_sampler is not None:
             assert eval_interval_steps is not None
+            self.eval_interval_iters = max(1, int(eval_interval_steps // batch_spec.size))
+
         self.sampler = sampler
         self.eval_sampler = eval_sampler
         self.agent = agent
         self.algorithm = algorithm
         self.batch_spec = batch_spec
         self.n_steps = n_steps
-
         self.n_iterations = max(1, int(n_steps // batch_spec.size))
         self.log_interval_iters = max(1, int(log_interval_steps // batch_spec.size))
-        self.eval_interval_iters = max(1, int(eval_interval_steps // batch_spec.size))
 
     def run(self) -> None:
         logger.info("Starting training...")

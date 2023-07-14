@@ -5,6 +5,7 @@ from parllel.handlers import Agent
 import parllel.logger as logger
 from parllel.samplers import Sampler, EvalSampler
 from parllel.types import BatchSpec
+from typing import Optional
 
 from .runner import Runner
 
@@ -12,15 +13,18 @@ from .runner import Runner
 class OffPolicyRunner(Runner):
     def __init__(self,
         sampler: Sampler,
-        eval_sampler: EvalSampler,
         agent: Agent,
         algorithm: Algorithm,
         batch_spec: BatchSpec,
         n_steps: int,
         log_interval_steps: int,
-        eval_interval_steps: int,
+        eval_sampler: Optional[EvalSampler],
+        eval_interval_steps: Optional[int],
     ) -> None:
         super().__init__()
+        if eval_sampler is not None:
+            assert eval_interval_steps is not None
+            self.eval_interval_iters = max(1, int(eval_interval_steps // batch_spec.size))
 
         self.sampler = sampler
         self.eval_sampler = eval_sampler
@@ -28,10 +32,8 @@ class OffPolicyRunner(Runner):
         self.algorithm = algorithm
         self.batch_spec = batch_spec
         self.n_steps = n_steps
-
         self.n_iterations = max(1, int(n_steps // batch_spec.size))
         self.log_interval_iters = max(1, int(log_interval_steps // batch_spec.size))
-        self.eval_interval_iters = max(1, int(eval_interval_steps // batch_spec.size))
 
     def run(self) -> None:
         logger.info("Starting training...")
@@ -46,7 +48,7 @@ class OffPolicyRunner(Runner):
                 self.log_progress(elapsed_steps, itr)
 
             # evaluates at 0th iteration
-            if itr % self.eval_interval_iters == 0:
+            if self.eval_sampler is not None and itr % self.eval_interval_iters == 0:
                 self.evaluate_agent(elapsed_steps)
 
             batch_samples, completed_trajs = self.sampler.collect_batch(elapsed_steps)
