@@ -1,8 +1,8 @@
-from typing import Tuple
+from __future__ import annotations
 
-import numpy as np
 from nptyping import NDArray
 from numba import njit
+import numpy as np
 
 
 @njit
@@ -40,7 +40,7 @@ class RunningMeanStd:
     :param shape: the shape of the data stream's output
     :param initial_count: helps with arithmetic issues and stability
     """
-    def __init__(self, shape: Tuple[int, ...], initial_count: float = 1e-4):
+    def __init__(self, shape: tuple[int, ...], initial_count: float = 1e-4):
         self.mean = np.zeros(shape, np.float64)
         self.var = np.ones(shape, np.float64)
         self.count = np.array(initial_count, np.float64)

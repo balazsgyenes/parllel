@@ -1,12 +1,15 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
 import enum
 
 import numpy as np
 
-from parllel.buffers import EnvSamples, Samples, NamedTuple
+from parllel import Array, ArrayDict
 
 from .advantage import compute_discount_return, compute_gae_advantage
-from .transform import BatchTransform
 from .numpy import broadcast_left_to_right
+from .transform import BatchTransform
 
 
 class ProblemType(enum.Enum):
@@ -40,7 +43,7 @@ class EstimateMultiAgentAdvantage(BatchTransform):
     :param gae_lambda: lambda parameter for GAE algorithm
     """
     def __init__(self,
-        batch_buffer: Samples,
+        batch_buffer: ArrayDict[Array],
         discount: float,
         gae_lambda: float,
     ) -> None:
@@ -53,14 +56,13 @@ class EstimateMultiAgentAdvantage(BatchTransform):
             self.estimator = compute_gae_advantage
 
         # get convenient local references
-        env_samples: EnvSamples = batch_buffer.env
-        reward = env_samples.reward
-        value = batch_buffer.agent.agent_info.value
-        advantage = env_samples.advantage
+        reward = batch_buffer["reward"]
+        value = batch_buffer["agent_info"]["value"]
+        advantage = batch_buffer["advantage"]
 
         # determine number of reward values and value estimates
         if np.asarray(value).ndim > 2:
-            if isinstance(reward, NamedTuple):
+            if isinstance(reward, Mapping):
                 self.problem_type = ProblemType.markov_game
             else:
                 self.problem_type = ProblemType.independent_critics
@@ -75,26 +77,26 @@ class EstimateMultiAgentAdvantage(BatchTransform):
                 raise ValueError("Advantage must match shape of Value except"
                     " for added trailing singleton dimension")
 
-    def __call__(self, batch_samples: Samples) -> Samples:
+    def __call__(self, batch_samples: ArrayDict[Array]) -> ArrayDict[Array]:
         """Cases:
         scalar reward, dict value (independent actor-critic agents)
         dict reward, dict value (markov game)
         scalar reward, scalar value (central critic, expand advantage)
         """
-        reward = batch_samples.env.reward
-        done = np.asarray(batch_samples.env.done)
-        value = np.asarray(batch_samples.agent.agent_info.value)
-        bootstrap_value = np.asarray(batch_samples.agent.bootstrap_value)
-        advantage = np.asarray(batch_samples.env.advantage)
-        return_ = np.asarray(batch_samples.env.return_)
+        reward = batch_samples["reward"]
+        done = np.asarray(batch_samples["done"])
+        value = np.asarray(batch_samples["agent_info"]["value"])
+        bootstrap_value = np.asarray(batch_samples["bootstrap_value"])
+        advantage = np.asarray(batch_samples["advantage"])
+        return_ = np.asarray(batch_samples["return_"])
 
         if self.problem_type is ProblemType.markov_game:
             # stack rewards for each agent in the same order as in value and
             # bootstrap value. the subagents might not be defined in the same
             # order in the agent as they are in the environment
-            action = batch_samples.agent.action
+            action = batch_samples["action"]
             reward = np.stack(
-                (getattr(reward, agent_key) for agent_key in action._fields),
+                (reward[agent_key] for agent_key in action),
                 axis=-1,
             )
         else:

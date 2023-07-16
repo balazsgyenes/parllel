@@ -1,7 +1,9 @@
-import numpy as np
-from nptyping import NDArray
+from __future__ import annotations
 
-from parllel.buffers import Samples
+from nptyping import NDArray
+import numpy as np
+
+from parllel import Array, ArrayDict
 
 from .transform import BatchTransform
 
@@ -22,18 +24,18 @@ class NormalizeAdvantage(BatchTransform):
 
     :param batch_buffer: the batch buffer that will be passed to `__call__`.
     """
-    def __init__(self, batch_buffer: Samples) -> None:
-        self.only_valid = hasattr(batch_buffer.env, "valid")
-        self.multiagent = np.asarray(batch_buffer.env.advantage).ndim > 2
+    def __init__(self, batch_buffer: ArrayDict[Array]) -> None:
+        self.only_valid = "valid" in batch_buffer
+        self.multiagent = np.asarray(batch_buffer["advantage"]).ndim > 2
 
-    def __call__(self, batch_samples: Samples) -> Samples:
-        advantage = np.asarray(batch_samples.env.advantage)
+    def __call__(self, batch_samples: ArrayDict[Array]) -> ArrayDict[Array]:
+        advantage = np.asarray(batch_samples["advantage"])
 
         valid_advantage = advantage
         
-        # calculate batch mean and stddev, optionally considering onyl valid
+        # calculate batch mean and stddev, optionally considering only valid
         if self.only_valid:
-            valid = batch_samples.env.valid
+            valid = batch_samples["valid"]
             # shape is [X] for single-agent case, and [X, N] for multiagent
             # where X is number of valid time steps and N is number of agents
             valid_advantage: NDArray = valid_advantage[valid]

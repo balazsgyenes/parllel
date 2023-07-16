@@ -1,8 +1,11 @@
-from typing import Optional, Tuple
+from __future__ import annotations
+
+from typing import Optional
+from collections.abc import Mapping
 
 import numpy as np
 
-from parllel.buffers import Samples, NamedTuple
+from parllel import Array, ArrayDict
 
 from .running_mean_std import RunningMeanStd
 from .transform import StepTransform
@@ -30,15 +33,14 @@ class NormalizeObservations(StepTransform):
         quickly during early training.
     """
     def __init__(self,
-        batch_buffer: Samples,
-        obs_shape: Tuple[int, ...],
+        batch_buffer: ArrayDict[Array],
+        obs_shape: tuple[int, ...],
         initial_count: Optional[float] = None,
     ) -> None:
-        if isinstance(batch_buffer.env.observation, NamedTuple):
-            raise NotImplementedError("Not implemented for dictionary "
-                "observations.")
+        if isinstance(batch_buffer["observation"], Mapping):
+            raise NotImplementedError("Dictionary observations not supported.")
 
-        self.only_valid = hasattr(batch_buffer.env, "valid")
+        self.only_valid = "valid" in batch_buffer
 
         if initial_count is not None and initial_count < 1.:
             raise ValueError("Initial count must be at least 1")
@@ -50,12 +52,12 @@ class NormalizeObservations(StepTransform):
         else:
             self.obs_statistics = RunningMeanStd(shape=obs_shape)
 
-    def __call__(self, batch_samples: Samples, t: int) -> Samples:
-        step_obs = np.asarray(batch_samples.env.observation[t])
+    def __call__(self, batch_samples: ArrayDict[Array], t: int) -> ArrayDict[Array]:
+        step_obs = np.asarray(batch_samples["observation"][t])
 
         # update statistics of each element of observation
         if self.only_valid:
-            valid = batch_samples.env.valid[t]
+            valid = batch_samples["valid"][t]
             # this fancy indexing operation creates a copy, but that's fine
             self.obs_statistics.update(step_obs[valid])
         else:

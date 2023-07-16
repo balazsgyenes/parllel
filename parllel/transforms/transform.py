@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import Sequence, Tuple
 
-from parllel.buffers import Samples
+from parllel import Array, ArrayDict
 
 
 class Transform(ABC):
@@ -10,13 +12,13 @@ class Transform(ABC):
 
 class BatchTransform(Transform):
     @abstractmethod
-    def __call__(self, batch_samples: Samples) -> Samples:
+    def __call__(self, batch_samples: ArrayDict[Array]) -> ArrayDict[Array]:
         raise NotImplementedError
 
 
 class StepTransform(Transform):
     @abstractmethod
-    def __call__(self, batch_samples: Samples, t: int) -> Samples:
+    def __call__(self, batch_samples: ArrayDict[Array], t: int) -> ArrayDict[Array]:
         raise NotImplementedError
 
 
@@ -28,7 +30,7 @@ class Compose(Transform):
 
         self.transforms: Tuple[Transform] = tuple(transforms)
 
-    def __call__(self, batch_samples: Samples, *args, **kwargs) -> Samples:
+    def __call__(self, batch_samples: ArrayDict[Array], *args, **kwargs) -> ArrayDict[Array]:
         for transform in self.transforms:
             batch_samples = transform(batch_samples, *args, **kwargs)
         return batch_samples
