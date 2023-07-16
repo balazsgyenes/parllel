@@ -6,7 +6,7 @@ import torch
 from gymnasium import spaces
 from torch_geometric.nn import MLP, PointNetConv, fps, global_max_pool, radius
 
-from parllel.arrays.jagged import PointBatch
+from parllel import ArrayDict
 from parllel.torch.agents.categorical import ModelOutputs
 
 
@@ -84,15 +84,15 @@ class PointNetPgModel(torch.nn.Module):
         x, pos, batch = sa3_out
 
         return ModelOutputs(
-            pi=self.pi(x).softmax(dim=-1),
+            prob=self.pi(x).softmax(dim=-1),
             value=self.value(x).squeeze(-1),
         )
 
 
-def namedtuple_to_batched_data(
-    namedtup: PointBatch,
+def dict_to_batched_data(
+    array_dict: ArrayDict[torch.tensor],
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    pos, ptr = namedtup.pos, namedtup.ptr
+    pos, ptr = array_dict["pos"], array_dict["ptr"]
     num_nodes = ptr[1:] - ptr[:-1]
     batch = torch.repeat_interleave(
         torch.arange(len(num_nodes), device=num_nodes.device),
