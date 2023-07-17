@@ -156,8 +156,11 @@ def build_cages_and_env_buffers(
 
 def add_initial_rnn_state(batch_buffer: Samples, agent: Agent) -> Samples:
     rnn_state = agent.initial_rnn_state()
-    storage = batch_buffer.env.done.storage
-    batch_init_rnn = buffer_from_example(rnn_state, (), storage=storage)
+    batch_init_rnn = buffer_from_example(
+        rnn_state[0],
+        batch_shape=batch_buffer.env.done.shape[1:2],
+        storage="local",
+    )
 
     batch_agent: AgentSamples = batch_buffer.agent
 
@@ -385,7 +388,7 @@ def build_eval_sampler(
         ),
     )
     # create a new buffer with leading dimensions (1, B_eval)
-    step_buffer = buffer_from_example(step_buffer[0, 0], (1, n_eval_envs))
+    step_buffer = buffer_from_example(step_buffer[0, 0], batch_shape=(1, n_eval_envs))
 
     eval_cage_kwargs = dict(
         EnvClass=EnvClass,

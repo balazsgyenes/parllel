@@ -94,7 +94,7 @@ def build(config: Dict) -> OnPolicyRunner:
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,))
+    batch_agent_info = buffer_from_example(agent_info[0], batch_shape=tuple(batch_spec))
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 
