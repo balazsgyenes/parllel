@@ -6,6 +6,7 @@ from weakref import finalize
 import numpy as np
 
 import parllel.logger as logger
+
 from .array import Array
 
 
@@ -59,7 +60,9 @@ class ManagedMemoryArray(Array, storage="managed"):
         if os.getpid() == spawning_pid:
             # unlink must be called once and only once to release shared memory
             shared_mem.unlink()
-            logger.debug(f"Process {os.getpid()} unlinked shared memory {shared_mem.name}")
+            logger.debug(
+                f"Process {os.getpid()} unlinked shared memory {shared_mem.name}"
+            )
 
     @staticmethod
     def _wrap_with_ndarray(
@@ -97,7 +100,7 @@ class ManagedMemoryArray(Array, storage="managed"):
             setattr(self, name, array)
             finalizer = finalize(self, self._cleanup_shmem, shmem, spawning_pid)
             self._finalizers.append(finalizer)
-        
-    def close(self):
+
+    def close(self) -> None:
         for finalizer in self._finalizers:
             finalizer()

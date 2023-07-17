@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import Literal, Optional, TypeVar, Union
+from typing import Literal, TypeVar
 
 import numpy as np
 
@@ -33,10 +33,10 @@ class JaggedArray(Array, kind="jagged"):
         dtype: np.dtype,
         *,
         batch_shape: tuple[int, ...],
-        kind: Optional[str] = None,
-        storage: Optional[str] = None,
+        kind: str | None = None,
+        storage: str | None = None,
         padding: int = 0,
-        full_size: Optional[int] = None,
+        full_size: int | None = None,
         on_overflow: Literal["drop", "resize", "wrap"] = "drop",
     ) -> None:
         if not feature_shape:
@@ -112,7 +112,7 @@ class JaggedArray(Array, kind="jagged"):
     def __setitem__(
         self,
         indices: Location,
-        value: Union[float, int, np.number, list, JaggedArray],
+        value: float | int | np.number | list | JaggedArray,
     ) -> None:
         if self._shape is None:
             self._resolve_indexing_history()
@@ -295,7 +295,7 @@ class JaggedArray(Array, kind="jagged"):
         self._current_ptrs = current_ptrs  # save for consumption by to_ndarray
         return array
 
-    def to_ndarray(self) -> Union[np.ndarray, NamedTuple]:
+    def to_ndarray(self) -> np.ndarray | NamedTuple:
         # TODO: hard-coded that JaggedArray is point/node positions
         # what about point/node features?
         data = self.__array__()

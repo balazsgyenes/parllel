@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Optional, TypeVar, Union
+from typing import Any, Literal, TypeVar
 
 import numpy as np
 
@@ -30,8 +30,8 @@ class Array:
     def __init_subclass__(
         cls,
         *,
-        kind: Optional[str] = None,
-        storage: Optional[str] = None,
+        kind: str | None = None,
+        storage: str | None = None,
         **kwargs,
     ) -> None:
         super().__init_subclass__(**kwargs)
@@ -42,8 +42,8 @@ class Array:
     def __new__(
         cls,
         *args,
-        kind: Optional[str] = None,
-        storage: Optional[str] = None,
+        kind: str | None = None,
+        storage: str | None = None,
         **kwargs,
     ) -> Array:
         # fill in empty arguments with values from class used to instantiate
@@ -70,10 +70,10 @@ class Array:
         dtype: np.dtype,
         *,
         batch_shape: tuple[int, ...] = (),
-        kind: Optional[str] = None,  # consumed by __new__
-        storage: Optional[str] = None,  # consumed by __new__
+        kind: str | None = None,  # consumed by __new__
+        storage: str | None = None,  # consumed by __new__
         padding: int = 0,
-        full_size: Optional[int] = None,
+        full_size: int | None = None,
     ) -> None:
         shape = batch_shape + feature_shape
 
@@ -123,13 +123,13 @@ class Array:
 
     def new_array(
         self,
-        feature_shape: Optional[tuple[int, ...]] = None,
-        dtype: Optional[np.dtype] = None,
-        batch_shape: Optional[tuple[int, ...]] = None,
-        kind: Optional[str] = None,
-        storage: Optional[str] = None,
-        padding: Optional[int] = None,
-        full_size: Optional[int] = None,
+        feature_shape: tuple[int, ...] | None = None,
+        dtype: np.dtype | None = None,
+        batch_shape: tuple[int, ...] | None = None,
+        kind: str | None = None,
+        storage: str | None = None,
+        padding: int | None = None,
+        full_size: int | None = None,
         inherit_full_size: bool = False,
     ) -> Array:
         """Creates an Array with the same shape and type as a given Array
@@ -178,14 +178,14 @@ class Array:
     def from_numpy(
         cls,
         example: Any,
-        feature_shape: Optional[tuple[int, ...]] = None,
-        dtype: Optional[np.dtype] = None,
+        feature_shape: tuple[int, ...] | None = None,
+        dtype: np.dtype | None = None,
         force_32bit: Literal[True, "float", "int", False] = True,
         batch_shape: tuple[int, ...] = (),
-        kind: Optional[str] = None,
-        storage: Optional[str] = None,
+        kind: str | None = None,
+        storage: str | None = None,
         padding: int = 0,
-        full_size: Optional[int] = None,
+        full_size: int | None = None,
     ) -> Array:
         np_example = np.asanyarray(example)  # promote scalars to 0d arrays
         feature_shape = feature_shape if feature_shape is not None else np_example.shape
@@ -260,7 +260,6 @@ class Array:
         # assign *copy* of _unresolved_indices with additional element for this
         # indexing operation
         subarray._unresolved_indices = subarray._unresolved_indices + [indices]
-        subarray._index_history = subarray._index_history + [indices]
         # set shape to None to indicate that indexing must be resolved
         subarray._shape = None
         return subarray
@@ -402,7 +401,7 @@ class Array:
             array = array.astype(dtype, copy=False)
         return array
 
-    def to_ndarray(self) -> Union[np.ndarray, NamedTuple]:
+    def to_ndarray(self) -> np.ndarray | NamedTuple:
         return self.__array__()
 
     def __repr__(self) -> str:

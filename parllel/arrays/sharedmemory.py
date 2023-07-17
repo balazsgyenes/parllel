@@ -1,6 +1,6 @@
 import ctypes
 import multiprocessing as mp
-from typing import Dict
+from typing import Any
 
 import numpy as np
 
@@ -48,7 +48,7 @@ class SharedMemoryArray(Array, storage="shared"):
         array.shape = shape
         return array
 
-    def __getstate__(self) -> Dict:
+    def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
         # subprocesses should not be able to call rotate()
         # if processes are started by fork, this is not guaranteed to be called
@@ -60,7 +60,7 @@ class SharedMemoryArray(Array, storage="shared"):
             del state[name]
         return state
 
-    def __setstate__(self, state: Dict) -> None:
+    def __setstate__(self, state: dict[str, Any]) -> None:
         # restore state dict entries
         self.__dict__.update(state)
 
