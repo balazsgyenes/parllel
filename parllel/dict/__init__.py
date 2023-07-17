@@ -18,10 +18,11 @@ class ArrayLike(Protocol):
 
 
 from .array_dict import ArrayDict
-from .utils import dict_map
 
 ArrayTree = Union[ArrayLike, ArrayDict, None]
+# TODO: replace with Generic that allows specifying array type
 
+from .utils import dict_map
 
 __all__ = [
     "ArrayLike",

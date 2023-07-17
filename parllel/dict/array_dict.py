@@ -27,12 +27,14 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
     def __init__(
         self,
         items: dict[str, ValueType] | Iterable[tuple[str, ValueType]],
-        /,
-        batch_size: tuple[int, ...] = (),
     ) -> None:
-        # TODO: clean items to ensure only leaf nodes or ArrayDicts
+        # clean tree to ensure only leaf nodes or ArrayDicts
+        dict_: dict[str, NodeType] = dict(items)
+        for key, value in dict_.items():
+            if isinstance(value, dict):
+                dict_[key] = ArrayDict(value)
 
-        self._dict: dict[str, NodeType] = dict(items)
+        self._dict = dict_
 
     def __getitem__(self, key: Any) -> NodeType:
         if isinstance(key, str):

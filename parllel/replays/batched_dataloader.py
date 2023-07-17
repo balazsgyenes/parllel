@@ -1,16 +1,20 @@
-from typing import Callable, Generic, Iterator, List, Optional, TypeVar
+from __future__ import annotations
+
+from typing import Callable, Generic, Iterator, TypeVar
 
 import numpy as np
 
-from parllel.buffers import Indices, NamedArrayTuple
+from parllel import ArrayDict
+from parllel.arrays.indices import Location
+from parllel.dict import ArrayLike
 import parllel.logger as logger
 from parllel.types import BatchSpec
 
 
-BufferType = TypeVar("BufferType")
+ArrayType = TypeVar("ArrayType", bound=ArrayLike)
 
 
-class BatchedDataLoader(Generic[BufferType]):
+class BatchedDataLoader(Generic[ArrayType]):
     """Iterates through a buffer of samples in a fixed number of batches.
     Fields that cannot be indexed according to time (e.g.
     `agent.initial_rnn_state`) are only indexed according to batch dimension.
@@ -19,15 +23,15 @@ class BatchedDataLoader(Generic[BufferType]):
     the `apply_func` method, the all samples can be moved to the GPU at once.
     """
     def __init__(self,
-        buffer: NamedArrayTuple,
+        buffer: ArrayDict,
         sampler_batch_spec: BatchSpec, # TODO: can this be inferred?
         n_batches: int,
-        batch_only_fields: Optional[List[str]] = None,
+        batch_only_fields: list[str] | None = None,
         recurrent: bool = False,
         shuffle: bool = True,
         drop_last: bool = True,
-        pre_batches_transform: Optional[Callable] = None,
-        batch_transform: Optional[Callable] = None,
+        pre_batches_transform: Callable | None = None,
+        batch_transform: Callable | None = None,
     ) -> None:
         self.buffer = self.source_buffer = buffer
         self.batch_only_fields = batch_only_fields
@@ -60,30 +64,27 @@ class BatchedDataLoader(Generic[BufferType]):
 
         self.seed(None)
 
-    def seed(self, seed: Optional[int]) -> None:
+    def seed(self, seed: int | None) -> None:
         # TODO: replace with seeding module
         self.rng: np.random.Generator = np.random.default_rng(seed)
 
     def __len__(self) -> int:
         return self.size
 
-    def __getitem__(self, location: Indices) -> BufferType:
+    def __getitem__(self, location: Location) -> ArrayDict[ArrayType]:
         if not isinstance(location, tuple):
             location = (location,)
-        if (loc_len := len(location)) < 2:
-            location = location + (slice(None),) * (2 - loc_len)
         
         buffer = self.buffer
         if self.batch_only_fields:
-            batch_only_elems = {field: getattr(buffer, field) for field in self.batch_only_fields}
-            buffer = buffer._replace(**{field: None for field in self.batch_only_fields})
+            batch_only_elems = {field: buffer.pop(field) for field in self.batch_only_fields}
         item = buffer[location]
         if self.batch_only_fields:
-            batch_only_elems = {field: element[location[1:]] for field, element in batch_only_elems.items()}
-            item = item._replace(**batch_only_elems)
+            batch_only_item = batch_only_elems[location[1:]]
+            item.update(batch_only_item)
         return item
 
-    def batches(self) -> Iterator[BufferType]:
+    def batches(self) -> Iterator[ArrayDict[ArrayType]]:
         self.buffer = self.pre_batches_transform(self.source_buffer)
 
         all_indices = np.arange(self.size, dtype=np.int32)
@@ -112,7 +113,7 @@ class BatchedDataLoader(Generic[BufferType]):
             batch = self.batch_transform(batch)
             yield batch
 
-    def __iter__(self) -> Iterator[BufferType]:
+    def __iter__(self) -> Iterator[ArrayDict[ArrayType]]:
         # calling batches() explicitly is better, but we don't want Python's
         # default iterator behaviour to happen
         yield from self.batches()

@@ -9,9 +9,9 @@ from omegaconf import DictConfig, OmegaConf
 import torch
 import wandb
 
-from parllel.arrays import buffer_from_example
-from parllel.buffers import AgentSamples, buffer_asarray, buffer_method, Samples
+from parllel import Array
 from parllel.cages import TrajInfo
+from parllel.dict import dict_map
 import parllel.logger as logger
 from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
@@ -42,7 +42,7 @@ def build(config: Dict) -> OnPolicyRunner:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    cages, batch_action, batch_env = build_cages_and_env_buffers(
+    cages, batch_buffer = build_cages_and_env_buffers(
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
@@ -67,25 +67,26 @@ def build(config: Dict) -> OnPolicyRunner:
 
     # write dict into namedarraytuple and read it back out. this ensures the
     # example is in a standard format (i.e. namedarraytuple).
-    batch_env.observation[0] = obs_space.sample()
-    example_obs = batch_env.observation[0]
+    batch_buffer["observation"][0] = obs_space.sample()
 
     # instantiate agent
     agent = CategoricalPgAgent(
         model=model,
         distribution=distribution,
-        example_obs=example_obs,
+        example_obs=batch_buffer["observation"][0],
         device=device,
     )
     agent = TorchHandler(agent=agent)
 
     # get example output from agent
-    _, agent_info = agent.step(example_obs)
+    agent_step = agent.step(batch_buffer[0])
 
     # allocate batch buffer based on examples
-    batch_agent_info = buffer_from_example(agent_info[0], batch_shape=tuple(batch_spec))
-    batch_agent = AgentSamples(batch_action, batch_agent_info)
-    batch_buffer = Samples(batch_agent, batch_env)
+    batch_buffer["agent_info"] = dict_map(
+        Array.from_numpy,
+        agent_step["agent_info"][0],
+        batch_shape=tuple(batch_spec),
+    )
 
     # for advantage estimation, we need to estimate the value of the last
     # state in the batch
@@ -134,14 +135,14 @@ def build(config: Dict) -> OnPolicyRunner:
     )
 
     dataloader_buffer = build_dataloader_buffer(batch_buffer)
-    dataloader_buffer = buffer_asarray(dataloader_buffer)
-    dataloader_buffer = torchify_buffer(dataloader_buffer)
+    dataloader_buffer = dataloader_buffer.to_ndarray()
+    dataloader_buffer = dataloader_buffer.apply(torch.from_numpy)
 
     dataloader = BatchedDataLoader(
         buffer=dataloader_buffer,
         sampler_batch_spec=batch_spec,
         n_batches=config["algo"]["minibatches"],
-        pre_batches_transform=lambda x: buffer_to_device(x, device=device),
+        pre_batches_transform=lambda tree: tree.to(device=device),
     )
 
     optimizer = torch.optim.Adam(
@@ -175,7 +176,7 @@ def build(config: Dict) -> OnPolicyRunner:
         agent.close()
         for cage in cages:
             cage.close()
-        buffer_method(batch_buffer, "close")
+        batch_buffer.close()
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo")

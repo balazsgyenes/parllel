@@ -42,13 +42,10 @@ class BasicSampler(Sampler):
             max_steps_decorrelate=max_steps_decorrelate,
         )
 
-        if get_bootstrap_value and not hasattr(
-            self.sample_buffer.agent, "bootstrap_value"
-        ):
+        if get_bootstrap_value and "bootstrap_value" not in sample_buffer:
             raise ValueError(
-                "Bootstrap value is written to sample_buffer.agent"
-                ".bootstrap_value, but this field does not exist. Please "
-                "allocate it."
+                "Bootstrap value is written to sample_buffer['bootstrap_value'], "
+                "but this field does not exist. Please allocate it."
             )
         self.get_bootstrap_value = get_bootstrap_value
 

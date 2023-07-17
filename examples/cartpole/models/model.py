@@ -1,8 +1,8 @@
 from typing import Sequence, Union
 
+import torch.nn.functional as F
 from gymnasium import spaces
 from torch import nn
-import torch.nn.functional as F
 
 from parllel.torch.agents.categorical import ModelOutputs
 from parllel.torch.models import MlpModel

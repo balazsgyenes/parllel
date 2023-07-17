@@ -225,11 +225,15 @@ def add_obs_normalization(
     transforms: List[Transform],
     initial_count: Union[int, float, None] = None,
 ) -> tuple[ArrayDict[Array], List[Transform]]:
+    obs = batch_buffer["observation"]
+    if not isinstance(batch_buffer["observation"], Array):
+        raise NotImplementedError("Dictionary observations not supported.")
+    # get feature shape of observation
+    obs_shape = obs.shape[obs.n_batch_dims :]
     transforms.append(
         NormalizeObservations(
             batch_buffer=batch_buffer,
-            # get shape of observation assuming 2 leading dimensions
-            obs_shape=batch_buffer["observation"].shape[2:],
+            obs_shape=obs_shape,
             initial_count=initial_count,
         )
     )
