@@ -94,8 +94,8 @@ def buffer_asarray(buffer: Buffer) -> Buffer[np.ndarray]:
     # leaf node
     if buffer is None:
         return None
-    elif hasattr(buffer, "__buffer__"):
-        return buffer.__buffer__()
+    elif hasattr(buffer, "to_ndarray"):
+        return buffer.to_ndarray()
     return np.asarray(buffer)
 
 

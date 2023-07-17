@@ -84,15 +84,11 @@ def build(config: Dict) -> OnPolicyRunner:
         logger.debug("Allocating batch buffer.")
 
     # allocate batch buffer based on examples
-    np_obs = np.asanyarray(obs)
-    if (dtype := np_obs.dtype) == np.float64:
-        dtype = np.float32
-    elif dtype == np.int64:
-        dtype = np.int32
-    batch_observation = Array(
-        shape=(obs_space.max_num_points,) + obs_space.shape,
-        dtype=dtype,
+    batch_observation = buffer_from_dict_example(
+        obs,
+        feature_shape=(obs_space.max_num_points,) + obs_space.shape,
         batch_shape=tuple(batch_spec),
+        name="obs",
         kind="jagged",
         storage=storage,
         padding=1,
@@ -103,38 +99,41 @@ def build(config: Dict) -> OnPolicyRunner:
     # force to be correct shape and type
     batch_reward = buffer_from_dict_example(
         reward,
-        tuple(batch_spec),
+        batch_shape=tuple(batch_spec),
         name="reward",
-        shape=(),
+        feature_shape=(),
         dtype=np.float32,
         storage=storage,
         full_size=full_size,
     )
     batch_terminated = buffer_from_example(
         terminated,
-        tuple(batch_spec),
-        shape=(),
+        batch_shape=tuple(batch_spec),
+        feature_shape=(),
         dtype=bool,
         storage=storage,
     )
     batch_truncated = buffer_from_example(
         truncated,
-        tuple(batch_spec),
-        shape=(),
+        batch_shape=tuple(batch_spec),
+        feature_shape=(),
         dtype=bool,
         storage=storage,
     )
     batch_done = buffer_from_example(
         truncated,
-        tuple(batch_spec),
-        shape=(),
+        batch_shape=tuple(batch_spec),
+        feature_shape=(),
         dtype=bool,
         storage=storage,
         padding=1,
         full_size=full_size,
     )
     batch_info = buffer_from_dict_example(
-        info, tuple(batch_spec), name="envinfo", storage=storage
+        info,
+        batch_shape=tuple(batch_spec),
+        name="envinfo",
+        storage=storage,
     )
     batch_env = EnvSamples(
         batch_observation,
@@ -150,7 +149,7 @@ def build(config: Dict) -> OnPolicyRunner:
     # force actions to be 32 bits only if they are floats
     batch_action = buffer_from_dict_example(
         action,
-        tuple(batch_spec),
+        batch_shape=tuple(batch_spec),
         name="action",
         force_32bit="float",
         storage=storage,
@@ -210,7 +209,7 @@ def build(config: Dict) -> OnPolicyRunner:
     _, agent_info = agent.step(example_obs)
 
     # allocate batch buffer based on examples
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,))
+    batch_agent_info = buffer_from_example(agent_info[0], batch_shape=tuple(batch_spec))
     batch_agent = AgentSamples(batch_action, batch_agent_info)
     batch_buffer = Samples(batch_agent, batch_env)
 

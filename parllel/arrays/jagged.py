@@ -98,7 +98,7 @@ class JaggedArray(Array, kind="jagged"):
 
         self._current_location = init_location(self._base_shape)
         init_slice = slice(padding, shape[0] + padding)
-        self._index_history: list[Location] = [init_slice]
+        self._unresolved_indices: list[Location] = [init_slice]
         self._resolve_indexing_history()
 
         self._rotatable = True

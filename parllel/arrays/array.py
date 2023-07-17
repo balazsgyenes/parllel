@@ -116,7 +116,7 @@ class Array:
 
         self._current_location = init_location(self._base_shape)
         init_slice = slice(padding, shape[0] + padding)
-        self._index_history: list[Location] = [init_slice]
+        self._unresolved_indices: list[Location] = [init_slice]
         self._resolve_indexing_history()
 
         self._rotatable = True
@@ -180,8 +180,8 @@ class Array:
         example: Any,
         feature_shape: Optional[tuple[int, ...]] = None,
         dtype: Optional[np.dtype] = None,
-        batch_shape: tuple[int, ...] = (),
         force_32bit: Literal[True, "float", "int", False] = True,
+        batch_shape: tuple[int, ...] = (),
         kind: Optional[str] = None,
         storage: Optional[str] = None,
         padding: int = 0,
@@ -257,15 +257,16 @@ class Array:
         subarray.__dict__.update(self.__dict__)
         # disallow rotate and reset on subarrays
         subarray._rotatable = False
-        # assign *copy* of _index_history with additional element for this
+        # assign *copy* of _unresolved_indices with additional element for this
         # indexing operation
+        subarray._unresolved_indices = subarray._unresolved_indices + [indices]
         subarray._index_history = subarray._index_history + [indices]
         # set shape to None to indicate that indexing must be resolved
         subarray._shape = None
         return subarray
 
     def _resolve_indexing_history(self) -> None:
-        for location in self._index_history:
+        for location in self._unresolved_indices:
             self._current_location = add_locations(
                 self._current_location,
                 location,
@@ -273,7 +274,7 @@ class Array:
                 neg_from_end=False,
             )
 
-        self._index_history.clear()
+        self._unresolved_indices.clear()
 
         self._shape = shape_from_location(self._current_location, self._base_shape)
         self._n_batch_dims = batch_dims_from_location(
@@ -306,12 +307,12 @@ class Array:
         full._rotatable = False
 
         # clear any unresolved indexing history
-        full._index_history.clear()
+        full._unresolved_indices.clear()
 
         # assign current location so that full array except padding is visible
         full._current_location = init_location(full._base_shape)
         init_slice = slice(full.padding, full.full_size + full.padding)
-        full._index_history.append(init_slice)
+        full._unresolved_indices.append(init_slice)
         full._resolve_indexing_history()
 
         return full
