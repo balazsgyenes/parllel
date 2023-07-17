@@ -7,6 +7,7 @@ import numpy as np
 from parllel.arrays.indices import (Index, Location, add_locations,
                                     batch_dims_from_location, index_slice,
                                     init_location, shape_from_location)
+from parllel.buffers import NamedTuple
 
 Self = TypeVar("Self", bound="Array")
 
@@ -327,9 +328,10 @@ class Array:
         if self._shape is None:
             self._resolve_indexing_history()
 
-        offsetted: Array = self.__new__(type(self))
+        offsetted: Self = self.__new__(type(self))
         offsetted.__dict__.update(self.__dict__)
         offsetted._rotatable = False
+        offsetted._current_location = list(self._current_location)
 
         leading_loc = offsetted._current_location[0]
         if isinstance(leading_loc, slice):
@@ -399,7 +401,7 @@ class Array:
             array = array.astype(dtype, copy=False)
         return array
 
-    def to_tree(self) -> Union[np.ndarray, dict[str, np.ndarray]]:
+    def to_ndarray(self) -> Union[np.ndarray, NamedTuple]:
         return self.__array__()
 
     def __repr__(self) -> str:

@@ -87,11 +87,11 @@ class SerialCage(Cage):
         ):
             self._step_result = (obs, reward, terminated, truncated, env_info)
         else:
-            out_obs[:] = obs
-            out_reward[:] = reward
-            out_terminated[:] = terminated
-            out_truncated[:] = truncated
-            out_info[:] = env_info
+            out_obs[...] = obs
+            out_reward[...] = reward
+            out_terminated[...] = terminated
+            out_truncated[...] = truncated
+            out_info[...] = env_info
 
     def await_step(self) -> EnvStepType | EnvRandomStepType | EnvResetType:
         result = self._step_result
@@ -121,12 +121,12 @@ class SerialCage(Cage):
         ):
             self._step_result = (action, obs, reward, terminated, truncated, env_info)
         else:
-            out_action[:] = action
-            out_obs[:] = obs
-            out_reward[:] = reward
-            out_terminated[:] = terminated
-            out_truncated[:] = truncated
-            out_info[:] = env_info
+            out_action[...] = action
+            out_obs[...] = obs
+            out_reward[...] = reward
+            out_terminated[...] = terminated
+            out_truncated[...] = truncated
+            out_info[...] = env_info
 
     def reset_async(
         self, *, out_obs: Optional[Buffer] = None, out_info: Optional[Buffer]
@@ -137,9 +137,9 @@ class SerialCage(Cage):
         if out_obs is None or out_info is None:
             self._step_result = (reset_obs, reset_info)
         else:
-            out_obs[:] = reset_obs
+            out_obs[...] = reset_obs
             if not self.ignore_reset_info:
-                out_info[:] = reset_info
+                out_info[...] = reset_info
 
     def close(self) -> None:
         self._close_env()

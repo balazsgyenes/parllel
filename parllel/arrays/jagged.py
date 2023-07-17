@@ -7,10 +7,13 @@ import numpy as np
 
 import parllel.logger as logger
 from parllel.arrays.array import Array
-from parllel.arrays.sharedmemory import SharedMemoryArray
+from parllel.arrays.indices import (Location, add_locations, index_slice,
+                                    init_location)
 from parllel.arrays.managedmemory import ManagedMemoryArray
-from parllel.arrays.indices import Location, add_locations, index_slice, init_location
+from parllel.arrays.sharedmemory import SharedMemoryArray
+from parllel.buffers import NamedTuple, NamedTupleClass
 
+PointBatch = NamedTupleClass("PointBatch", ["pos", "ptr"])
 Self = TypeVar("Self", bound="JaggedArray")
 
 
@@ -213,7 +216,9 @@ class JaggedArray(Array, kind="jagged"):
                 self.full_size + self.padding,
             )
             next_previous_values = range(-self.padding, self.padding)
-            b_locs = [range(size) for size in self._base_shape[1 : self._base_batch_dims]]
+            b_locs = [
+                range(size) for size in self._base_shape[1 : self._base_batch_dims]
+            ]
             full_array = self.full
             for source, destination in zip(final_values, next_previous_values):
                 for b_loc in itertools.product(*b_locs):
@@ -287,17 +292,17 @@ class JaggedArray(Array, kind="jagged"):
         if dtype is not None:
             array = array.astype(dtype, copy=False)
 
-        self._current_ptrs = current_ptrs  # save for consumption by __buffer__
+        self._current_ptrs = current_ptrs  # save for consumption by to_ndarray
         return array
 
-    def to_tree(self) -> dict[str, np.ndarray]:
+    def to_ndarray(self) -> Union[np.ndarray, NamedTuple]:
         # TODO: hard-coded that JaggedArray is point/node positions
         # what about point/node features?
         data = self.__array__()
-        return {
-            "pos": data,
-            "ptr": self._current_ptrs,  # updated during execution of __array__
-        }
+        return PointBatch(
+            pos=data,
+            ptr=self._current_ptrs,  # updated during execution of __array__
+        )
 
 
 class SharedMemoryJaggedArray(

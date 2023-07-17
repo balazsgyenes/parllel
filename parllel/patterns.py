@@ -56,7 +56,7 @@ def build_cages_and_env_buffers(
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(
         obs,
-        tuple(batch_spec),
+        batch_shape=tuple(batch_spec),
         name="obs",
         storage=storage,
         padding=1,
@@ -67,9 +67,9 @@ def build_cages_and_env_buffers(
     # force to be correct shape and type
     batch_reward = buffer_from_dict_example(
         reward,
-        tuple(batch_spec),
+        batch_shape=tuple(batch_spec),
         name="reward",
-        shape=(),
+        feature_shape=(),
         dtype=np.float32,
         storage=storage,
         full_size=full_size,
@@ -77,16 +77,16 @@ def build_cages_and_env_buffers(
 
     batch_terminated = buffer_from_example(
         terminated,
-        tuple(batch_spec),
-        shape=(),
+        batch_shape=tuple(batch_spec),
+        feature_shape=(),
         dtype=bool,
         storage=storage,
     )
 
     batch_truncated = buffer_from_example(
         truncated,
-        tuple(batch_spec),
-        shape=(),
+        batch_shape=tuple(batch_spec),
+        feature_shape=(),
         dtype=bool,
         storage=storage,
     )
@@ -96,8 +96,8 @@ def build_cages_and_env_buffers(
     # normalization, but how to do this?
     batch_done = buffer_from_example(
         truncated,
-        tuple(batch_spec),
-        shape=(),
+        batch_shape=tuple(batch_spec),
+        feature_shape=(),
         dtype=bool,
         storage=storage,
         padding=1,
@@ -105,7 +105,10 @@ def build_cages_and_env_buffers(
     )
 
     batch_info = buffer_from_dict_example(
-        info, tuple(batch_spec), name="envinfo", storage=storage
+        info,
+        batch_shape=tuple(batch_spec),
+        name="envinfo",
+        storage=storage,
     )
 
     batch_env = EnvSamples(
@@ -122,7 +125,7 @@ def build_cages_and_env_buffers(
     # force actions to be 32 bits only if they are floats
     batch_action = buffer_from_dict_example(
         action,
-        tuple(batch_spec),
+        batch_shape=tuple(batch_spec),
         name="action",
         force_32bit="float",
         storage=storage,
@@ -182,7 +185,7 @@ def add_bootstrap_value(batch_buffer: Samples) -> Samples:
     )
 
     # Create an array with only (B,) leading dimension
-    batch_bootstrap_value = Array.like(batch_agent_info.value[0], storage="local")
+    batch_bootstrap_value = batch_agent_info.value[0].new_array(storage="local")
 
     batch_agent = AgentSamplesClass(
         **batch_agent._asdict(),
@@ -203,7 +206,7 @@ def add_valid(batch_buffer: Samples) -> Samples:
     )
 
     # allocate new Array objects for valid
-    batch_valid = Array.like(done, storage="local")
+    batch_valid = done.new_array(storage="local")
 
     batch_buffer_env = EnvSamplesClass(
         **batch_buffer_env._asdict(),
@@ -237,17 +240,18 @@ def add_advantage_estimation(
         fields=env_samples._fields + ("advantage", "return_"),
     )
 
-    if multiagent and np.asarray(value).ndim <= 2:
+    value_shape = value.shape[value.n_batch_dims :]
+    if multiagent and len(value.shape) <= 2:
         # in algo, advantage must broadcast with distribution values (e.g.
         # log likelihood, likelihood ratio)
-        advantage_shape = value.shape + (1,)
+        advantage_shape = value_shape + (1,)
     else:
-        advantage_shape = value.shape
+        advantage_shape = value_shape
 
     # allocate new Array objects for advantage and return_
-    batch_advantage = Array.like(value, shape=advantage_shape, storage="local")
+    batch_advantage = value.new_array(feature_shape=advantage_shape, storage="local")
     # in algo, return_ must broadcast with value
-    batch_return_ = Array.like(value, storage="local")
+    batch_return_ = value.new_array(storage="local")
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(
@@ -315,7 +319,7 @@ def add_reward_normalization(
     )
 
     # allocate new Array for past discounted returns
-    batch_past_return = Array.like(reward, padding=1, storage="local")
+    batch_past_return = reward.new_array(padding=1, storage="local")
 
     # package everything back into batch_buffer
     env_samples = EnvSamplesClass(

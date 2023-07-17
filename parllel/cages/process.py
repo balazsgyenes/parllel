@@ -248,11 +248,11 @@ class ProcessCage(Cage, mp.Process):
                         (obs, reward, terminated, truncated, env_info)
                     )
                 else:
-                    out_obs[:] = obs
-                    out_reward[:] = reward
-                    out_terminated[:] = terminated
-                    out_truncated[:] = out_truncated
-                    out_info[:] = env_info
+                    out_obs[...] = obs
+                    out_reward[...] = reward
+                    out_terminated[...] = terminated
+                    out_truncated[...] = out_truncated
+                    out_info[...] = env_info
                 self._child_pipe.send(self.needs_reset)
 
                 # this Cage should not be stepped until the end of the batch
@@ -300,12 +300,12 @@ class ProcessCage(Cage, mp.Process):
                         (action, obs, reward, terminated, truncated, env_info)
                     )
                 else:
-                    out_action[:] = action
-                    out_obs[:] = obs
-                    out_reward[:] = reward
-                    out_terminated[:] = terminated
-                    out_truncated[:] = truncated
-                    out_info[:] = env_info
+                    out_action[...] = action
+                    out_obs[...] = obs
+                    out_reward[...] = reward
+                    out_terminated[...] = terminated
+                    out_truncated[...] = truncated
+                    out_info[...] = env_info
                 # needs_reset should always be False unless random_step is
                 # called on an env that already needs reset
                 self._child_pipe.send(self.needs_reset)
@@ -323,9 +323,9 @@ class ProcessCage(Cage, mp.Process):
                 if out_obs is None or out_info is None:
                     self._child_pipe.send((reset_obs, reset_info))
                 else:
-                    out_obs[:] = reset_obs
+                    out_obs[...] = reset_obs
                     if not self.ignore_reset_info:
-                        out_info[:] = reset_info
+                        out_info[...] = reset_info
                 self._needs_reset = False
                 self._child_pipe.send(self.needs_reset)
 
