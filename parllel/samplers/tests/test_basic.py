@@ -139,13 +139,13 @@ def batch_buffer(
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(
-        obs, tuple(batch_spec), name="obs", padding=1
+        obs, batch_shape=tuple(batch_spec), name="obs", padding=1,
     )
-    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward")
-    batch_terminated = buffer_from_example(terminated, tuple(batch_spec))
-    batch_truncated = buffer_from_example(truncated, tuple(batch_spec))
-    batch_done = buffer_from_example(truncated, tuple(batch_spec))
-    batch_info = buffer_from_dict_example(info, tuple(batch_spec), name="envinfo")
+    batch_reward = buffer_from_dict_example(reward, batch_shape=tuple(batch_spec), name="reward")
+    batch_terminated = buffer_from_example(terminated, batch_shape=tuple(batch_spec))
+    batch_truncated = buffer_from_example(truncated, batch_shape=tuple(batch_spec))
+    batch_done = buffer_from_example(truncated, batch_shape=tuple(batch_spec))
+    batch_info = buffer_from_dict_example(info, batch_shape=tuple(batch_spec), name="envinfo")
     batch_env = EnvSamples(
         batch_observation,
         batch_reward,
@@ -154,15 +154,19 @@ def batch_buffer(
         batch_truncated,
         batch_info,
     )
-    batch_action = buffer_from_dict_example(action, tuple(batch_spec), name="action")
-    batch_agent_info = buffer_from_example(agent_info, tuple(batch_spec))
+    batch_action = buffer_from_dict_example(action, batch_shape=tuple(batch_spec), name="action")
+    batch_agent_info = buffer_from_example(agent_info, batch_shape=tuple(batch_spec))
 
     if get_bootstrap:
         AgentSamplesWBootstrap = NamedArrayTupleClass(
             typename=AgentSamples._typename,
             fields=AgentSamples._fields + ("bootstrap_value",),
         )
-        batch_bootstrap_value = Array(shape=(batch_spec.B,), dtype=np.float32)
+        batch_bootstrap_value = Array(
+            feature_shape=(),
+            batch_shape=(batch_spec.B,),
+            dtype=np.float32,
+        )
 
         batch_agent = AgentSamplesWBootstrap(
             batch_action, batch_agent_info, batch_bootstrap_value

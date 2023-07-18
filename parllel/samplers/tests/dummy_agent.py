@@ -28,13 +28,16 @@ class DummyAgent(Agent):
         self.recurrent = recurrent
 
         self.states = Array(
-            shape=(n_batches * batch_spec.T, batch_spec.B), dtype=np.float32, padding=1
+            feature_shape=(),
+            batch_shape=(n_batches * batch_spec.T, batch_spec.B),
+            dtype=np.float32,
+            padding=1,
         )
 
         self._step_ctr = 0
         batch_action = buffer_from_dict_example(
             self.action_space.sample(),
-            (n_batches * batch_spec.T, batch_spec.B),
+            batch_shape=(n_batches * batch_spec.T, batch_spec.B),
             name="action",
         )
         batch_info = buffer_from_dict_example(
@@ -42,18 +45,27 @@ class DummyAgent(Agent):
                 "observation": self.observation_space.sample(),
                 "previous_state": np.array(0, dtype=np.float32),
             },
-            (n_batches * batch_spec.T, batch_spec.B),
+            batch_shape=(n_batches * batch_spec.T, batch_spec.B),
             name="agentinfo",
         )
         self.samples = AgentSamples(batch_action, batch_info)
-        self.values = Array(shape=(n_batches, batch_spec.B), dtype=np.float32)
+        self.values = Array(
+            feature_shape=(),
+            batch_shape=(n_batches, batch_spec.B),
+            dtype=np.float32,
+        )
         self.resets = Array(
-            shape=(n_batches * batch_spec.T, batch_spec.B), dtype=np.bool_, padding=1
+            feature_shape=(),
+            batch_shape=(n_batches * batch_spec.T, batch_spec.B),
+            dtype=np.bool_,
+            padding=1,
         )
 
         if self.recurrent:
             self.init_rnn_states = Array(
-                shape=(n_batches, batch_spec.B), dtype=np.float32
+                feature_shape=(),
+                batch_shape=(n_batches, batch_spec.B),
+                dtype=np.float32,
             )
 
         self.rng = random.default_rng()

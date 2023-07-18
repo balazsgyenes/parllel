@@ -1,6 +1,5 @@
 import copy
 import traceback
-from typing import Dict, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -8,7 +7,8 @@ from gymnasium import spaces
 from nptyping import NDArray
 
 from parllel.arrays import Array, buffer_from_dict_example
-from parllel.buffers import Buffer, EnvSamples, NamedTuple, buffer_method, buffer_asarray
+from parllel.buffers import (Buffer, EnvSamples, NamedTuple, buffer_asarray,
+                             buffer_method)
 from parllel.types import BatchSpec
 
 
@@ -43,19 +43,35 @@ class DummyEnv(gym.Env):
         self._step_ctr = 0
         batch_observation = buffer_from_dict_example(
             self.observation_space.sample(),
-            (n_batches * batch_spec.T,),
+            batch_shape=(n_batches * batch_spec.T,),
             name="obs",
             padding=1,
         )
         batch_reward = buffer_from_dict_example(
-            self.reward_space.sample(), (n_batches * batch_spec.T,), name="reward"
+            self.reward_space.sample(),
+            batch_shape=(n_batches * batch_spec.T,),
+            name="reward",
+            feature_shape=(),
+            dtype=np.float32,
         )
-        batch_done = Array(shape=(n_batches * batch_spec.T,), dtype=np.bool_)
-        batch_terminated = Array(shape=(n_batches * batch_spec.T,), dtype=np.bool_)
-        batch_truncated = Array(shape=(n_batches * batch_spec.T,), dtype=np.bool_)
+        batch_done = Array(
+            feature_shape=(),
+            batch_shape=(n_batches * batch_spec.T,),
+            dtype=bool,
+        )
+        batch_terminated = Array(
+            feature_shape=(),
+            batch_shape=(n_batches * batch_spec.T,),
+            dtype=bool,
+        )
+        batch_truncated = Array(
+            feature_shape=(),
+            batch_shape=(n_batches * batch_spec.T,),
+            dtype=bool,
+        )
         batch_info = buffer_from_dict_example(
             {"action": self.action_space.sample()},
-            (n_batches * batch_spec.T,),
+            batch_shape=(n_batches * batch_spec.T,),
             name="envinfo",
         )
         self._samples = EnvSamples(
@@ -67,10 +83,13 @@ class DummyEnv(gym.Env):
             batch_info,
         )
         self._batch_resets = Array(
-            shape=(n_batches * batch_spec.T,), dtype=np.bool_, padding=1
+            feature_shape=(),
+            batch_shape=(n_batches * batch_spec.T,),
+            dtype=bool,
+            padding=1,
         )
 
-    def step(self, action: NDArray) -> Tuple[Buffer, NDArray, bool, bool, NamedTuple]:
+    def step(self, action: NDArray) -> tuple[Buffer, np.ndarray, bool, bool, NamedTuple]:
         obs = self.observation_space.sample()
         reward = self.reward_space.sample()
         terminated = self._traj_counter >= self.episode_length
@@ -96,7 +115,7 @@ class DummyEnv(gym.Env):
         self._traj_counter += 1
         return (obs, reward, terminated, truncated, env_info)
 
-    def reset(self, seed=None, options={}) -> Tuple[NDArray, Dict]:
+    def reset(self, seed=None, options={}) -> tuple[np.ndarray, dict]:
         self._traj_counter = 1
         self._batch_resets[self._step_ctr - 1] = True
         if not self.reset_automatically:
