@@ -1,23 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, SupportsFloat, Tuple, Union
+from typing import SupportsFloat, Union
 
 import gymnasium as gym
 import numpy as np
 
-ActionType = Union[np.ndarray, Dict[str, np.ndarray]]
-ObsType = Union[np.ndarray, Dict[str, np.ndarray]]
-RewardType = Union[SupportsFloat, np.ndarray, Dict[str, np.ndarray]]
-TerminatedType = Union[bool, np.ndarray]
-TruncatedType = Union[bool, np.ndarray]
-EnvInfoType = Dict
+ActionType = Union[np.ndarray, dict[str, np.ndarray]]
+ObsType = Union[np.ndarray, dict[str, np.ndarray]]
+RewardType = Union[SupportsFloat, np.ndarray, dict[str, np.ndarray]]
+DoneType = Union[bool, np.ndarray]
+EnvInfoType = dict
 
-EnvStepType = Tuple[ObsType, RewardType, TerminatedType, TruncatedType, EnvInfoType]
-EnvRandomStepType = Tuple[
-    ActionType, ObsType, RewardType, TerminatedType, TruncatedType, EnvInfoType
+EnvStepType = tuple[ObsType, RewardType, DoneType, DoneType, DoneType, EnvInfoType]
+EnvRandomStepType = tuple[
+    ActionType, ObsType, RewardType, DoneType, DoneType, DoneType, EnvInfoType,
 ]
-EnvResetType = Tuple[ObsType, EnvInfoType]
+EnvResetType = tuple[ObsType, EnvInfoType]
 
 
 @dataclass

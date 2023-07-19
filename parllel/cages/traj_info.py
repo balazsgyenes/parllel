@@ -3,9 +3,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import astuple, dataclass, field, fields
 from functools import partial
-from typing import Any, ClassVar, Dict, Iterator, Tuple
+from typing import Any, ClassVar, Iterator
 
-import numpy as np
+from .collections import (ActionType, ObsType, RewardType, DoneType, EnvInfoType)
 
 
 @dataclass
@@ -23,12 +23,13 @@ class TrajInfo:
 
     def step(
         self,
-        observation: Any,
-        action: Any,
-        reward: float,
-        terminated: bool,
-        truncated: bool,
-        env_info: Dict[str, Any],
+        observation: ObsType,
+        action: ActionType,
+        reward: RewardType,
+        done: DoneType, 
+        terminated: DoneType,
+        truncated: DoneType,
+        env_info: EnvInfoType,
     ) -> None:
         self.Length += 1
         self.Return += reward
@@ -39,20 +40,20 @@ class TrajInfo:
 
 @dataclass
 class MultiAgentTrajInfo(TrajInfo):
-    Return: Dict[str, float] = field(default_factory=partial(defaultdict, float))
-    NonzeroRewards: Dict[str, int] = field(default_factory=partial(defaultdict, int))
-    DiscountedReturn: Dict[str, float] = field(
+    Return: dict[str, float] = field(default_factory=partial(defaultdict, float))
+    NonzeroRewards: dict[str, int] = field(default_factory=partial(defaultdict, int))
+    DiscountedReturn: dict[str, float] = field(
         default_factory=partial(defaultdict, float)
     )
 
     def step(
         self,
-        observation: Any,
-        action: Any,
-        reward: Dict[str, np.ndarray | float],
-        terminated: bool,
-        truncated: bool,
-        env_info: Dict[str, Any],
+        observation: ObsType,
+        action: ActionType,
+        reward: dict[str, RewardType],
+        terminated: DoneType,
+        truncated: DoneType,
+        env_info: EnvInfoType,
     ) -> None:
         self.Length += 1
         for agent_name, agent_reward in reward.items():
@@ -62,7 +63,7 @@ class MultiAgentTrajInfo(TrajInfo):
         self._current_discount *= self._discount
 
 
-def zip_trajectories(*trajs: Tuple[TrajInfo]) -> Iterator[Tuple[Any, ...]]:
+def zip_trajectories(*trajs: tuple[TrajInfo]) -> Iterator[tuple[Any, ...]]:
     """A generator that yields key, value1, value2, value3, ... for all
     dataclass objects passed as arguments. All objects must be instances of
     the same dataclass.
