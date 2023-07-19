@@ -367,29 +367,25 @@ class Array:
             raise ValueError("rotate() is only allowed on unindexed array.")
 
         leading_loc: slice = self._current_location[0]
-        start = leading_loc.start
-        stop = leading_loc.stop
+        start = leading_loc.start + self.shape[0]
+        stop = leading_loc.stop + self.shape[0]
 
-        start += self.shape[0]
-        if wrap_bounds := start >= self.full_size:
-            # wrap both start and stop simultaneously
-            start %= self.full_size
-            stop %= self.full_size
-        # mod and increment stop in opposite order
-        # because stop - start = self.shape[0], we can be sure that stop will
-        # be reduced by mod even before incrementing
-        stop += self.shape[0]
+        if start >= self.full_size:
+            # wrap around to beginning of array
+            start -= self.full_size
+            stop -= self.full_size
 
+            if self.padding:
+                # copy values from end of base array to beginning
+                final_values = slice(
+                    self.full_size - self.padding,
+                    self.full_size + self.padding,
+                )
+                next_previous_values = slice(-self.padding, self.padding)
+                self.full[next_previous_values] = self.full[final_values]
+        
+        # update current location with modified start/stop
         self._current_location[0] = slice(start, stop, 1)
-
-        if self.padding and wrap_bounds:
-            # copy values from end of base array to beginning
-            final_values = slice(
-                self.full_size - self.padding,
-                self.full_size + self.padding,
-            )
-            next_previous_values = slice(-self.padding, self.padding)
-            self.full[next_previous_values] = self.full[final_values]
 
     def __array__(self, dtype=None) -> np.ndarray:
         if self._shape is None:
