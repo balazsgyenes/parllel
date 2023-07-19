@@ -33,7 +33,7 @@ def batch_spec(request):
     params=[
         spaces.Box(-10, 10, (4,)),
         spaces.Dict(
-            {"alice": spaces.Box(-10, 10, (4,)), "bob": spaces.Box(-10, 10, (2,))}
+            {"alice": spaces.Box(-10, 10, (6,)), "bob": spaces.Box(-10, 10, (8,))}
         ),
     ],
     ids=["obs=Box", "obs=Dict"],
@@ -46,9 +46,9 @@ def observation_space(request):
 @pytest.fixture(
     params=[
         spaces.Discrete(2),
-        spaces.Box(-10, 10, (4,)),
+        spaces.Box(-10, 10, (3,)),
         spaces.Dict(
-            {"alice": spaces.Box(-10, 10, (3,)), "bob": spaces.Box(-10, 10, (6,))}
+            {"alice": spaces.Box(-10, 10, (5,)), "bob": spaces.Box(-10, 10, (7,))}
         ),
     ],
     ids=["action=Discrete", "action=Box", "action=Dict"],
@@ -69,7 +69,7 @@ def max_decorrelation_steps(request):
 
 @pytest.fixture(
     params=[False, True],
-    ids=["singleagent", "multiagent"],
+    ids=["reward=single", "reward=multi"],
     scope="module",
 )
 def multireward(request):
@@ -78,7 +78,7 @@ def multireward(request):
 
 @pytest.fixture(
     params=[False, True],
-    ids=["nobootstrap", "bootstrapvalue"],
+    ids=["bootstrap=False", "bootstrap=True"],
     scope="module",
 )
 def get_bootstrap(request):
@@ -130,7 +130,12 @@ def agent(action_space, observation_space, batch_spec):
 
 @pytest.fixture
 def batch_buffer(
-    action_space, observation_space, batch_spec, envs, agent, get_bootstrap
+    action_space,
+    observation_space,
+    batch_spec,
+    envs,
+    agent,
+    get_bootstrap,
 ):
     # get example output from env
     envs[0].random_step_async()
@@ -139,13 +144,32 @@ def batch_buffer(
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(
-        obs, batch_shape=tuple(batch_spec), name="obs", padding=1,
+        obs,
+        batch_shape=tuple(batch_spec),
+        name="obs",
+        padding=1,
     )
-    batch_reward = buffer_from_dict_example(reward, batch_shape=tuple(batch_spec), name="reward")
-    batch_terminated = buffer_from_example(terminated, batch_shape=tuple(batch_spec))
-    batch_truncated = buffer_from_example(truncated, batch_shape=tuple(batch_spec))
-    batch_done = buffer_from_example(truncated, batch_shape=tuple(batch_spec))
-    batch_info = buffer_from_dict_example(info, batch_shape=tuple(batch_spec), name="envinfo")
+    batch_reward = buffer_from_dict_example(
+        reward,
+        batch_shape=tuple(batch_spec),
+        name="reward",
+    )
+    batch_terminated = buffer_from_example(
+        terminated,
+        batch_shape=tuple(batch_spec),
+    )
+    batch_truncated = buffer_from_example(
+        truncated,
+        batch_shape=tuple(batch_spec),
+    )
+    batch_done = buffer_from_example(
+        truncated,
+        batch_shape=tuple(batch_spec),
+    )
+    batch_info = buffer_from_dict_example(info,
+        batch_shape=tuple(batch_spec),
+        name="envinfo",
+    )
     batch_env = EnvSamples(
         batch_observation,
         batch_reward,
@@ -154,8 +178,15 @@ def batch_buffer(
         batch_truncated,
         batch_info,
     )
-    batch_action = buffer_from_dict_example(action, batch_shape=tuple(batch_spec), name="action")
-    batch_agent_info = buffer_from_example(agent_info, batch_shape=tuple(batch_spec))
+    batch_action = buffer_from_dict_example(
+        action,
+        batch_shape=tuple(batch_spec),
+        name="action",
+    )
+    batch_agent_info = buffer_from_example(
+        agent_info,
+        batch_shape=tuple(batch_spec),
+    )
 
     if get_bootstrap:
         AgentSamplesWBootstrap = NamedArrayTupleClass(
@@ -167,9 +198,10 @@ def batch_buffer(
             batch_shape=(batch_spec.B,),
             dtype=np.float32,
         )
-
         batch_agent = AgentSamplesWBootstrap(
-            batch_action, batch_agent_info, batch_bootstrap_value
+            batch_action,
+            batch_agent_info,
+            batch_bootstrap_value,
         )
     else:
         batch_agent = AgentSamples(batch_action, batch_agent_info)
@@ -228,7 +260,13 @@ def samples(
 
 class TestBasicSampler:
     def test_batches(
-        self, samples, envs, agent, batch_spec, max_decorrelation_steps, get_bootstrap
+        self,
+        samples,
+        envs,
+        agent,
+        batch_spec,
+        max_decorrelation_steps,
+        get_bootstrap,
     ):
         batches, _ = samples
 
@@ -258,11 +296,11 @@ class TestBasicSampler:
             # check that agent state is always 0 after reset
             previous_time = slice(i * batch_spec.T - 1, (i + 1) * batch_spec.T - 1)
             previous_reset = agent.resets[previous_time]
-            assert np.all(agent.states[time_slice][previous_reset] == 0)
+            assert np.all(np.asarray(agent.states[time_slice])[np.asarray(previous_reset)] == 0)
 
             # check that agent state is otherwise not 0
             assert not np.any(
-                agent.states[time_slice][~np.asarray(previous_reset)] == 0
+                np.asarray(agent.states[time_slice])[~np.asarray(previous_reset)] == 0
             )
 
             if get_bootstrap:

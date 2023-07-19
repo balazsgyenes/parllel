@@ -84,6 +84,12 @@ class DummyAgent(Agent):
             batch_ctr = (self._step_ctr - 1) // self.batch_spec.T + 1
             # advance counter to the next batch
             self._step_ctr = batch_ctr * self.batch_spec.T
+        if isinstance(env_index, list):
+            env_index = np.asarray(env_index, dtype=np.int64)
+        if isinstance(env_index, np.ndarray) and env_index.dtype == bool:
+            index_tup = env_index.nonzero()
+            assert len(index_tup) == 1
+            env_index = index_tup[0]
         self.resets[self._step_ctr - 1, env_index] = True
         self.states[self._step_ctr, env_index] = 0
 
@@ -103,12 +109,14 @@ class DummyAgent(Agent):
         *,
         env_indices: Union[int, slice] = ...,
     ) -> AgentStep:
-        action = self.action_space.sample()
+        for b in range(self.batch_spec.B):
+            self.samples.action[self._step_ctr, b] = self.action_space.sample()
+        action = buffer_asarray(self.samples.action[self._step_ctr])
+        action = buffer_method(action, "copy")
         agent_info = DummyInfo(
             buffer_method(observation, "copy"),
             buffer_method(buffer_asarray(self.states[self._step_ctr]), "copy"),
         )
-        self.samples.action[self._step_ctr] = action
         self.samples.agent_info[self._step_ctr] = agent_info
         next_state = self.rng.random(self.batch_spec.B)
         self.states[self._step_ctr + 1] = next_state

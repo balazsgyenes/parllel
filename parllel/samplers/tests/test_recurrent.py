@@ -79,20 +79,41 @@ def batch_buffer(
 
     # allocate batch buffer based on examples
     batch_observation = buffer_from_dict_example(
-        obs, tuple(batch_spec), name="obs", padding=1
+        obs,
+        batch_shape=tuple(batch_spec),
+        name="obs",
+        padding=1,
     )
-    batch_reward = buffer_from_dict_example(reward, tuple(batch_spec), name="reward")
-    batch_terminated = buffer_from_example(terminated, tuple(batch_spec))
-    batch_truncated = buffer_from_example(truncated, tuple(batch_spec))
-    batch_done = buffer_from_example(terminated, tuple(batch_spec))
-    batch_info = buffer_from_dict_example(info, tuple(batch_spec), name="envinfo")
-    batch_valid = buffer_from_example(truncated, tuple(batch_spec), padding=1)
-
+    batch_reward = buffer_from_dict_example(
+        reward,
+        batch_shape=tuple(batch_spec),
+        name="reward",
+    )
+    batch_terminated = buffer_from_example(
+        terminated,
+        batch_shape=tuple(batch_spec),
+    )
+    batch_truncated = buffer_from_example(
+        truncated,
+        batch_shape=tuple(batch_spec),
+    )
+    batch_done = buffer_from_example(
+        truncated,
+        batch_shape=tuple(batch_spec),
+    )
+    batch_info = buffer_from_dict_example(info,
+        batch_shape=tuple(batch_spec),
+        name="envinfo",
+    )
+    batch_valid = buffer_from_example(
+        truncated,
+        batch_shape=tuple(batch_spec),
+        padding=1,
+    )
     EnvSamplesWValid = NamedArrayTupleClass(
         typename=EnvSamples._typename,
         fields=EnvSamples._fields + ("valid",),
     )
-
     batch_env = EnvSamplesWValid(
         batch_observation,
         batch_reward,
@@ -102,28 +123,46 @@ def batch_buffer(
         batch_info,
         batch_valid,
     )
-    batch_action = buffer_from_dict_example(action, tuple(batch_spec), name="action")
-    batch_agent_info = buffer_from_example(agent_info, tuple(batch_spec))
-
+    batch_action = buffer_from_dict_example(
+        action,
+        batch_shape=tuple(batch_spec),
+        name="action",
+    )
+    batch_agent_info = buffer_from_example(
+        agent_info,
+        batch_shape=tuple(batch_spec),
+    )
     AgentSamplesWRnnState = NamedArrayTupleClass(
         typename=AgentSamples._typename,
         fields=AgentSamples._fields + ("initial_rnn_state",),
     )
-    batch_init_rnn = Array(shape=(batch_spec.B,), dtype=np.float32)
+    batch_init_rnn = Array(
+        feature_shape=(),
+        batch_shape=(batch_spec.B,),
+        dtype=np.float32,
+    )
 
     if get_bootstrap:
         AgentSamplesWBootstrap = NamedArrayTupleClass(
             typename=AgentSamplesWRnnState._typename,
             fields=AgentSamplesWRnnState._fields + ("bootstrap_value",),
         )
-        batch_bootstrap_value = Array(shape=(batch_spec.B,), dtype=np.float32)
-
+        batch_bootstrap_value = Array(
+            feature_shape=(),
+            batch_shape=(batch_spec.B,),
+            dtype=np.float32,
+        )
         batch_agent = AgentSamplesWBootstrap(
-            batch_action, batch_agent_info, batch_init_rnn, batch_bootstrap_value
+            batch_action,
+            batch_agent_info,
+            batch_init_rnn,
+            batch_bootstrap_value,
         )
     else:
         batch_agent = AgentSamplesWRnnState(
-            batch_action, batch_agent_info, batch_init_rnn
+            batch_action,
+            batch_agent_info,
+            batch_init_rnn,
         )
 
     batch_buffer = Samples(batch_agent, batch_env)
@@ -180,7 +219,13 @@ def samples(
 
 class TestRecurrentSampler:
     def test_batches(
-        self, samples, envs, agent, batch_spec, max_decorrelation_steps, get_bootstrap
+        self,
+        samples,
+        envs,
+        agent,
+        batch_spec,
+        max_decorrelation_steps,
+        get_bootstrap,
     ):
         batches, _ = samples
 
@@ -203,24 +248,25 @@ class TestRecurrentSampler:
             # if bootstrap value exists in batch.agent, it is ignored because
             # only fields in ref_agent_samples are checked
             assert buffer_equal(
-                agent.samples.action[time_slice][valid],
+                buffer_asarray(agent.samples.action[time_slice])[valid],
                 batch.agent.action[valid],
                 f"batch{(i+1)}.agent",
             )
             assert buffer_equal(
-                agent.samples.agent_info[time_slice][valid],
+                buffer_asarray(agent.samples.agent_info[time_slice])[valid],
                 batch.agent.agent_info[valid],
                 f"batch{(i+1)}.agent",
             )
 
             # check agent resets at the end of batch if a done occurred
             done_envs = np.any(batch.env.done, axis=0)
-            assert np.array_equal(agent.resets[time_slice][-1], done_envs)
+            assert np.array_equal(agent.resets[time_slice][batch_spec.T - 1], done_envs)
             assert not np.any(agent.resets[time_slice][:-1])
 
             # check that agent state is 0 at beginning of next batch for those
             # environments that were done during this batch
-            assert np.all(agent.states[(i + 1) * batch_spec.T, done_envs] == 0)
+            agent_state_next_batch = np.asarray(agent.states[(i + 1) * batch_spec.T])
+            assert np.all(agent_state_next_batch[done_envs] == 0)
 
             # verify init_rnn_state
             assert buffer_equal(batch.agent.initial_rnn_state, agent.init_rnn_states[i])
@@ -241,26 +287,26 @@ class TestRecurrentSampler:
 
                 # verify that the env samples are those generated by the env
                 assert buffer_equal(
-                    env._env.samples[time_slice][b_valid],
+                    buffer_asarray(env._env.samples[time_slice])[b_valid],
                     batch.env[:, b][b_valid],
                     f"batch{(i+1)}_env",
                 )
 
                 # verify that the env saw the correct action at each step
                 assert buffer_equal(
-                    env._env.samples.env_info.action[time_slice][b_valid],
+                    buffer_asarray(env._env.samples.env_info.action[time_slice])[b_valid],
                     batch.agent.action[:, b][b_valid],
                     f"batch{(i+1)}_action",
                 )
 
                 # verify that the agent saw the correct observation at each step
                 assert buffer_equal(
-                    agent.samples.agent_info.observation[time_slice, b][b_valid],
+                    buffer_asarray(agent.samples.agent_info.observation[time_slice, b])[b_valid],
                     batch.env.observation[:, b][b_valid],
                     f"batch{(i+1)}_observation",
                 )
 
                 # check that environment was reset only on done
-                ref_resets = env._env.resets[time_slice][b_valid]
+                ref_resets = np.asarray(env._env.resets[time_slice])[b_valid]
                 test_dones = batch.env.done[:, b][b_valid]
                 assert np.array_equal(ref_resets, test_dones)
