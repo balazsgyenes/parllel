@@ -6,10 +6,10 @@ from typing import Any, Callable, Mapping
 import gymnasium as gym
 import numpy as np
 
-from parllel.arrays import Array
-from parllel.dict import ArrayTree, dict_map
+from parllel import Array, ArrayLike, ArrayTree, DirtyArrayTree, dict_map
 
-from .collections import EnvInfoType, EnvRandomStepType, EnvSpaces, EnvStepType, ObsType
+from .collections import (EnvInfoType, EnvRandomStepType, EnvSpaces,
+                          EnvStepType, ObsType)
 from .traj_info import TrajInfo
 
 
@@ -78,14 +78,18 @@ class Cage(ABC):
     def render(self, value: bool) -> None:
         self._render = value
 
-    def _step_env(self, action: ArrayTree[Array | np.ndarray]) -> EnvStepType:
+    def _step_env(
+        self,
+        action: ArrayTree[Array] | DirtyArrayTree[ArrayLike],
+    ) -> EnvStepType:
         # if rendering, render before step is taken so that the renderings
         # line up with the corresponding observation
         if self._render:
             rendering = self._env.render()
 
-        # get underlying numpy arrays and convert to dict if needed
-        # handles Dict/ArrayDict and np.ndarray/Array
+        # get underlying numpy arrays
+        # handles dicts of ndarrays, in case called from _random_step_env
+        # warning: this won't handle things like JaggedArray that require `to_ndarray`
         action = dict_map(np.asarray, action)
 
         obs, reward, terminated, truncated, env_info = self._env.step(action)

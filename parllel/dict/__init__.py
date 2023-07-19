@@ -1,11 +1,13 @@
-from typing import Any, Protocol, Union
+from typing import Any, Mapping, Protocol, TypeVar, Union
 
 
 class ArrayLike(Protocol):
-    def __getitem__(self, indices: Any) -> Any:
+    def __getitem__(self, indices: Any, /) -> Any:
+        # / is to indicate that the parameter names do not matter
+        # https://stackoverflow.com/questions/75420105/python-typing-callback-protocol-and-keyword-arguments
         ...
 
-    def __setitem__(self, indices: Any, value: Any) -> None:
+    def __setitem__(self, indices: Any, value: Any, /) -> None:
         ...
 
     @property
@@ -17,16 +19,18 @@ class ArrayLike(Protocol):
         ...
 
 
+ArrayType = TypeVar("ArrayType", bound=ArrayLike)
+ArrayTree = Union[ArrayType, "ArrayDict[ArrayType]"]
+DirtyArrayTree = Union[ArrayType, "ArrayDict[ArrayType]", Mapping[str, "DirtyArrayTree"]]
+
 from .array_dict import ArrayDict
-
-ArrayTree = Union[ArrayLike, ArrayDict, None]
-# TODO: replace with Generic that allows specifying array type
-
 from .utils import dict_map
 
 __all__ = [
     "ArrayLike",
-    "ArrayDict",
+    "ArrayType",
     "ArrayTree",
+    "ArrayDict",
+    "DirtyArrayTree",
     "dict_map",
 ]

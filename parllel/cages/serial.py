@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from parllel import Array
-from parllel.dict import ArrayTree
+from parllel import Array, ArrayTree
 
 from .cage import Cage
 from .collections import EnvRandomStepType, EnvResetType, EnvStepType

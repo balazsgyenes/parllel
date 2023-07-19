@@ -4,9 +4,7 @@ from typing import Callable, Generic, Iterator, TypeVar
 
 import numpy as np
 
-from parllel import ArrayDict
-from parllel.arrays.indices import Location
-from parllel.dict import ArrayLike
+from parllel import ArrayDict, ArrayLike, Location
 import parllel.logger as logger
 from parllel.types import BatchSpec
 

@@ -5,8 +5,7 @@ import multiprocessing as mp
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from parllel import Array
-from parllel.dict import ArrayTree
+from parllel import Array, ArrayTree
 
 from .cage import Cage
 from .collections import (EnvInfoType, EnvRandomStepType, EnvResetType,

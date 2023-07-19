@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from operator import getitem
-from typing import Any, Callable, Generic, Iterable, Iterator, TypeVar, Union
+from typing import Any, Callable, Generic, Iterable, Iterator, Union
 
 import numpy as np
 
-from parllel.dict import ArrayLike
-
-ArrayType = TypeVar("ArrayType", bound=ArrayLike)
-NodeType = Union[ArrayType, "ArrayDict[ArrayType]", None]
-ValueType = Union[ArrayType, "ArrayDict[ArrayType]", MutableMapping[str, "ValueType"], None]
+from parllel.dict import ArrayLike, ArrayTree, ArrayType, DirtyArrayTree
 
 
 class ArrayDict(MutableMapping, Generic[ArrayType]):
@@ -26,17 +22,17 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
 
     def __init__(
         self,
-        items: dict[str, ValueType] | Iterable[tuple[str, ValueType]],
+        items: DirtyArrayTree | Iterable[tuple[str, DirtyArrayTree]],
     ) -> None:
         # clean tree to ensure only leaf nodes or ArrayDicts
-        dict_: dict[str, NodeType] = dict(items)
+        dict_: dict[str, ArrayTree] = dict(items)
         for key, value in dict_.items():
             if isinstance(value, dict):
                 dict_[key] = ArrayDict(value)
 
         self._dict = dict_
 
-    def __getitem__(self, key: Any) -> NodeType:
+    def __getitem__(self, key: Any) -> ArrayTree:
         if isinstance(key, str):
             return self._dict[key]
 
@@ -54,12 +50,12 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
                         f"Index error in field '{field}' for index '{key}'"
                     ) from e
 
-    def __setitem__(self, key: Any, value: ValueType) -> None:
+    def __setitem__(self, key: Any, value: DirtyArrayTree | Any) -> None:
         if isinstance(key, str):
             self._dict[key] = value
             return
 
-        if isinstance(value, MutableMapping):  # i.e. dict, ArrayDict, etc.
+        if isinstance(value, Mapping):  # i.e. dict, ArrayDict, etc.
             getter = getitem
         elif dataclasses.is_dataclass(value):
             getter = getattr

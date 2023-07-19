@@ -1,24 +1,20 @@
 from __future__ import annotations
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping
 from typing import Any, Callable, Iterable
 
-import numpy as np
-
-from parllel.buffers import NamedTuple, NamedTupleClass, Buffer, LeafType
-
-from parllel.dict import ArrayDict, ArrayLike, ArrayTree
+from parllel.dict import ArrayDict, ArrayLike, ArrayTree, ArrayType, DirtyArrayTree
 
 
 def dict_map(
-    func: Callable[[ArrayLike], Any],
-    tree: ArrayTree,
+    func: Callable[[ArrayType], Any],
+    tree: DirtyArrayTree[ArrayType],
     *args,
     **kwargs,
 ) -> ArrayTree:
-    if isinstance(tree, MutableMapping):  # non-leaf node
+    if isinstance(tree, Mapping):  # non-leaf node
         return ArrayDict(
-            {field: dict_map(func, arr, *args, **kwargs) for field, arr in tree.items()}
+            ((field, dict_map(func, arr, *args, **kwargs)) for field, arr in tree.items())
         )
     # leaf node
     if tree is None:
@@ -26,18 +22,14 @@ def dict_map(
     return func(tree, *args, **kwargs)
 
 
-def dict_all(buffer: Buffer, predicate: Callable[[LeafType], bool]) -> bool:
-    if isinstance(buffer, tuple): # non-leaf node
-        return all(dict_all(elem, predicate) for elem in buffer if elem is not None)
+def dict_all(tree: ArrayTree, predicate: Callable[[ArrayLike], bool]) -> bool:
+    if isinstance(tree, Mapping):  # non-leaf node
+        return all(dict_all(elem, predicate) for elem in tree if elem is not None)
 
-    # leaf node (None elements already filtered out, unless called buffer = None)
-    if buffer is None:
+    # leaf node (None elements already filtered out, unless called tree = None)
+    if tree is None:
         return False
-    return predicate(buffer)
-
-
-def dict_asndarray(arraydict: ArrayDict) -> ArrayDict[np.ndarray]:
-    return dict_map(np.asarray, arraydict)
+    return predicate(tree)
 
 
 def collate_buffers(buffers: Iterable[NamedTuple], names=None, typename=None):
