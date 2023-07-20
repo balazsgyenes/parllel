@@ -24,7 +24,7 @@ class NormalizeObservations(StepTransform):
         - .env.observation
         - [.env.valid]
 
-    :param batch_buffer: the batch buffer that will be passed to `__call__`.
+    :param sample_tree: the ArrayDict that will be passed to `__call__`.
     :param obs_shape: shape of a single observation
     :param initial_count: seed the running mean and standard deviation model
         with `initial_count` instances of x~N(0,1). Increase this to improve
@@ -32,14 +32,14 @@ class NormalizeObservations(StepTransform):
         quickly during early training.
     """
     def __init__(self,
-        batch_buffer: ArrayDict[Array],
+        sample_tree: ArrayDict[Array],
         obs_shape: tuple[int, ...],
         initial_count: float | None = None,
     ) -> None:
-        if isinstance(batch_buffer["observation"], Mapping):
+        if isinstance(sample_tree["observation"], Mapping):
             raise NotImplementedError("Dictionary observations not supported.")
 
-        self.only_valid = "valid" in batch_buffer
+        self.only_valid = "valid" in sample_tree
 
         if initial_count is not None and initial_count < 1.:
             raise ValueError("Initial count must be at least 1")
@@ -51,12 +51,12 @@ class NormalizeObservations(StepTransform):
         else:
             self.obs_statistics = RunningMeanStd(shape=obs_shape)
 
-    def __call__(self, batch_samples: ArrayDict[Array], t: int) -> ArrayDict[Array]:
-        step_obs = np.asarray(batch_samples["observation"][t])
+    def __call__(self, sample_tree: ArrayDict[Array], t: int) -> ArrayDict[Array]:
+        step_obs = np.asarray(sample_tree["observation"][t])
 
         # update statistics of each element of observation
         if self.only_valid:
-            valid = batch_samples["valid"][t]
+            valid = sample_tree["valid"][t]
             # this fancy indexing operation creates a copy, but that's fine
             self.obs_statistics.update(step_obs[valid])
         else:
@@ -65,4 +65,4 @@ class NormalizeObservations(StepTransform):
         step_obs[:] = (step_obs - self.obs_statistics.mean) / (
             np.sqrt(self.obs_statistics.var + EPSILON))
 
-        return batch_samples
+        return sample_tree

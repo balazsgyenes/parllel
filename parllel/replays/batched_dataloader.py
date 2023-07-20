@@ -13,7 +13,7 @@ ArrayType = TypeVar("ArrayType", bound=ArrayLike)
 
 
 class BatchedDataLoader(Generic[ArrayType]):
-    """Iterates through a buffer of samples in a fixed number of batches.
+    """Iterates through a tree of samples in a fixed number of batches.
     Fields that cannot be indexed according to time (e.g.
     `agent.initial_rnn_state`) are only indexed according to batch dimension.
     This data structure provides a convenient way to structure samples how the
@@ -21,7 +21,7 @@ class BatchedDataLoader(Generic[ArrayType]):
     the `apply_func` method, the all samples can be moved to the GPU at once.
     """
     def __init__(self,
-        buffer: ArrayDict,
+        tree: ArrayDict,
         sampler_batch_spec: BatchSpec, # TODO: can this be inferred?
         n_batches: int,
         batch_only_fields: list[str] | None = None,
@@ -31,7 +31,7 @@ class BatchedDataLoader(Generic[ArrayType]):
         pre_batches_transform: Callable | None = None,
         batch_transform: Callable | None = None,
     ) -> None:
-        self.buffer = self.source_buffer = buffer
+        self.tree = self.source_tree = tree
         self.batch_only_fields = batch_only_fields
         # TODO: maybe renamed sampler_batch_spec to leading_dims and just take tuple
         self.sampler_batch_spec = sampler_batch_spec
@@ -73,17 +73,17 @@ class BatchedDataLoader(Generic[ArrayType]):
         if not isinstance(location, tuple):
             location = (location,)
         
-        buffer = self.buffer
+        tree = self.tree
         if self.batch_only_fields:
-            batch_only_elems = {field: buffer.pop(field) for field in self.batch_only_fields}
-        item = buffer[location]
+            batch_only_elems = {field: tree.pop(field) for field in self.batch_only_fields}
+        item = tree[location]
         if self.batch_only_fields:
             batch_only_item = batch_only_elems[location[1:]]
             item.update(batch_only_item)
         return item
 
     def batches(self) -> Iterator[ArrayDict[ArrayType]]:
-        self.buffer = self.pre_batches_transform(self.source_buffer)
+        self.tree = self.pre_batches_transform(self.source_tree)
 
         all_indices = np.arange(self.size, dtype=np.int32)
         if self.shuffle:

@@ -38,12 +38,12 @@ class EstimateMultiAgentAdvantage(BatchTransform):
         - .env.advantage
         - .env.return_
 
-    :param batch_buffer: the batch buffer that will be passed to `__call__`.
+    :param sample_tree: the ArrayDict that will be passed to `__call__`.
     :param discount: discount (gamma) for discounting rewards over time
     :param gae_lambda: lambda parameter for GAE algorithm
     """
     def __init__(self,
-        batch_buffer: ArrayDict[Array],
+        sample_tree: ArrayDict[Array],
         discount: float,
         gae_lambda: float,
     ) -> None:
@@ -56,9 +56,9 @@ class EstimateMultiAgentAdvantage(BatchTransform):
             self.estimator = compute_gae_advantage
 
         # get convenient local references
-        reward = batch_buffer["reward"]
-        value = batch_buffer["agent_info"]["value"]
-        advantage = batch_buffer["advantage"]
+        reward = sample_tree["reward"]
+        value = sample_tree["agent_info"]["value"]
+        advantage = sample_tree["advantage"]
 
         # determine number of reward values and value estimates
         if np.asarray(value).ndim > 2:
@@ -77,24 +77,24 @@ class EstimateMultiAgentAdvantage(BatchTransform):
                 raise ValueError("Advantage must match shape of Value except"
                     " for added trailing singleton dimension")
 
-    def __call__(self, batch_samples: ArrayDict[Array]) -> ArrayDict[Array]:
+    def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
         """Cases:
         scalar reward, dict value (independent actor-critic agents)
         dict reward, dict value (markov game)
         scalar reward, scalar value (central critic, expand advantage)
         """
-        reward = batch_samples["reward"]
-        done = np.asarray(batch_samples["done"])
-        value = np.asarray(batch_samples["agent_info"]["value"])
-        bootstrap_value = np.asarray(batch_samples["bootstrap_value"])
-        advantage = np.asarray(batch_samples["advantage"])
-        return_ = np.asarray(batch_samples["return_"])
+        reward = sample_tree["reward"]
+        done = np.asarray(sample_tree["done"])
+        value = np.asarray(sample_tree["agent_info"]["value"])
+        bootstrap_value = np.asarray(sample_tree["bootstrap_value"])
+        advantage = np.asarray(sample_tree["advantage"])
+        return_ = np.asarray(sample_tree["return_"])
 
         if self.problem_type is ProblemType.markov_game:
             # stack rewards for each agent in the same order as in value and
             # bootstrap value. the subagents might not be defined in the same
             # order in the agent as they are in the environment
-            action = batch_samples["action"]
+            action = sample_tree["action"]
             reward = np.stack(
                 (reward[agent_key] for agent_key in action),
                 axis=-1,
@@ -114,4 +114,4 @@ class EstimateMultiAgentAdvantage(BatchTransform):
         
         self.estimator(reward, value, done, bootstrap_value, self._discount,
             self._lambda, advantage, return_)
-        return batch_samples
+        return sample_tree

@@ -25,8 +25,8 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
         items: DirtyArrayTree | Iterable[tuple[str, DirtyArrayTree]],
     ) -> None:
         # clean tree to ensure only leaf nodes or ArrayDicts
-        dict_: dict[str, ArrayTree[ArrayType]] = {}
-        for key, value in dict(items).items():
+        dict_: dict[str, ArrayTree[ArrayType]] = dict(items)
+        for key, value in dict_.items():
             if isinstance(value, dict):
                 dict_[key] = ArrayDict(value)
 

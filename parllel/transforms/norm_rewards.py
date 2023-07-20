@@ -52,7 +52,7 @@ class NormalizeRewards(BatchTransform):
     Adds fields:
         - .env.past_return
 
-    :param batch_buffer: the batch buffer that will be passed to `__call__`.
+    :param sample_tree: the ArrayDict that will be passed to `__call__`.
     :param discount: discount (gamma) for discounting rewards over time
     :param initial_count: seed the running mean and standard deviation model
         with `initial_count` instances of x~N(0,1). Increase this to improve
@@ -60,15 +60,15 @@ class NormalizeRewards(BatchTransform):
         quickly during early training.
     """
     def __init__(self,
-        batch_buffer: ArrayDict[Array],
+        sample_tree: ArrayDict[Array],
         discount: float,
         initial_count: float | None = None
     ) -> None:
-        if isinstance(batch_buffer["reward"], Mapping):
+        if isinstance(sample_tree["reward"], Mapping):
             raise NotImplementedError("Not implemented for markov games, where"
                 "rewards are agent-specific.")
 
-        self.only_valid = "valid" in batch_buffer
+        self.only_valid = "valid" in sample_tree
         self.discount = discount
 
         if initial_count is not None and initial_count < 1.:
@@ -81,12 +81,12 @@ class NormalizeRewards(BatchTransform):
         else:
             self.return_statistics = RunningMeanStd(shape=())
 
-    def __call__(self, batch_samples: ArrayDict[Array]) -> ArrayDict[Array]:
-        reward = np.asarray(batch_samples["reward"])
-        past_return = batch_samples["past_return"]
+    def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
+        reward = np.asarray(sample_tree["reward"])
+        past_return = sample_tree["past_return"]
         previous_past_return = np.asarray(past_return[past_return.first - 1])
         past_return = np.asarray(past_return)
-        done = batch_samples["done"]
+        done = sample_tree["done"]
         previous_done = np.asarray(done[done.first - 1])
         done = np.asarray(done)
 
@@ -101,11 +101,11 @@ class NormalizeRewards(BatchTransform):
 
         # update statistics of discounted return
         if self.only_valid:
-            valid = batch_samples["valid"]
+            valid = sample_tree["valid"]
             self.return_statistics.update(past_return[valid])
         else:
             self.return_statistics.update(past_return)
 
         reward[:] = reward / (np.sqrt(self.return_statistics.var + EPSILON))
 
-        return batch_samples
+        return sample_tree
