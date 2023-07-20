@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 from parllel import Array, ArrayDict
@@ -20,8 +18,8 @@ class ClipRewards(BatchTransform):
     :param reward_max: after normalization, clips rewards from above
     """
     def __init__(self,
-        reward_min: Optional[float] = None,
-        reward_max: Optional[float] = None,
+        reward_min: float | None = None,
+        reward_max: float | None = None,
     ) -> None:
         self.reward_min = reward_min
         self.reward_max = reward_max

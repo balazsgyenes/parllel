@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
 from collections.abc import Mapping
 
 import numpy as np
@@ -35,7 +34,7 @@ class NormalizeObservations(StepTransform):
     def __init__(self,
         batch_buffer: ArrayDict[Array],
         obs_shape: tuple[int, ...],
-        initial_count: Optional[float] = None,
+        initial_count: float | None = None,
     ) -> None:
         if isinstance(batch_buffer["observation"], Mapping):
             raise NotImplementedError("Dictionary observations not supported.")

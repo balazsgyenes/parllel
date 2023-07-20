@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Optional, Sequence
+from typing import Sequence
 
 import numpy as np
 from numpy import random
@@ -7,7 +9,7 @@ from numpy import random
 from parllel import Array, ArrayDict
 import parllel.logger as logger
 from parllel.cages import Cage, TrajInfo
-from parllel.handlers import Handler
+from parllel.handlers import Agent
 from parllel.types import BatchSpec
 
 
@@ -16,9 +18,9 @@ class Sampler(ABC):
         self,
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
-        agent: Handler,
+        agent: Agent,
         sample_buffer: ArrayDict[Array],
-        max_steps_decorrelate: Optional[int] = None,
+        max_steps_decorrelate: int | None = None,
     ) -> None:
         self.batch_spec = batch_spec
 
@@ -31,11 +33,7 @@ class Sampler(ABC):
             # try writing beyond the expected bounds of the observation buffer
             sample_buffer["observation"][self.batch_spec.T] = 0
         except IndexError:
-            raise ValueError(
-                "Size mismatch: sample_buffer['observation'] must be a "
-                "RotatingArray with leading dimension of at least "
-                f"{self.batch_spec.T}."
-            )
+            raise ValueError("sample_buffer[`observation`] must have padding >= 1")
         self.sample_buffer = sample_buffer
 
         if max_steps_decorrelate is None:
@@ -125,6 +123,7 @@ class Sampler(ABC):
                     out_action=action[T_last, b],
                     out_obs=observation[T_last + 1, b],
                     out_reward=reward[T_last, b],
+                    out_done=done[T_last, b],
                     out_terminated=terminated[T_last, b],
                     out_truncated=truncated[T_last, b],
                     out_info=env_info[T_last, b],
@@ -135,14 +134,16 @@ class Sampler(ABC):
 
             # no need to reset environments, since they are always reset
             # automatically when calling random_step_async
-            done[T_last] = np.logical_or(terminated[T_last], truncated[T_last])
 
         # discard any completed trajectories. The incomplete ones will be
         # continued during batch collection
         [env.collect_completed_trajs() for env in self.envs]
 
     @abstractmethod
-    def collect_batch(self, elapsed_steps: int) -> tuple[ArrayDict[Array], List[TrajInfo]]:
+    def collect_batch(
+        self,
+        elapsed_steps: int,
+    ) -> tuple[ArrayDict[Array], list[TrajInfo]]:
         pass
 
     def close(self) -> None:

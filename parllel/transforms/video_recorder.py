@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 import distutils.spawn
 import distutils.version
+import itertools
 import os
-from pathlib import Path
 import subprocess
-from typing import Iterator, Optional
+from pathlib import Path
+from typing import Iterator, Mapping, Optional, TypeVar
 
 import numba
 import numpy as np
 
-from parllel import Array, ArrayDict
 import parllel.logger as logger
+from parllel import Array, ArrayDict
 
 from .transform import BatchTransform
 
@@ -24,10 +24,10 @@ class RecordVectorizedVideo(BatchTransform):
         buffer_key_to_record: str, # e.g. "observation" or "env_info.rendering"
         record_every_n_steps: int,
         video_length: int,
-        env_fps: Optional[int] = None,
+        env_fps: int | None = None,
         output_fps: int = 30,
-        tiled_height: Optional[int] = None,
-        tiled_width: Optional[int] = None,
+        tiled_height: int | None = None,
+        tiled_width: int | None = None,
     ) -> None:
         self.output_dir = Path(output_dir)
         self.record_every = int(record_every_n_steps)
@@ -155,7 +155,8 @@ class RecordVectorizedVideo(BatchTransform):
             self._stop_recording()
 
 
-def dict_get_nested(buffer: Mapping, keys: list[str]):
+ValueType = TypeVar("ValueType")
+def dict_get_nested(buffer: Mapping[str, ValueType], keys: list[str]) -> ValueType:
     result = buffer
     for key in keys:
         result = result[key]
@@ -191,19 +192,17 @@ def find_tiling(n_images: int) -> tuple[int, int]:
 
 def zip_with_valid(
     array: np.ndarray,
-    valid: Optional[np.ndarray],
-) -> Iterator[tuple[np.ndarray, Optional[np.ndarray]]]:
+    valid: np.ndarray | None,
+) -> Iterator[tuple[np.ndarray, np.ndarray | None]]:
     if valid is None:
-        for elem in array:
-            yield elem, valid
-    else:
-        yield from zip(array, valid)
+        valid = itertools.repeat(None)
+    yield from zip(array, valid)
 
 
 @numba.njit
 def write_tiles_to_frame(
     images: np.ndarray,
-    valid: Optional[np.ndarray],
+    valid: np.ndarray | None,
     tiled_height: int,
     tiled_width: int,
     tiled_frame: np.ndarray,

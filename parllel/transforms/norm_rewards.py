@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
 from collections.abc import Mapping
 
 import numpy as np
@@ -63,7 +62,7 @@ class NormalizeRewards(BatchTransform):
     def __init__(self,
         batch_buffer: ArrayDict[Array],
         discount: float,
-        initial_count: Optional[float] = None
+        initial_count: float | None = None
     ) -> None:
         if isinstance(batch_buffer["reward"], Mapping):
             raise NotImplementedError("Not implemented for markov games, where"

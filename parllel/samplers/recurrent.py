@@ -1,11 +1,12 @@
-from typing import List, Optional, Sequence, Tuple
+from __future__ import annotations
+
+from typing import Sequence
 
 import numpy as np
 
-from parllel.buffers import Samples
-from parllel.buffers.utils import buffer_rotate
+from parllel import Array, ArrayDict
 from parllel.cages import Cage, TrajInfo
-from parllel.handlers import Handler
+from parllel.handlers import Agent
 from parllel.transforms import BatchTransform, StepTransform
 from parllel.types import BatchSpec
 
@@ -17,13 +18,13 @@ class RecurrentSampler(Sampler):
         self,
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
-        agent: Handler,
-        sample_buffer: Samples,
-        max_steps_decorrelate: Optional[int] = None,
+        agent: Agent,
+        sample_buffer: ArrayDict[Array],
+        max_steps_decorrelate: int | None = None,
         get_initial_rnn_state: bool = True,
         get_bootstrap_value: bool = False,
-        obs_transform: Optional[StepTransform] = None,
-        batch_transform: Optional[BatchTransform] = None,
+        obs_transform: StepTransform | None = None,
+        batch_transform: BatchTransform | None = None,
     ) -> None:
         """Generates samples for training recurrent agents."""
         super().__init__(
@@ -37,42 +38,32 @@ class RecurrentSampler(Sampler):
         for cage in envs:
             if cage.reset_automatically:
                 raise ValueError(
-                    "RecurrentSampler expects cages that do not reset "
-                    "environments until commanded to. Set "
-                    "`reset_automatically=False`."
+                    "Expected cages with`reset_automatically=False` for recurrent sampling."
                 )
 
         # verify that valid field exists
-        if not hasattr(sample_buffer.env, "valid"):
+        if "valid" not in sample_buffer:
             raise ValueError(
-                "RecurrentSampler expects a buffer field at "
-                "sample_buffer.env.valid. Please allocate this."
+                "Expected the sample buffer to have a `valid` element. Please allocate it."
             )
 
-        # verify that valid is a RotatingArray
+        # verify that valid has padding >= 1
         try:
             # try writing beyond the apparent bounds of the action buffer
-            sample_buffer.env.valid[batch_spec.T] = 0
+            sample_buffer["valid"][batch_spec.T] = 0
         except IndexError:
-            raise TypeError("sample_buffer.env.valid must be a " "RotatingArray")
+            raise ValueError("sample_buffer[`valid`] must have padding >= 1")
 
         # verify that initial_rnn_state field exists
-        if get_initial_rnn_state and not hasattr(
-            sample_buffer.agent, "initial_rnn_state"
-        ):
+        if get_initial_rnn_state and "initial_rnn_state" not in sample_buffer:
             raise ValueError(
-                "RecurrentSampler expects a buffer field at "
-                "sample_buffer.agent.initial_rnn_state. Please allocate this."
+                "Expected the sample buffer to have a `initial_rnn_state` element. Please allocate it."
             )
         self.get_initial_rnn_state = get_initial_rnn_state
 
-        if get_bootstrap_value and not hasattr(
-            self.sample_buffer.agent, "bootstrap_value"
-        ):
+        if get_bootstrap_value and "bootstrap_value" not in self.sample_buffer:
             raise ValueError(
-                "Requested bootstrap value from agent, but "
-                "sample_buffer.agent.bootstrap_value does not exist. Please "
-                "allocate it."
+                "Expected the sample buffer to have a `bootstrap_value` element. Please allocate it."
             )
         self.get_bootstrap_value = get_bootstrap_value
 
@@ -82,33 +73,30 @@ class RecurrentSampler(Sampler):
         # prepare cages for sampling
         self.reset()
 
-    def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
+    def collect_batch(
+        self,
+        elapsed_steps: int,
+    ) -> tuple[ArrayDict[Array], list[TrajInfo]]:
         # get references to buffer elements
-        action, agent_info = (
-            self.sample_buffer.agent.action,
-            self.sample_buffer.agent.agent_info,
-        )
-        observation, reward, done, terminated, truncated, env_info, valid = (
-            self.sample_buffer.env.observation,
-            self.sample_buffer.env.reward,
-            self.sample_buffer.env.done,
-            self.sample_buffer.env.terminated,
-            self.sample_buffer.env.truncated,
-            self.sample_buffer.env.env_info,
-            self.sample_buffer.env.valid,
-        )
+        action = self.sample_buffer["action"]
+        agent_info = self.sample_buffer["agent_info"]
+        observation = self.sample_buffer["observation"]
+        reward = self.sample_buffer["reward"]
+        done = self.sample_buffer["done"]
+        terminated = self.sample_buffer["terminated"]
+        truncated = self.sample_buffer["truncated"]
+        env_info = self.sample_buffer["env_info"]
+        valid = self.sample_buffer["valid"]
         sample_buffer = self.sample_buffer
 
         # rotate last values from previous batch to become previous values
-        buffer_rotate(sample_buffer)
+        sample_buffer.rotate()
 
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
 
         if self.get_initial_rnn_state:
-            self.agent.initial_rnn_state(
-                out_rnn_state=sample_buffer.agent.initial_rnn_state
-            )
+            sample_buffer["initial_rnn_state"][...] = self.agent.initial_rnn_state()
 
         # first time step is always valid, rest are invalid by default
         valid[0] = True
@@ -141,6 +129,7 @@ class RecurrentSampler(Sampler):
                     action[t, b],
                     out_obs=observation[t + 1, b],
                     out_reward=reward[t, b],
+                    out_done=done[t, b],
                     out_terminated=terminated[t, b],
                     out_truncated=truncated[t, b],
                     out_info=env_info[t, b],
@@ -151,16 +140,14 @@ class RecurrentSampler(Sampler):
 
             # calculate validity of samples in next time step
             # this might be required by the obs_transform
-            done[t] = np.logical_or(terminated[t], truncated[t])
             valid[t + 1] = np.logical_and(valid[t], np.logical_not(done[t]))
 
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
             # if environment is already done, this value is invalid, but then
             # it will be ignored anyway
-            self.agent.value(
-                observation[self.batch_spec.T],
-                out_value=sample_buffer.agent.bootstrap_value,
+            sample_buffer["bootstrap_value"][...] = self.agent.value(
+                self.sample_buffer["observation"][self.batch_spec.T]
             )
 
         # reset any environments that need reset in parallel

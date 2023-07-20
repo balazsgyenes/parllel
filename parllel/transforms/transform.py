@@ -28,7 +28,7 @@ class Compose(Transform):
              or all(isinstance(transform, StepTransform) for transform in transforms)):
              raise ValueError("Not allowed to mix StepTransforms and BatchTransforms")
 
-        self.transforms: Tuple[Transform] = tuple(transforms)
+        self.transforms = tuple(transforms)
 
     def __call__(self, batch_samples: ArrayDict[Array], *args, **kwargs) -> ArrayDict[Array]:
         for transform in self.transforms:

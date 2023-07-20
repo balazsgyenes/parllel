@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import cProfile
 from pathlib import Path
 import time
-from typing import List, Optional, Sequence, Tuple
+from typing import Sequence
 
 import numpy as np
 
-from parllel.buffers import Samples
+from parllel import Array, ArrayDict
 from parllel.cages import Cage, TrajInfo
 import parllel.logger as logger
 from parllel.types import BatchSpec
@@ -17,9 +19,9 @@ class ProfilingSampler(Sampler):
     def __init__(self,
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
-        sample_buffer: Samples,
+        sample_buffer: ArrayDict[Array],
         n_iterations: int,
-        profile_path: Optional[Path] = None,
+        profile_path: Path | None = None,
     ) -> None:
         super().__init__(
             batch_spec=batch_spec,
@@ -39,22 +41,20 @@ class ProfilingSampler(Sampler):
         # skip resetting agent
         pass
 
-    def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
+    def collect_batch(self, elapsed_steps: int) -> tuple[ArrayDict[Array], list[TrajInfo]]:
         raise NotImplementedError
 
     def time_batches(self):
         batch_T, batch_B = self.batch_spec
         durations = self.durations
 
-        action = self.sample_buffer.agent.action
-        observation, reward, done, terminated, truncated, env_info = (
-            self.sample_buffer.env.observation,
-            self.sample_buffer.env.reward,
-            self.sample_buffer.env.done,
-            self.sample_buffer.env.terminated,
-            self.sample_buffer.env.truncated,
-            self.sample_buffer.env.env_info,
-        )
+        action = self.sample_buffer["action"]
+        observation = self.sample_buffer["observation"]
+        reward = self.sample_buffer["reward"]
+        done = self.sample_buffer["done"]
+        terminated = self.sample_buffer["terminated"]
+        truncated = self.sample_buffer["truncated"]
+        env_info = self.sample_buffer["env_info"]
 
         if self.profiler is not None:
             self.profiler.enable()
@@ -72,6 +72,7 @@ class ProfilingSampler(Sampler):
                         action[t, b],
                         out_obs=observation[t + 1, b],
                         out_reward=reward[t, b],
+                        out_done=done[t, b],
                         out_terminated=terminated[t, b],
                         out_truncated=truncated[t, b],
                         out_info=env_info[t, b],
@@ -80,8 +81,6 @@ class ProfilingSampler(Sampler):
                 for b, env in enumerate(self.envs):
                     env.await_step()
 
-                done[t] = np.logical_or(terminated[t], truncated[t])
-                
                 end = time.perf_counter()
                 durations[t] = (end - start)
 

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from typing import List, Sequence
+from typing import Sequence
 
 import numpy as np
 
-from parllel.buffers import Samples
-from parllel.buffers.utils import buffer_rotate
+from parllel import Array, ArrayDict
 from parllel.cages import Cage, TrajInfo
-from parllel.handlers import Handler
+from parllel.handlers import Agent
 from parllel.transforms import StepTransform, Transform
 from parllel.types import BatchSpec
 
@@ -20,8 +19,8 @@ class EvalSampler(Sampler):
         max_traj_length: int,
         min_trajectories: int,
         envs: Sequence[Cage],
-        agent: Handler,
-        step_buffer: Samples,
+        agent: Agent,
+        step_buffer: ArrayDict[Array],
         obs_transform: StepTransform | Transform | None = None,
     ) -> None:
         for cage in envs:
@@ -45,27 +44,23 @@ class EvalSampler(Sampler):
         # prepare cages for sampling
         self.reset_envs()
 
-    def collect_batch(self, elapsed_steps: int) -> List[TrajInfo]:
+    def collect_batch(self, elapsed_steps: int) -> list[TrajInfo]:
         # get references to buffer elements
-        action, agent_info = (
-            self.sample_buffer.agent.action,
-            self.sample_buffer.agent.agent_info,
-        )
-        observation, reward, done, terminated, truncated, env_info = (
-            self.sample_buffer.env.observation,
-            self.sample_buffer.env.reward,
-            self.sample_buffer.env.done,
-            self.sample_buffer.env.terminated,
-            self.sample_buffer.env.truncated,
-            self.sample_buffer.env.env_info,
-        )
+        action = self.sample_buffer["action"]
+        agent_info = self.sample_buffer["agent_info"]
+        observation = self.sample_buffer["observation"]
+        reward = self.sample_buffer["reward"]
+        done = self.sample_buffer["done"]
+        terminated = self.sample_buffer["terminated"]
+        truncated = self.sample_buffer["truncated"]
+        env_info = self.sample_buffer["env_info"]
         sample_buffer = self.sample_buffer
 
         # reset all environments
         self.reset_envs()
 
         # rotate last values from previous batch to become previous values
-        buffer_rotate(sample_buffer)
+        sample_buffer.rotate()
 
         # prepare agent for sampling
         self.agent.eval_mode(elapsed_steps)
@@ -82,24 +77,22 @@ class EvalSampler(Sampler):
                 sample_buffer = self.obs_transform(sample_buffer, 0)
 
             # agent observes environment and outputs actions
-            self.agent.step(
-                observation[0], out_action=action[0], out_agent_info=agent_info[0]
-            )
+            action[...], agent_info[...] = self.agent.step(observation)
 
             for b, env in enumerate(self.envs):
                 env.step_async(
-                    action[0, b],
-                    out_obs=observation[0, b],
-                    out_reward=reward[0, b],
-                    out_terminated=terminated[0, b],
-                    out_truncated=truncated[0, b],
-                    out_info=env_info[0, b],
+                    action[b],
+                    out_obs=observation[b],
+                    out_reward=reward[b],
+                    out_done=done[b],
+                    out_terminated=terminated[b],
+                    out_truncated=truncated[b],
+                    out_info=env_info[b],
                 )
 
             for b, env in enumerate(self.envs):
                 env.await_step()
 
-            done[0] = np.logical_or(terminated[0], truncated[0])
             # if environment is done, reset agent
             # environment has already been reset inside cage
             if np.any(dones := done[0]):
