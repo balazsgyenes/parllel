@@ -25,14 +25,14 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
         items: DirtyArrayTree | Iterable[tuple[str, DirtyArrayTree]],
     ) -> None:
         # clean tree to ensure only leaf nodes or ArrayDicts
-        dict_: dict[str, ArrayTree] = dict(items)
-        for key, value in dict_.items():
+        dict_: dict[str, ArrayTree[ArrayType]] = {}
+        for key, value in dict(items).items():
             if isinstance(value, dict):
                 dict_[key] = ArrayDict(value)
 
         self._dict = dict_
 
-    def __getitem__(self, key: Any) -> ArrayTree:
+    def __getitem__(self, key: Any) -> ArrayTree[ArrayType]:
         if isinstance(key, str):
             return self._dict[key]
 
@@ -133,8 +133,8 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
 
 
 def to_ndarray(
-    leaf: Union[ArrayLike, None],
-) -> Union[np.ndarray, ArrayDict[np.ndarray], None]:
+    leaf: ArrayLike,
+) -> Union[np.ndarray, ArrayDict[np.ndarray]]:
     if leaf is None:
         return
     elif hasattr(leaf, "to_ndarray"):

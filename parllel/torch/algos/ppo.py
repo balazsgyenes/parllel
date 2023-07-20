@@ -14,6 +14,7 @@ import parllel.logger as logger
 from parllel.replays import BatchedDataLoader
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.agents.gaussian import GaussianPgAgent
+from parllel.torch.agents.pg import PgPrediction
 from parllel.torch.utils import valid_mean, explained_variance
 
 
@@ -116,12 +117,12 @@ class PPO(Algorithm):
         the ``agent.distribution`` to compute likelihoods and entropies.  Valid
         for feedforward or recurrent agents.
         """
-        agent_prediction = self.agent.predict(
+        agent_prediction: PgPrediction = self.agent.predict(
             batch["observation"],
             batch["agent_info"],
             batch["init_rnn_state"],
         )
-        dist_info, value = agent_prediction["dist_info"], agent_prediction["value"]
+        dist_info, value = agent_prediction.dist_info, agent_prediction.value
         dist = self.agent.distribution
         ratio = dist.likelihood_ratio(
             batch["action"],

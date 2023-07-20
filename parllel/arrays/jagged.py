@@ -6,14 +6,13 @@ from typing import Literal, TypeVar
 import numpy as np
 
 import parllel.logger as logger
+from parllel import ArrayDict
 from parllel.arrays.array import Array
 from parllel.arrays.indices import (Location, add_locations, index_slice,
                                     init_location)
 from parllel.arrays.managedmemory import ManagedMemoryArray
 from parllel.arrays.sharedmemory import SharedMemoryArray
-from parllel.buffers import NamedTuple, NamedTupleClass
 
-PointBatch = NamedTupleClass("PointBatch", ["pos", "ptr"])
 Self = TypeVar("Self", bound="JaggedArray")
 
 
@@ -295,13 +294,15 @@ class JaggedArray(Array, kind="jagged"):
         self._current_ptrs = current_ptrs  # save for consumption by to_ndarray
         return array
 
-    def to_ndarray(self) -> np.ndarray | NamedTuple:
+    def to_ndarray(self) -> ArrayDict[np.ndarray]:
         # TODO: hard-coded that JaggedArray is point/node positions
         # what about point/node features?
         data = self.__array__()
-        return PointBatch(
-            pos=data,
-            ptr=self._current_ptrs,  # updated during execution of __array__
+        return ArrayDict(
+            {
+                "pos": data,
+                "ptr": self._current_ptrs,  # updated during execution of __array__
+            }
         )
 
 

@@ -4,7 +4,7 @@ from typing import TypeVar, Union
 import numpy as np
 
 # A single index element, e.g. arr[3:6]
-Index = Union[int, slice, np.ndarray, type(Ellipsis)]
+Index = Union[int, slice, np.ndarray, type(Ellipsis), list[int]]
 StandardIndex = Union[int, slice, np.ndarray]
 BasicIndex = Union[int, slice]
 

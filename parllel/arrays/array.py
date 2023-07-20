@@ -4,10 +4,10 @@ from typing import Any, Literal, TypeVar
 
 import numpy as np
 
+from parllel import ArrayTree
 from parllel.arrays.indices import (Index, Location, add_locations,
                                     batch_dims_from_location, index_slice,
                                     init_location, shape_from_location)
-from parllel.buffers import NamedTuple
 
 Self = TypeVar("Self", bound="Array")
 
@@ -397,7 +397,7 @@ class Array:
             array = array.astype(dtype, copy=False)
         return array
 
-    def to_ndarray(self) -> np.ndarray | NamedTuple:
+    def to_ndarray(self) -> ArrayTree[np.ndarray]:
         return self.__array__()
 
     def __repr__(self) -> str:

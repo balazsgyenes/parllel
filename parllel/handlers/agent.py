@@ -1,28 +1,31 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from os import PathLike
-from typing import Union
 
-from parllel.buffers import Buffer, NamedTupleClass
-
-AgentStep = NamedTupleClass("AgentStep", ["action", "agent_info"])
+from parllel import Array, ArrayDict, ArrayLike, ArrayTree, Index
 
 
 class Agent(ABC):
     @abstractmethod
-    def step(self, observation: Buffer, *,
-             env_indices: Union[int, slice] = ...) -> AgentStep:
+    def step(
+        self,
+        observation: ArrayTree[Array],
+        *,
+        env_indices: Index = ...,
+    ) -> tuple[ArrayTree, ArrayDict]:
         raise NotImplementedError
 
-    def value(self, observation: Buffer) -> Buffer:
+    def value(self, observation: ArrayTree[Array]) -> ArrayLike:
         raise NotImplementedError
 
-    def initial_rnn_state(self) -> Buffer:
+    def initial_rnn_state(self) -> ArrayTree:
         raise NotImplementedError
 
     def reset(self) -> None:
         pass
 
-    def reset_one(self, env_index: int) -> None:
+    def reset_one(self, env_index: Index) -> None:
         pass
 
     def save_model(self, path: PathLike) -> None:

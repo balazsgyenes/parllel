@@ -1,14 +1,13 @@
-from parllel.buffers import NamedArrayTupleClass
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from torch import Tensor
+
+from parllel.torch.distributions.distribution import DistInfoType
 
 
-AgentInfo = NamedArrayTupleClass("PgAgentInfo", [
-    "dist_info",
-    "value",
-    "prev_action",
-])
-
-
-AgentPrediction = NamedArrayTupleClass("PgAgentPrediction", [
-    "dist_info",
-    "value",
-])
+@dataclass(frozen=True)
+class PgPrediction:
+    dist_info: DistInfoType
+    value: Tensor | None = None
