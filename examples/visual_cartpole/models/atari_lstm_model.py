@@ -98,11 +98,11 @@ class AtariLstmPgModel(nn.Module):
         output = self.head(lstm_out.view(T * B, -1))
 
         # form output values
-        prob = F.softmax(output[..., :-1], dim=-1)
+        probs = F.softmax(output[..., :-1], dim=-1)
         value = output[..., -1]
 
         # Restore leading dimensions: [T,B], [B], or [], as input.
-        prob, value = restore_leading_dims((prob, value), lead_dim, T, B)
+        probs, value = restore_leading_dims((probs, value), lead_dim, T, B)
         next_rnn_state = ArrayDict({"h": hn, "c": cn})
 
-        return ModelOutputs(prob=prob, value=value, next_rnn_state=next_rnn_state)
+        return ModelOutputs(probs=probs, value=value, next_rnn_state=next_rnn_state)

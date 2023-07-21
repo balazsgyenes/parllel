@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Mapping
+from typing import Generic, Mapping, TypeVar
 
 import torch
 from torch import Tensor
 
-from parllel import ArrayTree, DirtyArrayTree
+from parllel import ArrayTree
 from parllel.torch.utils import valid_mean
 
-DistInfoType = Mapping[str, ArrayTree[Tensor]]
+DistParamsType = TypeVar("DistParamsType")
+DistParamsTree = Mapping[str, ArrayTree[Tensor]]
 
 
-class Distribution(ABC):
+class Distribution(ABC, Generic[DistParamsType]):
     """Base distribution class.  Not all subclasses will implement all
     methods."""
 
@@ -24,11 +25,15 @@ class Distribution(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def sample(self, dist_info: DistInfoType) -> ArrayTree[Tensor]:
+    def sample(self, dist_params: DistParamsType) -> ArrayTree[Tensor]:
         """Generate random sample(s) from distribution informations."""
         raise NotImplementedError
 
-    def kl(self, old_dist_info: DistInfoType, new_dist_info: DistInfoType) -> Tensor:
+    def kl(
+        self,
+        old_dist_params: DistParamsTree,
+        new_dist_params: DistParamsTree,
+    ) -> Tensor:
         """
         Compute the KL divergence of two distributions at each datum; should
         maintain leading dimensions (e.g. [T,B]).
@@ -36,66 +41,69 @@ class Distribution(ABC):
         raise NotImplementedError
 
     def log_likelihood(
-        self, x: DirtyArrayTree[Tensor], /, dist_info: DistInfoType
+        self,
+        x: ArrayTree[Tensor],
+        /,
+        dist_params: DistParamsTree,
     ) -> Tensor:
         """
         Compute log-likelihood of samples ``x`` at distributions described in
-        ``dist_info`` (i.e. can have same leading dimensions [T, B]).
+        ``dist_params`` (i.e. can have same leading dimensions [T, B]).
         """
         raise NotImplementedError
 
     def likelihood_ratio(
         self,
-        x: DirtyArrayTree[Tensor],
+        x: ArrayTree[Tensor],
         /,
-        old_dist_info: DistInfoType,
-        new_dist_info: DistInfoType,
+        old_dist_params: DistParamsTree,
+        new_dist_params: DistParamsTree,
     ) -> Tensor:
         """
         Compute likelihood ratio of samples ``x`` at new distributions over
-        old distributions (usually ``new_dist_info`` is variable for
+        old distributions (usually ``new_dist_params`` is variable for
         differentiation); should maintain leading dimensions.
         """
         raise NotImplementedError
 
-    def entropy(self, dist_info: DistInfoType) -> Tensor:
+    def entropy(self, dist_params: DistParamsTree) -> Tensor:
         """
-        Compute entropy of distributions contained in ``dist_info``; should
+        Compute entropy of distributions contained in ``dist_params``; should
         maintain any leading dimensions.
         """
         raise NotImplementedError
 
     def mean_kl(
         self,
-        old_dist_info: DistInfoType,
-        new_dist_info: DistInfoType,
+        old_dist_params: DistParamsTree,
+        new_dist_params: DistParamsTree,
         valid: Tensor | None = None,
     ) -> Tensor:
         """Compute the mean KL divergence over a data batch, possible ignoring
         data marked as invalid.
         """
-        return valid_mean(self.kl(old_dist_info, new_dist_info), valid)
+        return valid_mean(self.kl(old_dist_params, new_dist_params), valid)
 
-    def perplexity(self, dist_info: DistInfoType) -> Tensor:
+    def perplexity(self, dist_params: DistParamsTree) -> Tensor:
         """Exponential of the entropy, maybe useful for logging."""
-        return torch.exp(self.entropy(dist_info))
+        return torch.exp(self.entropy(dist_params))
 
     def mean_entropy(
         self,
-        dist_info: DistInfoType,
+        dist_params: DistParamsTree,
         valid: Tensor | None = None,
     ) -> Tensor:
         """Compute the mean entropy over a data batch, possible ignoring
         data marked as invalid.
         """
-        return valid_mean(self.entropy(dist_info), valid)
+        return valid_mean(self.entropy(dist_params), valid)
 
     def mean_perplexity(
         self,
-        dist_info: DistInfoType,
+        dist_params: DistParamsTree,
         valid: Tensor | None = None,
     ) -> Tensor:
         """Compute the mean perplexity over a data batch, possible ignoring
         data marked as invalid.
         """
-        return valid_mean(self.perplexity(dist_info), valid)
+        return valid_mean(self.perplexity(dist_params), valid)

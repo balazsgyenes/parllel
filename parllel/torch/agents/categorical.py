@@ -1,22 +1,24 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import torch
 from torch import Tensor
 
 from parllel import Array, ArrayDict, ArrayTree, Index, dict_map
-from parllel.torch.distributions.categorical import Categorical
+from parllel.torch.distributions.categorical import Categorical, DistParams
 
 from .agent import TorchAgent
 from .pg import PgPrediction
 
 
 @dataclass(frozen=True)
-class ModelOutputs:
-    prob: Tensor
+class ModelOutputs(DistParams):
     value: Tensor | None = None
     next_rnn_state: Tensor | None = None
+
+
+DISTPARAMS_FIELDS = tuple(field.name for field in fields(DistParams))
 
 
 class CategoricalPgAgent(TorchAgent[torch.nn.Module, Categorical]):
@@ -99,8 +101,7 @@ class CategoricalPgAgent(TorchAgent[torch.nn.Module, Categorical]):
         model_outputs: ModelOutputs = self.model(*model_inputs)
 
         # sample action from distribution returned by policy
-        dist_info = {"prob": model_outputs.prob}
-        action = self.distribution.sample(dist_info)
+        action = self.distribution.sample(model_outputs)
 
         # value may be None
         value = model_outputs.value
@@ -115,7 +116,9 @@ class CategoricalPgAgent(TorchAgent[torch.nn.Module, Categorical]):
 
         agent_info = ArrayDict(
             {
-                "dist_info": dist_info,
+                "dist_params": {
+                    field: getattr(model_outputs, field) for field in DISTPARAMS_FIELDS
+                },
                 "value": value,
                 "previous_action": previous_action,
             }
@@ -154,6 +157,8 @@ class CategoricalPgAgent(TorchAgent[torch.nn.Module, Categorical]):
             model_inputs += (previous_action, init_rnn_state)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         return PgPrediction(
-            dist_info=ArrayDict({"prob": model_outputs.prob}),
+            dist_params=ArrayDict(
+                {field: getattr(model_outputs, field) for field in DISTPARAMS_FIELDS}
+            ),
             value=model_outputs.value,
         )

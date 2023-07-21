@@ -4,10 +4,10 @@ from dataclasses import dataclass
 
 from torch import Tensor
 
-from parllel.torch.distributions.distribution import DistInfoType
+from parllel.torch.distributions.distribution import DistParamsTree
 
 
 @dataclass(frozen=True)
 class PgPrediction:
-    dist_info: DistInfoType
+    dist_params: DistParamsTree
     value: Tensor | None = None

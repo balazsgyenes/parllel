@@ -122,12 +122,12 @@ class PPO(Algorithm):
             batch["agent_info"],
             batch["init_rnn_state"],
         )
-        dist_info, value = agent_prediction.dist_info, agent_prediction.value
+        dist_params, value = agent_prediction.dist_params, agent_prediction.value
         dist = self.agent.distribution
         ratio = dist.likelihood_ratio(
             batch["action"],
-            old_dist_info=batch["old_dist_info"],
-            new_dist_info=dist_info,
+            old_dist_params=batch["old_dist_params"],
+            new_dist_params=dist_params,
         )
         surr_1 = ratio * batch["advantage"]
         clipped_ratio = torch.clamp(ratio, 1.0 - self.ratio_clip, 1.0 + self.ratio_clip)
@@ -177,7 +177,7 @@ class PPO(Algorithm):
 
         value_loss = self.value_loss_coeff * valid_mean(value_error, batch["valid"])
 
-        entropy = dist.mean_entropy(dist_info, batch["valid"])
+        entropy = dist.mean_entropy(dist_params, batch["valid"])
         entropy_loss = -self.entropy_loss_coeff * entropy
 
         loss = pi_loss + value_loss + entropy_loss
@@ -196,16 +196,16 @@ class PPO(Algorithm):
                 )
                 return loss
 
-            perplexity = dist.mean_perplexity(dist_info, batch["valid"])
+            perplexity = dist.mean_perplexity(dist_params, batch["valid"])
 
             self.algo_log_info["loss"].append(loss.item())
             self.algo_log_info["policy_gradient_loss"].append(pi_loss.item())
             self.algo_log_info["approx_kl"].append(approx_kl_div.item())
             clip_fraction = ((ratio - 1).abs() > self.ratio_clip).float().mean().item()
             self.algo_log_info["clip_fraction"].append(clip_fraction)
-            if "log_std" in dist_info:
+            if "log_std" in dist_params:
                 self.algo_log_info["policy_log_std"].append(
-                    dist_info["log_std"].mean().item()
+                    dist_params["log_std"].mean().item()
                 )
             self.algo_log_info["entropy_loss"].append(entropy_loss.item())
             self.algo_log_info["entropy"].append(entropy.item())
@@ -229,7 +229,7 @@ def build_dataloader_buffer(
             "return_": sample_buffer["return_"],
             "advantage": sample_buffer["advantage"],
             "valid": sample_buffer["valid"] if recurrent else None,
-            "old_dist_info": sample_buffer["agent_info"]["dist_info"],
+            "old_dist_params": sample_buffer["agent_info"]["dist_params"],
             "old_values": sample_buffer["agent_info"]["value"],
             "init_rnn_state": sample_buffer["initial_rnn_state"] if recurrent else None,
         }

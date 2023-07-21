@@ -43,9 +43,9 @@ class CartPoleFfPgModel(nn.Module):
     def forward(self, observation):
         lead_dim, T, B, _ = infer_leading_dims(observation, 1)
 
-        prob = F.softmax(self.pi(observation.view(T * B, -1)), dim=-1)
+        probs = F.softmax(self.pi(observation.view(T * B, -1)), dim=-1)
         value = self.value(observation.view(T * B, -1)).squeeze(-1)
 
-        prob, value = restore_leading_dims((prob, value), lead_dim, T, B)
+        probs, value = restore_leading_dims((probs, value), lead_dim, T, B)
 
-        return ModelOutputs(prob=prob, value=value)
+        return ModelOutputs(probs=probs, value=value)

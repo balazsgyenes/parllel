@@ -1,23 +1,24 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import torch
 from torch import Tensor
 
 from parllel import Array, ArrayDict, ArrayTree, Index, dict_map
-from parllel.torch.distributions.gaussian import Gaussian
+from parllel.torch.distributions.gaussian import Gaussian, DistParams
 
 from .agent import TorchAgent
 from .pg import PgPrediction
 
 
 @dataclass(frozen=True)
-class ModelOutputs:
-    mean: Tensor
-    log_std: Tensor
+class ModelOutputs(DistParams):
     value: Tensor | None = None
     next_rnn_state: Tensor | None = None
+
+
+DISTPARAMS_FIELDS = tuple(field.name for field in fields(DistParams))
 
 
 class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
@@ -99,11 +100,7 @@ class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
         model_outputs: ModelOutputs = self.model(*model_inputs)
 
         # sample action from distribution returned by policy
-        dist_info = {
-            "mean": model_outputs.mean,
-            "log_std": model_outputs.log_std,
-        }
-        action = self.distribution.sample(dist_info)
+        action = self.distribution.sample(model_outputs)
 
         # value may be None
         value = model_outputs.value
@@ -118,7 +115,9 @@ class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
 
         agent_info = ArrayDict(
             {
-                "dist_info": dist_info,
+                "dist_params": {
+                    field: getattr(model_outputs, field) for field in DISTPARAMS_FIELDS
+                },
                 "value": value,
                 "previous_action": previous_action,
             }
@@ -155,11 +154,8 @@ class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
             model_inputs += (previous_action, init_rnn_state)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         return PgPrediction(
-            dist_info=ArrayDict(
-                {
-                    "mean": model_outputs.mean,
-                    "log_std": model_outputs.log_std,
-                },
+            dist_params=ArrayDict(
+                {field: getattr(model_outputs, field) for field in DISTPARAMS_FIELDS}
             ),
             value=model_outputs.value,
         )
