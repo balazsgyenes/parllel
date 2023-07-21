@@ -120,9 +120,7 @@ class RecurrentSampler(Sampler):
                 self.batch_samples = self.obs_transform(sample_buffer, t)
 
             # agent observes environment and outputs actions
-            self.agent.step(
-                observation[t], out_action=action[t], out_agent_info=agent_info[t]
-            )
+            action[t], agent_info[t] = self.agent.step(observation[t])
 
             for b, env in envs_to_step:
                 env.step_async(

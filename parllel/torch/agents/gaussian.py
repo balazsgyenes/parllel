@@ -150,7 +150,7 @@ class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
         if self.recurrent:
             # rnn_states were saved into the samples buffer as [B,N,H]
             # transform back [B,N,H] --> [N,B,H].
-            previous_action = agent_info["prev_action"]
+            previous_action = agent_info["previous_action"]
             init_rnn_state = init_rnn_state.transpose(0, 1).contiguous()
             model_inputs += (previous_action, init_rnn_state)
         model_outputs: ModelOutputs = self.model(*model_inputs)

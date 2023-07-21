@@ -20,9 +20,11 @@ class BatchedDataLoader(Generic[ArrayType]):
     algo expects them, abstracting the shuffling and sampling operations. Using
     the `apply_func` method, the all samples can be moved to the GPU at once.
     """
-    def __init__(self,
+
+    def __init__(
+        self,
         tree: ArrayDict,
-        sampler_batch_spec: BatchSpec, # TODO: can this be inferred?
+        sampler_batch_spec: BatchSpec,  # TODO: can this be inferred?
         n_batches: int,
         batch_only_fields: list[str] | None = None,
         recurrent: bool = False,
@@ -36,7 +38,7 @@ class BatchedDataLoader(Generic[ArrayType]):
         # TODO: maybe renamed sampler_batch_spec to leading_dims and just take tuple
         self.sampler_batch_spec = sampler_batch_spec
         self.recurrent = recurrent
-        self.shuffle  = shuffle
+        self.shuffle = shuffle
         self.drop_last = drop_last
 
         # If recurrent, use whole trajectories, only shuffle B; else shuffle all.
@@ -72,10 +74,13 @@ class BatchedDataLoader(Generic[ArrayType]):
     def __getitem__(self, location: Location) -> ArrayDict[ArrayType]:
         if not isinstance(location, tuple):
             location = (location,)
-        
+
         tree = self.tree
         if self.batch_only_fields:
-            batch_only_elems = {field: tree.pop(field) for field in self.batch_only_fields}
+            tree = ArrayDict(tree)  # create a shallow copy to avoid modifying self.tree
+            batch_only_elems = ArrayDict(
+                {field: tree.pop(field) for field in self.batch_only_fields}
+            )
         item = tree[location]
         if self.batch_only_fields:
             batch_only_item = batch_only_elems[location[1:]]

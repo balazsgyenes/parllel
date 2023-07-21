@@ -148,7 +148,7 @@ class CategoricalPgAgent(TorchAgent[torch.nn.Module, Categorical]):
         if self.recurrent:
             # rnn_states were saved into the samples buffer as [B,N,H]
             # transform back [B,N,H] --> [N,B,H].
-            previous_action = agent_info["prev_action"]
+            previous_action = agent_info["previous_action"]
             previous_action = self.distribution.to_onehot(previous_action)
             init_rnn_state = init_rnn_state.transpose(0, 1).contiguous()
             model_inputs += (previous_action, init_rnn_state)
