@@ -87,6 +87,9 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
     def __len__(self) -> int:
         return len(self._dict)
 
+    def __repr__(self) -> str:
+        return repr(self._dict)
+
     def __getattr__(self, name: str) -> ArrayAttrDict:
         try:
             return ArrayAttrDict(
@@ -105,6 +108,14 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
                         f"Attribute error in field '{field}' for attribute '{name}'"
                     ) from e
             raise e
+
+    def __getstate__(self) -> dict[str, Any]:
+        # define getstate and setstate explicitly so that pickle does not
+        # use getattr method, which results in a recursive loop
+        return self.__dict__.copy()
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
 
     @property
     def shape(self) -> tuple[int, ...]:
