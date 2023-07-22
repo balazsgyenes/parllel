@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Literal
 
 import numpy as np
 import torch
@@ -12,9 +13,7 @@ import parllel.logger as logger
 from parllel import Array, ArrayDict
 from parllel.algorithm import Algorithm
 from parllel.replays import BatchedDataLoader
-from parllel.torch.agents.categorical import CategoricalPgAgent
-from parllel.torch.agents.gaussian import GaussianPgAgent
-from parllel.torch.agents.pg import PgPrediction
+from parllel.torch.agents.pg import PgPrediction, PgAgent
 from parllel.torch.utils import explained_variance, valid_mean
 
 
@@ -32,7 +31,7 @@ class PPO(Algorithm):
 
     def __init__(
         self,
-        agent: CategoricalPgAgent | GaussianPgAgent,
+        agent: PgAgent,
         dataloader: BatchedDataLoader[Tensor],
         optimizer: Optimizer,
         learning_rate_scheduler: _LRScheduler | None,
@@ -41,7 +40,7 @@ class PPO(Algorithm):
         clip_grad_norm: float | None,
         epochs: int,
         ratio_clip: float,
-        value_clipping_mode: str,
+        value_clipping_mode: Literal["none", "ratio", "delta", "delta_max"],
         value_clip: float | None = None,
         kl_divergence_limit: float = np.inf,
         **kwargs,  # ignore additional arguments
@@ -57,8 +56,11 @@ class PPO(Algorithm):
         self.epochs = epochs
         self.ratio_clip = ratio_clip
         self.value_clipping_mode = value_clipping_mode
-        self.value_clip = value_clip
         self.kl_divergence_limit = kl_divergence_limit
+
+        if self.value_clipping_mode in ("ratio", "delta", "delta_max"):
+            assert value_clip is not None
+            self.value_clip = value_clip
 
         self.update_counter = 0
         self.early_stopping = False

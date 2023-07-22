@@ -7,10 +7,9 @@ from torch import Tensor
 from typing_extensions import NotRequired
 
 from parllel import Array, ArrayDict, ArrayTree, Index, dict_map
-from parllel.torch.distributions.gaussian import Gaussian, DistParams
+from parllel.torch.distributions.gaussian import DistParams, Gaussian
 
-from .agent import TorchAgent
-from .pg import PgPrediction
+from .pg import PgAgent, PgPrediction
 
 
 class ModelOutputs(TypedDict):
@@ -19,7 +18,7 @@ class ModelOutputs(TypedDict):
     next_rnn_state: NotRequired[ArrayTree[Tensor]]
 
 
-class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
+class GaussianPgAgent(PgAgent[torch.nn.Module, Gaussian]):
     """Agent for policy gradient algorithm using gaussian action distribution
     for continuous action spaces.
 

@@ -9,8 +9,7 @@ from typing_extensions import NotRequired
 from parllel import Array, ArrayDict, ArrayTree, Index, dict_map
 from parllel.torch.distributions.categorical import Categorical, DistParams
 
-from .agent import TorchAgent
-from .pg import PgPrediction
+from .pg import PgAgent, PgPrediction
 
 
 class ModelOutputs(TypedDict):
@@ -19,7 +18,7 @@ class ModelOutputs(TypedDict):
     next_rnn_state: NotRequired[ArrayTree[Tensor]]
 
 
-class CategoricalPgAgent(TorchAgent[torch.nn.Module, Categorical]):
+class CategoricalPgAgent(PgAgent[torch.nn.Module, Categorical]):
     """Agent for policy gradient algorithm using categorical action
     distribution for discrete action spaces.
 
