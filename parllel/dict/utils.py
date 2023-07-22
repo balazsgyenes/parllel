@@ -3,12 +3,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Callable, Iterable
 
-from parllel.dict import ArrayDict, ArrayLike, ArrayTree, ArrayType, DirtyArrayTree
+from parllel.dict import ArrayDict, ArrayLike, ArrayTree, ArrayType, MappingTree
 
 
 def dict_map(
     func: Callable[[ArrayType], Any],
-    tree: DirtyArrayTree[ArrayType],
+    tree: MappingTree[ArrayType],
     *args,
     **kwargs,
 ) -> ArrayTree:

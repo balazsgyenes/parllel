@@ -8,14 +8,14 @@ from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
+import parllel.logger as logger
 from parllel import Array, ArrayDict
 from parllel.algorithm import Algorithm
-import parllel.logger as logger
 from parllel.replays import BatchedDataLoader
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.agents.gaussian import GaussianPgAgent
 from parllel.torch.agents.pg import PgPrediction
-from parllel.torch.utils import valid_mean, explained_variance
+from parllel.torch.utils import explained_variance, valid_mean
 
 
 class PPO(Algorithm):
@@ -122,7 +122,7 @@ class PPO(Algorithm):
             batch["agent_info"],
             batch["init_rnn_state"],
         )
-        dist_params, value = agent_prediction.dist_params, agent_prediction.value
+        dist_params, value = agent_prediction["dist_params"], agent_prediction["value"]
         dist = self.agent.distribution
         ratio = dist.likelihood_ratio(
             batch["action"],

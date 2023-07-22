@@ -6,15 +6,23 @@ from typing import SupportsFloat, Union
 import gymnasium as gym
 import numpy as np
 
-ActionType = Union[np.ndarray, dict[str, np.ndarray]]
-ObsType = Union[np.ndarray, dict[str, np.ndarray]]
-RewardType = Union[SupportsFloat, np.ndarray, dict[str, np.ndarray]]
+from parllel import MappingTree
+
+ActionType = MappingTree[np.ndarray]
+ObsType = MappingTree[np.ndarray]
+RewardType = Union[SupportsFloat, MappingTree[np.ndarray]]
 DoneType = Union[bool, np.ndarray]
-EnvInfoType = dict
+EnvInfoType = MappingTree
 
 EnvStepType = tuple[ObsType, RewardType, DoneType, DoneType, DoneType, EnvInfoType]
 EnvRandomStepType = tuple[
-    ActionType, ObsType, RewardType, DoneType, DoneType, DoneType, EnvInfoType,
+    ActionType,
+    ObsType,
+    RewardType,
+    DoneType,
+    DoneType,
+    DoneType,
+    EnvInfoType,
 ]
 EnvResetType = tuple[ObsType, EnvInfoType]
 

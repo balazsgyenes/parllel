@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from typing import TypedDict
 
 import torch
 from torch import Tensor
+from typing_extensions import NotRequired
 
 from parllel import Array, ArrayDict, ArrayTree, Index, dict_map
 from parllel.torch.distributions.gaussian import Gaussian, DistParams
@@ -12,13 +13,10 @@ from .agent import TorchAgent
 from .pg import PgPrediction
 
 
-@dataclass(frozen=True)
-class ModelOutputs(DistParams):
-    value: Tensor | None = None
-    next_rnn_state: Tensor | None = None
-
-
-DISTPARAMS_FIELDS = tuple(field.name for field in fields(DistParams))
+class ModelOutputs(TypedDict):
+    dist_params: DistParams
+    value: NotRequired[Tensor]
+    next_rnn_state: NotRequired[ArrayTree[Tensor]]
 
 
 class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
@@ -78,8 +76,9 @@ class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
                 ) from e
 
         if self.recurrent:
+            assert "next_rnn_state" in model_outputs
             # store persistent agent state on device for next step
-            self.rnn_states = model_outputs.next_rnn_state
+            self.rnn_states = model_outputs["next_rnn_state"]
             self.previous_action = example_action
 
     @torch.no_grad()
@@ -100,24 +99,26 @@ class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
         model_outputs: ModelOutputs = self.model(*model_inputs)
 
         # sample action from distribution returned by policy
-        action = self.distribution.sample(model_outputs)
+        dist_params = model_outputs["dist_params"]
+        action = self.distribution.sample(dist_params)
 
         # value may be None
-        value = model_outputs.value
+        value = model_outputs["value"]
 
         if self.recurrent:
+            assert "next_rnn_state" in model_outputs
             # overwrite saved rnn_state and action as inputs to next step
             previous_action = self._advance_states(
-                model_outputs.next_rnn_state, action, env_indices
+                model_outputs["next_rnn_state"],
+                action,
+                env_indices,
             )
         else:
             previous_action = None
 
         agent_info = ArrayDict(
             {
-                "dist_params": {
-                    field: getattr(model_outputs, field) for field in DISTPARAMS_FIELDS
-                },
+                "dist_params": dist_params,
                 "value": value,
                 "previous_action": previous_action,
             }
@@ -135,7 +136,8 @@ class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
             rnn_states, previous_action = self._get_states(...)
             model_inputs += (previous_action, rnn_states)
         model_outputs: ModelOutputs = self.model(*model_inputs)
-        value = model_outputs.value
+        assert "value" in model_outputs
+        value = model_outputs["value"]
         return value.cpu()
 
     def predict(
@@ -147,15 +149,11 @@ class GaussianPgAgent(TorchAgent[torch.nn.Module, Gaussian]):
         """Performs forward pass on training data, for algorithm."""
         model_inputs = (observation,)
         if self.recurrent:
+            assert init_rnn_state is not None
+            previous_action = agent_info["previous_action"]
             # rnn_states were saved into the samples buffer as [B,N,H]
             # transform back [B,N,H] --> [N,B,H].
-            previous_action = agent_info["previous_action"]
             init_rnn_state = init_rnn_state.transpose(0, 1).contiguous()
             model_inputs += (previous_action, init_rnn_state)
         model_outputs: ModelOutputs = self.model(*model_inputs)
-        return PgPrediction(
-            dist_params=ArrayDict(
-                {field: getattr(model_outputs, field) for field in DISTPARAMS_FIELDS}
-            ),
-            value=model_outputs.value,
-        )
+        return model_outputs

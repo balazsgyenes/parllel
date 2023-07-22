@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Mapping, SupportsFloat
+from typing import SupportsFloat, TypedDict
 
 import numpy as np
 import torch
@@ -9,17 +8,14 @@ from torch import Tensor
 
 from .distribution import Distribution
 
-
-DistParamsTree = Mapping[str, Tensor]
 MIN_LOG_STD = -20.0
 MAX_LOG_STD = 2.0
 EPS = 1e-8
 
 
-@dataclass(frozen=True)
-class DistParams:
+class DistParams(TypedDict):
     mean: Tensor
-    log_std: Tensor    
+    log_std: Tensor
 
 
 class Gaussian(Distribution[DistParams]):
@@ -67,9 +63,9 @@ class Gaussian(Distribution[DistParams]):
         ``dist_params.mean``. Uses ``self.std`` unless it is ``None``, then uses
         ``dist_params.log_std``.
         """
-        mean = dist_params.mean
+        mean = dist_params["mean"]
         if self.std is None:
-            log_std = dist_params.log_std
+            log_std = dist_params["log_std"]
             if self.min_log_std is not None or self.max_log_std is not None:
                 log_std = torch.clamp(
                     log_std, min=self.min_log_std, max=self.max_log_std
@@ -89,7 +85,7 @@ class Gaussian(Distribution[DistParams]):
         # sample = dist.rsample()
         return sample
 
-    def kl(self, old_dist_params: DistParamsTree, new_dist_params: DistParamsTree) -> Tensor:
+    def kl(self, old_dist_params: DistParams, new_dist_params: DistParams) -> Tensor:
         old_mean = old_dist_params["mean"]
         new_mean = new_dist_params["mean"]
         # Formula: {[(m1 - m2)^2 + (s1^2 - s2^2)] / (2*s2^2)} + ln(s1/s2)
@@ -114,7 +110,7 @@ class Gaussian(Distribution[DistParams]):
             vals = num / den
         return torch.sum(vals, dim=-1)
 
-    def log_likelihood(self, x: Tensor, /, dist_params: DistParamsTree) -> Tensor:
+    def log_likelihood(self, x: Tensor, /, dist_params: DistParams) -> Tensor:
         """Uses ``self.std`` unless that is None, then uses log_std from
         dist_params.
         """
@@ -139,8 +135,8 @@ class Gaussian(Distribution[DistParams]):
         self,
         x: Tensor,
         /,
-        old_dist_params: DistParamsTree,
-        new_dist_params: DistParamsTree,
+        old_dist_params: DistParams,
+        new_dist_params: DistParams,
     ) -> Tensor:
         if self.std is None:
             # L_n/L_o = s_o/s_n * exp(-1/2 * (z_n^2 - z_o^2))
@@ -172,7 +168,7 @@ class Gaussian(Distribution[DistParams]):
 
         return torch.sum(ratios, dim=-1)
 
-    def entropy(self, dist_params: DistParamsTree) -> Tensor:
+    def entropy(self, dist_params: DistParams) -> Tensor:
         """Uses ``self.std`` unless that is None, then will get log_std from
         dist_params.
         """

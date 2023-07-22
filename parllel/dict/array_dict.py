@@ -7,7 +7,7 @@ from typing import Any, Callable, Generic, Iterable, Iterator, Union
 
 import numpy as np
 
-from parllel.dict import ArrayLike, ArrayTree, ArrayType, DirtyArrayTree
+from parllel.dict import ArrayLike, ArrayTree, ArrayType, MappingTree
 
 
 class ArrayDict(MutableMapping, Generic[ArrayType]):
@@ -22,15 +22,15 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
 
     def __init__(
         self,
-        items: DirtyArrayTree | Iterable[tuple[str, DirtyArrayTree]],
+        items: MappingTree | Iterable[tuple[str, MappingTree]],
     ) -> None:
         # clean tree to ensure only leaf nodes or ArrayDicts
-        dict_: dict[str, ArrayTree[ArrayType]] = dict(items)
+        dict_ = dict(items)
         for key, value in dict_.items():
             if isinstance(value, dict):
                 dict_[key] = ArrayDict(value)
 
-        self._dict = dict_
+        self._dict: dict[str, ArrayTree[ArrayType]] = dict_
 
     def __getitem__(self, key: Any) -> ArrayTree[ArrayType]:
         if isinstance(key, str):
@@ -50,7 +50,7 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
                         f"Index error in field '{field}' for index '{key}'"
                     ) from e
 
-    def __setitem__(self, key: Any, value: DirtyArrayTree | Any) -> None:
+    def __setitem__(self, key: Any, value: Any) -> None:
         if isinstance(key, str):
             self._dict[key] = value
             return

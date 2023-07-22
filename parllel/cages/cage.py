@@ -6,7 +6,7 @@ from typing import Any, Callable, Mapping
 import gymnasium as gym
 import numpy as np
 
-from parllel import Array, ArrayLike, ArrayTree, DirtyArrayTree, dict_map
+from parllel import Array, ArrayLike, ArrayTree, MappingTree, dict_map
 
 from .collections import (EnvInfoType, EnvRandomStepType, EnvSpaces,
                           EnvStepType, ObsType)
@@ -80,7 +80,7 @@ class Cage(ABC):
 
     def _step_env(
         self,
-        action: ArrayTree[Array] | DirtyArrayTree[ArrayLike],
+        action: ArrayTree[Array] | MappingTree[ArrayLike],
     ) -> EnvStepType:
         # if rendering, render before step is taken so that the renderings
         # line up with the corresponding observation
@@ -102,7 +102,7 @@ class Cage(ABC):
         return obs, reward, done, terminated, truncated, env_info
 
     def _random_step_env(self) -> EnvRandomStepType:
-        action = self._env.action_space.sample()
+        action: MappingTree[np.ndarray] = self._env.action_space.sample()
 
         obs, reward, done, terminated, truncated, env_info = self._step_env(action)
 

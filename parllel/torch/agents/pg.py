@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from typing import TypedDict
 
 from torch import Tensor
+from typing_extensions import NotRequired
 
-from parllel.torch.distributions.distribution import DistParamsTree
+from parllel import MappingTree
 
 
-@dataclass(frozen=True)
-class PgPrediction:
-    dist_params: DistParamsTree
-    value: Tensor | None = None
+class PgPrediction(TypedDict):
+    dist_params: MappingTree
+    value: NotRequired[Tensor]

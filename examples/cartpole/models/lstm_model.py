@@ -8,7 +8,7 @@ from gymnasium import spaces
 from torch import Tensor, nn
 
 from parllel import ArrayDict
-from parllel.torch.agents.categorical import ModelOutputs
+from parllel.torch.agents.categorical import DistParams, ModelOutputs
 from parllel.torch.models import MlpModel
 from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 
@@ -86,4 +86,8 @@ class CartPoleLstmPgModel(nn.Module):
         # Model should always leave B-dimension in rnn state: [N,B,H]
         next_rnn_state = ArrayDict({"h": hn, "c": cn})
 
-        return ModelOutputs(probs=probs, value=value, next_rnn_state=next_rnn_state)
+        return ModelOutputs(
+            dist_params=DistParams(probs=probs),
+            value=value,
+            next_rnn_state=next_rnn_state,
+        )

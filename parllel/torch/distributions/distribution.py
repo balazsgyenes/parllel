@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Generic, Mapping, TypeVar
+from typing import Generic, TypeVar
 
 import torch
 from torch import Tensor
 
-from parllel import ArrayTree
+from parllel import ArrayTree, MappingTree
 from parllel.torch.utils import valid_mean
 
-DistParamsType = TypeVar("DistParamsType")
-DistParamsTree = Mapping[str, ArrayTree[Tensor]]
+DistParamsType = TypeVar("DistParamsType", bound=MappingTree)
 
 
 class Distribution(ABC, Generic[DistParamsType]):
@@ -31,8 +30,8 @@ class Distribution(ABC, Generic[DistParamsType]):
 
     def kl(
         self,
-        old_dist_params: DistParamsTree,
-        new_dist_params: DistParamsTree,
+        old_dist_params: DistParamsType,
+        new_dist_params: DistParamsType,
     ) -> Tensor:
         """
         Compute the KL divergence of two distributions at each datum; should
@@ -44,7 +43,7 @@ class Distribution(ABC, Generic[DistParamsType]):
         self,
         x: ArrayTree[Tensor],
         /,
-        dist_params: DistParamsTree,
+        dist_params: DistParamsType,
     ) -> Tensor:
         """
         Compute log-likelihood of samples ``x`` at distributions described in
@@ -56,8 +55,8 @@ class Distribution(ABC, Generic[DistParamsType]):
         self,
         x: ArrayTree[Tensor],
         /,
-        old_dist_params: DistParamsTree,
-        new_dist_params: DistParamsTree,
+        old_dist_params: DistParamsType,
+        new_dist_params: DistParamsType,
     ) -> Tensor:
         """
         Compute likelihood ratio of samples ``x`` at new distributions over
@@ -66,7 +65,7 @@ class Distribution(ABC, Generic[DistParamsType]):
         """
         raise NotImplementedError
 
-    def entropy(self, dist_params: DistParamsTree) -> Tensor:
+    def entropy(self, dist_params: DistParamsType) -> Tensor:
         """
         Compute entropy of distributions contained in ``dist_params``; should
         maintain any leading dimensions.
@@ -75,8 +74,8 @@ class Distribution(ABC, Generic[DistParamsType]):
 
     def mean_kl(
         self,
-        old_dist_params: DistParamsTree,
-        new_dist_params: DistParamsTree,
+        old_dist_params: DistParamsType,
+        new_dist_params: DistParamsType,
         valid: Tensor | None = None,
     ) -> Tensor:
         """Compute the mean KL divergence over a data batch, possible ignoring
@@ -84,13 +83,13 @@ class Distribution(ABC, Generic[DistParamsType]):
         """
         return valid_mean(self.kl(old_dist_params, new_dist_params), valid)
 
-    def perplexity(self, dist_params: DistParamsTree) -> Tensor:
+    def perplexity(self, dist_params: DistParamsType) -> Tensor:
         """Exponential of the entropy, maybe useful for logging."""
         return torch.exp(self.entropy(dist_params))
 
     def mean_entropy(
         self,
-        dist_params: DistParamsTree,
+        dist_params: DistParamsType,
         valid: Tensor | None = None,
     ) -> Tensor:
         """Compute the mean entropy over a data batch, possible ignoring
@@ -100,7 +99,7 @@ class Distribution(ABC, Generic[DistParamsType]):
 
     def mean_perplexity(
         self,
-        dist_params: DistParamsTree,
+        dist_params: DistParamsType,
         valid: Tensor | None = None,
     ) -> Tensor:
         """Compute the mean perplexity over a data batch, possible ignoring
