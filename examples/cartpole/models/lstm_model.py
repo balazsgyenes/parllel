@@ -71,7 +71,8 @@ class CartPoleLstmPgModel(nn.Module):
         )
 
         # convert array dict to tuple
-        # TODO: verify correct order of rnn state values
+        # order is guaranteed by insertion order, defined in creation of
+        # next_rnn_state ArrayDict at the end of this method
         rnn_state = tuple(rnn_state.values()) if rnn_state is not None else None
         lstm_out, (hn, cn) = self.lstm(lstm_input, rnn_state)
 

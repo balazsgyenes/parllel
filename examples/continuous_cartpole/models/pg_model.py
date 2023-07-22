@@ -16,7 +16,7 @@ class GaussianCartPoleFfPgModel(nn.Module):
     def __init__(
         self,
         obs_space: spaces.Box,
-        action_space: spaces.Discrete,
+        action_space: spaces.Box,
         hidden_sizes: int | Sequence[int] | None,
         hidden_nonlinearity: str,
         mu_nonlinearity: str | None,

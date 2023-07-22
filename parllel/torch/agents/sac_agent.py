@@ -1,27 +1,24 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
+from typing import TypedDict
 
 import torch
 from torch import Tensor
 
 import parllel.logger as logger
 from parllel import Array, ArrayDict, ArrayTree, Index, dict_map
-from parllel.torch.agents.agent import TorchAgent
-from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
+from parllel.torch.distributions.squashed_gaussian import SquashedGaussian, DistParams
 from parllel.torch.utils import update_state_dict
 
-
-@dataclass(frozen=True)
-class PiModelOutputs:
-    mean: Tensor
-    log_std: Tensor
+from .agent import TorchAgent
 
 
-@dataclass(frozen=True)
-class QModelOutputs:
-    q_value: torch.Tensor
+PiModelOutputs = DistParams
+
+
+class QModelOutputs(TypedDict):
+    q_value: Tensor
 
 
 class SacAgent(TorchAgent[torch.nn.ModuleDict, SquashedGaussian]):
@@ -54,12 +51,12 @@ class SacAgent(TorchAgent[torch.nn.ModuleDict, SquashedGaussian]):
         observation: ArrayTree[Array],
         *,
         env_indices: Index = ...,
-    ) -> tuple[ArrayTree[Tensor], ArrayDict[Tensor]]:
+    ) -> tuple[Tensor, ArrayDict[Tensor]]:
         observation = observation.to_ndarray()
         observation = dict_map(torch.from_numpy, observation)
         observation = observation.to(device=self.device)
-        dist_info: PiModelOutputs = self.model["pi"](observation)
-        action = self.distribution.sample(dist_info)
+        dist_params: PiModelOutputs = self.model["pi"](observation)
+        action = self.distribution.sample(dist_params)
         return action.cpu(), ArrayDict({})
 
     def q(
@@ -71,7 +68,7 @@ class SacAgent(TorchAgent[torch.nn.ModuleDict, SquashedGaussian]):
         (with grad)."""
         q1: QModelOutputs = self.model["q1"](observation, action)
         q2: QModelOutputs = self.model["q2"](observation, action)
-        return q1.q_value, q2.q_value
+        return q1["q_value"], q2["q_value"]
 
     def target_q(
         self,
@@ -82,19 +79,19 @@ class SacAgent(TorchAgent[torch.nn.ModuleDict, SquashedGaussian]):
         action."""
         target_q1: QModelOutputs = self.model["target_q1"](observation, action)
         target_q2: QModelOutputs = self.model["target_q2"](observation, action)
-        return target_q1.q_value, target_q2.q_value
+        return target_q1["q_value"], target_q2["q_value"]
 
     def pi(
         self,
         observation: ArrayTree[Tensor],
-    ) -> tuple[Tensor, Tensor, PiModelOutputs]:
+    ) -> tuple[Tensor, Tensor]:
         """Compute action log-probabilities for state/observation, and
         sample new action (with grad).  Uses special ``sample_loglikelihood()``
         method of Gaussian distriution, which handles action squashing
         through this process."""
-        dist_info: PiModelOutputs = self.model["pi"](observation)
-        action, log_pi = self.distribution.sample_loglikelihood(dist_info)
-        return action, log_pi, dist_info
+        dist_params: PiModelOutputs = self.model["pi"](observation)
+        action, log_pi = self.distribution.sample_loglikelihood(dist_params)
+        return action, log_pi
 
     def freeze_q_models(self, freeze: bool) -> None:
         self.model["q1"].requires_grad_(not freeze)

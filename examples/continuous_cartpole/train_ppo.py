@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
+from gymnasium import spaces
 import hydra
 import torch
 import wandb
@@ -46,14 +47,17 @@ def build(config: DictConfig) -> OnPolicyRunner:
         batch_spec=batch_spec,
         parallel=parallel,
     )
+    obs_space, action_space = metadata.obs_space, metadata.action_space
+    assert isinstance(obs_space, spaces.Box)
+    assert isinstance(action_space, spaces.Box)
 
     # instantiate model
     model = GaussianCartPoleFfPgModel(
-        obs_space=metadata.obs_space,
-        action_space=metadata.action_space,
+        obs_space=obs_space,
+        action_space=action_space,
         **config["model"],
     )
-    distribution = Gaussian(dim=metadata.action_space.shape)
+    distribution = Gaussian(dim=action_space.shape[0])
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)
     device = torch.device(device)

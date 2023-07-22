@@ -3,27 +3,23 @@ from datetime import datetime
 import itertools
 import multiprocessing as mp
 from pathlib import Path
-from typing import Dict
 
+from gymnasium import spaces
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch
 import wandb
 
-from parllel import Array
 from parllel.cages import TrajInfo
-from parllel.dict import dict_map
 import parllel.logger as logger
 from parllel.logger import Verbosity
-from parllel.patterns import (build_cages_and_env_buffers, build_eval_sampler)
+from parllel.patterns import (build_cages_and_env_buffers, build_eval_sampler, add_agent_info)
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.algos.sac import SAC, build_replay_buffer
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
-from parllel.torch.handler import TorchHandler
-from parllel.torch.utils import buffer_to_device, torchify_buffer
 from parllel.types import BatchSpec
 
 from envs.continuous_cartpole import build_cartpole
@@ -31,7 +27,7 @@ from models.sac_q_and_pi import QMlpModel, PiMlpModel
 
 
 @contextmanager
-def build(config: Dict) -> OffPolicyRunner:
+def build(config: DictConfig) -> OffPolicyRunner:
 
     parallel = config["parallel"]
     batch_spec = BatchSpec(
@@ -40,7 +36,7 @@ def build(config: Dict) -> OffPolicyRunner:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    cages, batch_buffer = build_cages_and_env_buffers(
+    cages, sample_tree, metadata = build_cages_and_env_buffers(
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
@@ -49,9 +45,9 @@ def build(config: Dict) -> OffPolicyRunner:
         parallel=parallel,
         full_size=config["algo"]["replay_length"],
     )
-
-    spaces = cages[0].spaces
-    obs_space, action_space = spaces.observation, spaces.action
+    obs_space, action_space = metadata.obs_space, metadata.action_space
+    assert isinstance(obs_space, spaces.Box)
+    assert isinstance(action_space, spaces.Box)
 
     # instantiate models
     pi_model = PiMlpModel(
@@ -89,33 +85,17 @@ def build(config: Dict) -> OffPolicyRunner:
         device=device,
         learning_starts=config["algo"]["learning_starts"],
     )
-    agent = TorchHandler(agent=agent)
-
-    # write dict into namedarraytuple and read it back out. this ensures the
-    # example is in a standard format (i.e. namedarraytuple).
-    batch_buffer["observation"][0] = obs_space.sample()
-    example_obs = batch_buffer["observation"][0]
-
-    # get example output from agent
-    _, agent_info = agent.step(example_obs)
-
-    # allocate batch buffer based on examples
-    batch_buffer["agent_info"] = dict_map(
-        Array.from_numpy,
-        agent_info[0],
-        batch_shape=tuple(batch_spec),
-    )
 
     sampler = BasicSampler(
         batch_spec=batch_spec,
         envs=cages,
         agent=agent,
-        sample_buffer=batch_buffer,
+        sample_buffer=sample_tree,
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=False,
     )
 
-    replay_buffer = build_replay_buffer(batch_buffer)
+    replay_buffer = build_replay_buffer(sample_tree)
     # because we are only using standard Array types which behave the same as
     # torch Tensors, we can torchify the entire replay buffer here instead of
     # doing it for each batch individually
@@ -129,7 +109,7 @@ def build(config: Dict) -> OffPolicyRunner:
         replay_batch_size=config["algo"]["batch_size"],
         newest_n_samples_invalid=0,
         oldest_n_samples_invalid=1,
-        batch_transform=lambda x: buffer_to_device(x, device=device),
+        batch_transform=lambda tree: tree.to(device=device),
     )
 
     optimizers = {
@@ -157,8 +137,8 @@ def build(config: Dict) -> OffPolicyRunner:
         **config["algo"],
     )
 
-    eval_sampler, step_buffer = build_eval_sampler(
-        samples_buffer=batch_buffer,
+    eval_sampler, eval_sample_tree = build_eval_sampler(
+        sample_tree=sample_tree,
         agent=agent,
         CageCls=type(cages[0]),
         EnvClass=build_cartpole,
@@ -185,13 +165,13 @@ def build(config: Dict) -> OffPolicyRunner:
         eval_sampler.close()
         for cage in eval_cages:
             cage.close()
-        buffer_method(step_buffer, "close")
+        eval_sample_tree.close()
     
         sampler.close()
         agent.close()
         for cage in cages:
             cage.close()
-        buffer_method(batch_buffer, "close")
+        sample_tree.close()
     
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_sac")

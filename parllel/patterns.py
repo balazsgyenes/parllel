@@ -362,8 +362,8 @@ def build_eval_sampler(
     eval_tree_example = ArrayDict(
         {key: sample_tree[key] for key in eval_tree_keys},
     )
-    # create a new buffer with leading dimensions (B_eval,)
-    eval_sample_tree = eval_tree_example.new_array(batch_shape=(n_eval_envs,))
+    # create a new buffer with leading dimensions (1, B_eval)
+    eval_sample_tree = eval_tree_example.new_array(batch_shape=(1, n_eval_envs,))
 
     eval_cage_kwargs = dict(
         EnvClass=EnvClass,

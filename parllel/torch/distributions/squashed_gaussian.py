@@ -3,7 +3,7 @@ from typing import SupportsFloat
 import torch
 from torch import Tensor
 
-from parllel.torch.distributions.gaussian import DistInfoType, Gaussian
+from .gaussian import DistParams, Gaussian
 
 EPS = 1e-8
 
@@ -18,17 +18,17 @@ class SquashedGaussian(Gaussian):
         super().__init__(*args, **kwargs)
         self.scale = scale
 
-    def sample(self, dist_info: DistInfoType) -> Tensor:
+    def sample(self, dist_params: DistParams) -> Tensor:
         """
         Generate random samples using ``torch.normal``, from
-        ``dist_info.mean``. Uses ``self.std`` unless it is ``None``, then uses
-        ``dist_info.log_std``.
+        ``dist_params["mean"]``. Uses ``self.std`` unless it is ``None``, then uses
+        ``dist_params["log_std"]``.
         """
-        sample = super().sample(dist_info)
+        sample = super().sample(dist_params)
         sample = self.scale * torch.tanh(sample)
         return sample
 
-    def sample_loglikelihood(self, dist_info: DistInfoType) -> tuple[Tensor, Tensor]:
+    def sample_loglikelihood(self, dist_params: DistParams) -> tuple[Tensor, Tensor]:
         """Special method for use with SAC algorithm, which efficiently
         computes a new sampled action and its log-likelihood for optimization
         use. The log-likelihood requires the unsquashed sample, so instead of
@@ -41,10 +41,10 @@ class SquashedGaussian(Gaussian):
             paper).
         """
         # sample unsquashed Gaussian distribution
-        sample = super().sample(dist_info)
+        sample = super().sample(dist_params)
 
         # compute log likelihood of unsquashed sample
-        logli = super().log_likelihood(sample, dist_info)
+        logli = super().log_likelihood(sample, dist_params)
 
         # squash sample and add correction to log likelihood
         tanh_x = torch.tanh(sample)
@@ -56,13 +56,13 @@ class SquashedGaussian(Gaussian):
 
         return sample, logli
 
-    def kl(self, old_dist_info: DistInfoType, new_dist_info: DistInfoType) -> Tensor:
+    def kl(self, old_dist_info: DistParams, new_dist_info: DistParams) -> Tensor:
         raise NotImplementedError
 
-    def entropy(self, dist_info: DistInfoType) -> Tensor:
+    def entropy(self, dist_params: DistParams) -> Tensor:
         raise NotImplementedError
 
-    def log_likelihood(self, indexes: Tensor, /, dist_info: DistInfoType) -> Tensor:
+    def log_likelihood(self, indexes: Tensor, /, dist_params: DistParams) -> Tensor:
         # TODO: an implementation for this exists in SB3, even though it's not
         # very efficient
         raise NotImplementedError
@@ -71,8 +71,8 @@ class SquashedGaussian(Gaussian):
         self,
         indexes: Tensor,
         /,
-        old_dist_info: DistInfoType,
-        new_dist_info: DistInfoType,
+        old_dist_info: DistParams,
+        new_dist_info: DistParams,
     ) -> Tensor:
         raise NotImplementedError
 

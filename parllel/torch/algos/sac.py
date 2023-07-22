@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from collections import defaultdict
-from typing import Dict, List, Union
 
 import torch
+from torch import Tensor
 
 from parllel import Array, ArrayDict
 from parllel.algorithm import Algorithm
@@ -18,8 +20,8 @@ class SAC(Algorithm):
     def __init__(self,
         batch_spec: BatchSpec,
         agent: SacAgent,
-        replay_buffer: ReplayBuffer,
-        optimizers: Dict[str, torch.optim.Optimizer],
+        replay_buffer: ReplayBuffer[ArrayDict[Tensor]],
+        optimizers: dict[str, torch.optim.Optimizer],
         discount: float,
         learning_starts: int,
         replay_ratio: int,  # data_consumption / data_generation
@@ -56,7 +58,7 @@ class SAC(Algorithm):
     def optimize_agent(self,
         elapsed_steps: int,
         samples: ArrayDict[Array],
-    ) -> Dict[str, Union[int, List[float]]]:
+    ) -> dict[str, int | list[float]]:
         """
         Extracts the needed fields from input samples and stores them in the 
         replay buffer.  Then samples from the replay buffer to train the agent
@@ -75,9 +77,9 @@ class SAC(Algorithm):
 
             # get a random batch of samples from the replay buffer and move them
             # to the GPU
-            samples = self.replay_buffer.sample_batch()
+            replay_samples = self.replay_buffer.sample_batch()
 
-            self.train_once(samples)            
+            self.train_once(replay_samples)            
 
             self.update_counter += 1
             if self.update_counter % self.target_update_interval == 0:
@@ -87,7 +89,7 @@ class SAC(Algorithm):
 
         return self.algo_log_info
 
-    def train_once(self, samples: ArrayDict[torch.Tensor]) -> None:
+    def train_once(self, samples: ArrayDict[Tensor]) -> None:
         """
         Computes losses for twin Q-values against the min of twin target Q-values
         and an entropy term.  Computes reparameterized policy loss, and loss for
@@ -99,12 +101,12 @@ class SAC(Algorithm):
         # r + gamma * (1 - d) * (min Q_targ(s', a') - alpha * log pi(s', a'))
         # where a' ~ pi(.|s')
         with torch.no_grad():
-            next_action, next_log_prob, _ = self.agent.pi(samples.next_observation)
-            target_q1, target_q2 = self.agent.target_q(samples.next_observation, next_action)
+            next_action, next_log_prob = self.agent.pi(samples["next_observation"])
+            target_q1, target_q2 = self.agent.target_q(samples["next_observation"], next_action)
         min_target_q = torch.min(target_q1, target_q2)
         next_q = min_target_q - self._alpha * next_log_prob
-        y = samples.reward + self.discount * ~samples.done * next_q
-        q1, q2 = self.agent.q(samples.observation, samples.action)
+        y = samples["reward"] + self.discount * ~samples["done"] * next_q
+        q1, q2 = self.agent.q(samples["observation"], samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
 
         # update Q model parameters according to Q loss
@@ -126,8 +128,8 @@ class SAC(Algorithm):
         # train policy model by maximizing the predicted Q value
         # maximize (min Q(s, a) - alpha * log pi(a, s))
         # where a ~ pi(.|s)
-        new_action, log_prob, (pi_mean, pi_log_std) = self.agent.pi(samples.observation)
-        q1, q2 = self.agent.q(samples.observation, new_action)
+        new_action, log_prob = self.agent.pi(samples["observation"])
+        q1, q2 = self.agent.q(samples["observation"], new_action)
         min_q = torch.min(q1, q2)
         pi_losses = self._alpha * log_prob - min_q
         pi_loss = valid_mean(pi_losses)

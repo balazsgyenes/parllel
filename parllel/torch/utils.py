@@ -1,13 +1,12 @@
-from typing import Dict, List, Optional, Union, Tuple
+from __future__ import annotations
 
-import numpy as np
+from typing import TypeVar
+
 import torch
-
-from parllel.arrays import Array
-from parllel.buffers import Buffer, NamedTuple
+from torch import Tensor
 
 
-def select_at_indexes(indexes, tensor):
+def select_at_indexes(indexes: Tensor, tensor: Tensor):
     """Returns the contents of ``tensor`` at the multi-dimensional integer
     array ``indexes``. Leading dimensions of ``tensor`` must match the
     dimensions of ``indexes``.
@@ -17,22 +16,21 @@ def select_at_indexes(indexes, tensor):
     num = indexes.numel()
     t_flat = tensor.view((num,) + tensor.shape[dim:])
     s_flat = t_flat[torch.arange(num), indexes.view(-1)]
-    return s_flat.view(tensor.shape[:dim] + tensor.shape[dim + 1:])
+    return s_flat.view(tensor.shape[:dim] + tensor.shape[dim + 1 :])
 
 
-def to_onehot(indexes, num, dtype=None):
+def to_onehot(indexes: Tensor, num: int, dtype: torch.dtype | None = None):
     """Converts integer values in multi-dimensional tensor ``indexes``
     to one-hot values of size ``num``; expanded in an additional
     trailing dimension."""
     if dtype is None:
         dtype = indexes.dtype
-    onehot = torch.zeros(indexes.shape + (num,),
-        dtype=dtype, device=indexes.device)
+    onehot = torch.zeros(indexes.shape + (num,), dtype=dtype, device=indexes.device)
     onehot.scatter_(-1, indexes.unsqueeze(-1).type(torch.long), 1)
     return onehot
 
 
-def from_onehot(onehot, dim=-1, dtype=None):
+def from_onehot(onehot: Tensor, dim: int = -1, dtype: torch.dtype | None = None):
     """Argmax over trailing dimension of tensor ``onehot``. Optional return
     dtype specification."""
     indexes = torch.argmax(onehot, dim=dim)
@@ -42,10 +40,10 @@ def from_onehot(onehot, dim=-1, dtype=None):
 
 
 def valid_mean(
-    tensor: torch.Tensor,
-    valid: Optional[torch.Tensor] = None,
-    dim: Optional[Tuple[int, ...]] = None,
-) -> torch.Tensor:
+    tensor: Tensor,
+    valid: Tensor | None = None,
+    dim: tuple[int, ...] | None = None,
+) -> Tensor:
     """Mean of ``tensor``, accounting for optional mask ``valid``, optionally
     along a dimension. Valid mask is "broadcast" across trailing dimensions of
     tensor, if tensor has more dimensions than valid. nan and inf values are
@@ -65,12 +63,12 @@ def valid_mean(
 
 
 def infer_leading_dims(
-    tensor: torch.Tensor,
+    tensor: Tensor,
     dim: int,
-) -> Tuple[int, int, int, Tuple[int, ...]]:
+) -> tuple[int, int, int, tuple[int, ...]]:
     """Looks for up to two leading dimensions in ``tensor``, before
     the data dimensions, of which there are assumed to be ``dim`` number.
-    For use at beginning of model's ``forward()`` method, which should 
+    For use at beginning of model's ``forward()`` method, which should
     finish with ``restore_leading_dims()`` (see that function for help.)
     Returns:
     lead_dim: int --number of leading dims found.
@@ -89,12 +87,15 @@ def infer_leading_dims(
     return lead_dim, T, B, shape
 
 
+TensorOrSequence = TypeVar("TensorOrSequence", Tensor, tuple[Tensor, ...])
+
+
 def restore_leading_dims(
-    tensors: Union[torch.Tensor, Tuple[torch.Tensor, ...], List[torch.Tensor]],
+    tensors: TensorOrSequence,
     lead_dim: int,
     T: int = 1,
     B: int = 1,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
+) -> TensorOrSequence:
     """Reshapes ``tensors`` (one or `tuple`, `list`) to to have ``lead_dim``
     leading dimensions, which will become [], [B], or [T,B].  Assumes input
     tensors already have a leading Batch dimension, which might need to be
@@ -103,79 +104,19 @@ def restore_leading_dims(
     dimensions match input dimensions, and the same model can be used for any
     such case.  Use with outputs from ``infer_leading_dims()``."""
     is_seq = isinstance(tensors, (tuple, list))
-    tensors = tensors if is_seq else (tensors,)
+    tensors_seq = tensors if is_seq else (tensors,)
     if lead_dim == 2:  # (Put T dim.)
-        tensors = tuple(t.view((T, B) + t.shape[1:]) for t in tensors)
+        tensors_seq = tuple(t.view((T, B) + t.shape[1:]) for t in tensors_seq)
     if lead_dim == 0:  # (Remove B=1 dim.)
         assert B == 1
-        tensors = tuple(t.squeeze(0) for t in tensors)
-    return tensors if is_seq else tensors[0]
-
-
-def torchify_buffer(buffer: Buffer[np.ndarray],
-) -> Buffer[torch.Tensor]:
-    """Convert contents of ``buffer`` from numpy arrays to torch tensors.
-    ``buffer`` can be an arbitrary structure of tuples, namedtuples,
-    namedarraytuples, NamedTuples, and NamedArrayTuples, and a new, matching
-    structure will be returned. ``None`` fields remain ``None``, and torch
-    tensors are left alone."""
-    if isinstance(buffer, tuple):
-        contents = tuple(torchify_buffer(b) for b in buffer)
-        if isinstance(buffer, NamedTuple):
-            return buffer._make(contents)
-        # buffer is a tuple
-        return contents
-
-    if buffer is None or isinstance(buffer, torch.Tensor):
-        return buffer
-    return torch.from_numpy(buffer)
-
-
-def numpify_buffer(buffer: Buffer[torch.Tensor]) -> Buffer[np.ndarray]:
-    """Convert contents of ``buffer`` from torch tensors to numpy arrays.
-    ``buffer`` can be an arbitrary structure of tuples, namedtuples,
-    namedarraytuples, NamedTuples, and NamedArrayTuples, and a new, matching
-    structure will be returned. ``None`` fields remain ``None``, and numpy
-    arrays are left alone."""
-    if isinstance(buffer, tuple):
-        contents = tuple(numpify_buffer(b) for b in buffer)
-        if isinstance(buffer, NamedTuple):
-            return buffer._make(contents)
-        # buffer is a tuple
-        return contents
-    
-    if isinstance(buffer, torch.Tensor):
-        return buffer.cpu().numpy()
-    return buffer
-
-
-def buffer_to_device(
-    buffer: Buffer[torch.Tensor],
-    device: Optional[torch.device] = None,
-) -> Buffer[torch.Tensor]:
-    """Send contents of ``buffer`` to specified device (contents must be
-    torch tensors.). ``buffer`` can be an arbitrary structure of tuples,
-    namedtuples, namedarraytuples, NamedTuples and NamedArrayTuples, and a
-    new, matching structure will be returned."""
-    if isinstance(buffer, tuple):
-        contents = tuple(buffer_to_device(b, device=device) for b in buffer)
-        if isinstance(buffer, NamedTuple):
-            return buffer._make(contents)
-        # buffer is a tuple
-        return contents
-
-    if buffer is None:
-        return
-    try:
-        return buffer.to(device)
-    except AttributeError as e:
-        raise TypeError(f"Cannot move {type(buffer)} object to device.") from e
+        tensors_seq = tuple(t.squeeze(0) for t in tensors_seq)
+    return tensors_seq if is_seq else tensors_seq[0]
 
 
 def update_state_dict(
     model: torch.nn.Module,
-    state_dict: Dict[str, torch.Tensor],
-    tau: Union[float, int] = 1,
+    state_dict: dict[str, Tensor],
+    tau: float | int = 1,
 ) -> None:
     """Update the state dict of ``model`` using the input ``state_dict``, which
     must match format.  ``tau==1`` applies hard update, copying the values, ``0<tau<1``
@@ -184,12 +125,14 @@ def update_state_dict(
     if tau == 1:
         model.load_state_dict(state_dict)
     elif tau > 0:
-        update_sd = {k: tau * state_dict[k] + (1 - tau) * v
-            for k, v in model.state_dict().items()}
+        update_sd = {
+            k: tau * state_dict[k] + (1 - tau) * v
+            for k, v in model.state_dict().items()
+        }
         model.load_state_dict(update_sd)
 
 
-def explained_variance(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
+def explained_variance(y_pred: Tensor, y_true: Tensor) -> float:
     """
     Computes fraction of variance that ypred explains about y.
     Returns 1 - Var[y-ypred] / Var[y]
@@ -207,7 +150,7 @@ def explained_variance(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
     """
     assert y_true.ndim == y_pred.ndim
     var_y = y_true.var()
-    if torch.allclose(var_y, torch.zeros_like(var_y)):
-        return torch.nan # surprisingly, torch.nan is a float
+    if torch.allclose(var_y, var_y.new_zeros()):
+        return torch.nan  # surprisingly, torch.nan is a float
     # call `item()` here to prevent the caller from doing `torch.nan.item()`
     return (1 - (y_true - y_pred).var() / var_y).item()

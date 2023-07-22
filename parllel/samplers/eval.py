@@ -41,9 +41,6 @@ class EvalSampler(Sampler):
         self.min_trajectories = min_trajectories
         self.obs_transform = obs_transform
 
-        # prepare cages for sampling
-        self.reset_envs()
-
     def collect_batch(self, elapsed_steps: int) -> list[TrajInfo]:
         # get references to buffer elements
         action = self.sample_buffer["action"]
@@ -56,15 +53,14 @@ class EvalSampler(Sampler):
         env_info = self.sample_buffer["env_info"]
         sample_buffer = self.sample_buffer
 
-        # reset all environments
-        self.reset_envs()
-
-        # rotate last values from previous batch to become previous values
-        sample_buffer.rotate()
-
-        # prepare agent for sampling
+        # set agent to eval mode, preventing sampler states from being overwritten
         self.agent.eval_mode(elapsed_steps)
-        self.agent.reset()
+
+        # reset all environments and agent recurrent state
+        self.reset()
+
+        # rotate reset observations to be current values
+        sample_buffer.rotate()
 
         # TODO: freeze statistics in obs normalization
 
@@ -77,17 +73,17 @@ class EvalSampler(Sampler):
                 sample_buffer = self.obs_transform(sample_buffer, 0)
 
             # agent observes environment and outputs actions
-            action[...], agent_info[...] = self.agent.step(observation)
+            action[...], agent_info[...] = self.agent.step(observation[0])
 
             for b, env in enumerate(self.envs):
                 env.step_async(
-                    action[b],
-                    out_obs=observation[b],
-                    out_reward=reward[b],
-                    out_done=done[b],
-                    out_terminated=terminated[b],
-                    out_truncated=truncated[b],
-                    out_info=env_info[b],
+                    action[0, b],
+                    out_obs=observation[0, b],
+                    out_reward=reward[0, b],
+                    out_done=done[0, b],
+                    out_terminated=terminated[0, b],
+                    out_truncated=truncated[0, b],
+                    out_info=env_info[0, b],
                 )
 
             for b, env in enumerate(self.envs):
