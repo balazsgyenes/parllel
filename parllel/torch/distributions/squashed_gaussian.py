@@ -56,7 +56,7 @@ class SquashedGaussian(Gaussian):
 
         return sample, logli
 
-    def kl(self, old_dist_info: DistParams, new_dist_info: DistParams) -> Tensor:
+    def kl(self, old_dist_params: DistParams, new_dist_params: DistParams) -> Tensor:
         raise NotImplementedError
 
     def entropy(self, dist_params: DistParams) -> Tensor:
@@ -71,8 +71,8 @@ class SquashedGaussian(Gaussian):
         self,
         indexes: Tensor,
         /,
-        old_dist_info: DistParams,
-        new_dist_info: DistParams,
+        old_dist_params: DistParams,
+        new_dist_params: DistParams,
     ) -> Tensor:
         raise NotImplementedError
 

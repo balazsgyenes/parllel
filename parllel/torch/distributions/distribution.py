@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
+from typing import Mapping
 
 import torch
 from torch import Tensor
 
-from parllel import ArrayTree, MappingTree
+from parllel import MappingTree
 from parllel.torch.utils import valid_mean
 
-DistParamsType = TypeVar("DistParamsType", bound=MappingTree)
+ActionType = MappingTree[Tensor]
+DistParamsType = Mapping[str, MappingTree]
 
 
-class Distribution(ABC, Generic[DistParamsType]):
+class Distribution(ABC):
     """Base distribution class.  Not all subclasses will implement all
     methods."""
 
@@ -24,7 +25,7 @@ class Distribution(ABC, Generic[DistParamsType]):
         raise NotImplementedError
 
     @abstractmethod
-    def sample(self, dist_params: DistParamsType) -> ArrayTree[Tensor]:
+    def sample(self, dist_params: DistParamsType) -> ActionType:
         """Generate random sample(s) from distribution informations."""
         raise NotImplementedError
 
@@ -41,7 +42,7 @@ class Distribution(ABC, Generic[DistParamsType]):
 
     def log_likelihood(
         self,
-        x: ArrayTree[Tensor],
+        x: ActionType,
         /,
         dist_params: DistParamsType,
     ) -> Tensor:
@@ -53,7 +54,7 @@ class Distribution(ABC, Generic[DistParamsType]):
 
     def likelihood_ratio(
         self,
-        x: ArrayTree[Tensor],
+        x: ActionType,
         /,
         old_dist_params: DistParamsType,
         new_dist_params: DistParamsType,

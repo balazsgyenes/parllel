@@ -18,7 +18,7 @@ class DistParams(TypedDict):
     log_std: Tensor
 
 
-class Gaussian(Distribution[DistParams]):
+class Gaussian(Distribution):
     """Multivariate Gaussian with independent variables (diagonal covariance).
     Standard deviation can be provided, as scalar or value per dimension, or it
     will be drawn from the dist_params (possibly learnable), where it is expected

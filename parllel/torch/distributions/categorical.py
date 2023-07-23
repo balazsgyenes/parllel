@@ -15,7 +15,7 @@ class DistParams(TypedDict):
     probs: Tensor
 
 
-class Categorical(DiscreteMixin, Distribution[DistParams]):
+class Categorical(DiscreteMixin, Distribution):
     """Multinomial distribution over a discrete domain."""
 
     def sample(self, dist_params: DistParams) -> Tensor:

@@ -115,10 +115,10 @@ class SacAgent(TorchAgent[torch.nn.ModuleDict, SquashedGaussian]):
                 f"Agent at {elapsed_steps} steps, sample std: {self.pretrain_std}"
             )
         std = None if elapsed_steps >= self.learning_starts else self.pretrain_std
-        self.distribution.set_std(std)  # If None: std from policy dist_info.
+        self.distribution.set_std(std)  # If None: std from policy dist_params.
 
     def eval_mode(self, elapsed_steps: int) -> None:
         super().eval_mode(elapsed_steps)
         self.model["q1"].eval()
         self.model["q2"].eval()
-        self.distribution.set_std(0.0)  # Deterministic (dist_info std ignored).
+        self.distribution.set_std(0.0)  # Deterministic (dist_params std ignored).

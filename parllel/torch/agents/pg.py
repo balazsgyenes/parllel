@@ -19,8 +19,9 @@ class PgPrediction(TypedDict):
 
 
 class PgAgent(
+    # must specify Distribution, otherwise its type is Unknown
     TorchAgent[torch.nn.Module, Distribution],
-    # must reinherit from Generic to pass it on to child classes
+    # must reinherit from Generic so that child classes can specialize further
     Generic[ModelType, DistType],
 ):
     @abstractmethod
