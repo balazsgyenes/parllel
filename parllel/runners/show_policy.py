@@ -1,5 +1,5 @@
-from parllel.handlers.agent import Agent
 import parllel.logger as logger
+from parllel.agents import Agent
 from parllel.samplers import EvalSampler
 
 from .runner import Runner

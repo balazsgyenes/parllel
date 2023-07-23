@@ -1,34 +1,34 @@
+from __future__ import annotations
+
 import copy
-from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import TypedDict
 
 import torch
+from torch import Tensor
 
-from parllel.buffers import Buffer, NamedArrayTupleClass
-from parllel.handlers import AgentStep
 import parllel.logger as logger
-from parllel.torch.agents.agent import TorchAgent
-from parllel.torch.distributions.squashed_gaussian import SquashedGaussian, DistInfoStd
-from parllel.torch.utils import buffer_to_device, update_state_dict
+from parllel import Array, ArrayDict, ArrayTree, Index, dict_map
+from parllel.torch.distributions.squashed_gaussian import SquashedGaussian, DistParams
+from parllel.torch.utils import update_state_dict
+
+from .agent import TorchAgent
 
 
-AgentInfo = NamedArrayTupleClass("AgentInfo", [])
+PiModelOutputs = DistParams
 
-@dataclass(frozen=True)
-class PiModelOutputs:
-    mean: Buffer
-    log_std: Buffer
 
-@dataclass(frozen=True)
-class QModelOutputs:
-    q_value: Buffer
+class QModelOutputs(TypedDict):
+    q_value: Tensor
 
 
 class SacAgent(TorchAgent):
     """Agent for SAC algorithm, including action-squashing, using twin Q-values."""
 
-    # TODO: remove agent info, as it is not needed for SAC
-    def __init__(self,
+    model: torch.nn.ModuleDict
+    distribution: SquashedGaussian
+
+    def __init__(
+        self,
         model: torch.nn.ModuleDict,
         distribution: SquashedGaussian,
         device: torch.device,
@@ -49,62 +49,58 @@ class SacAgent(TorchAgent):
         self.recurrent = False
 
     @torch.no_grad()
-    def step(self,
-        observation: Buffer[torch.Tensor],
+    def step(
+        self,
+        observation: ArrayTree[Array],
         *,
-        env_indices: Union[int, slice] = ...,
-    ) -> AgentStep:
-        model_inputs = (observation,)
-        model_inputs = buffer_to_device(model_inputs, device=self.device)
-        model_outputs: PiModelOutputs = self.model["pi"](*model_inputs)
+        env_indices: Index = ...,
+    ) -> tuple[Tensor, ArrayDict[Tensor]]:
+        observation = observation.to_ndarray()
+        observation = dict_map(torch.from_numpy, observation)
+        observation = observation.to(device=self.device)
+        dist_params: PiModelOutputs = self.model["pi"](observation)
+        action = self.distribution.sample(dist_params)
+        return action.cpu(), ArrayDict()
 
-        dist_info = DistInfoStd(mean=model_outputs.mean,
-                                log_std=model_outputs.log_std)
-        action = self.distribution.sample(dist_info)
-        agent_info = AgentInfo()
-        action, agent_info = buffer_to_device((action, agent_info), device="cpu")
-        return AgentStep(action=action, agent_info=agent_info)
-
-    def q(self,
-        observation: Buffer[torch.Tensor],
-        action: Buffer[torch.Tensor],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Compute twin Q-values for state/observation and input action 
+    def q(
+        self,
+        observation: ArrayTree[Tensor],
+        action: ArrayTree[Tensor],
+    ) -> tuple[Tensor, Tensor]:
+        """Compute twin Q-values for state/observation and input action
         (with grad)."""
-        model_inputs = (observation, action)
-        q1: QModelOutputs = self.model["q1"](*model_inputs)
-        q2: QModelOutputs = self.model["q2"](*model_inputs)
-        return q1.q_value, q2.q_value
+        q1: QModelOutputs = self.model["q1"](observation, action)
+        q2: QModelOutputs = self.model["q2"](observation, action)
+        return q1["q_value"], q2["q_value"]
 
-    def target_q(self,
-        observation: Buffer[torch.Tensor],
-        action: Buffer[torch.Tensor],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def target_q(
+        self,
+        observation: ArrayTree[Tensor],
+        action: ArrayTree[Tensor],
+    ) -> tuple[Tensor, Tensor]:
         """Compute twin target Q-values for state/observation and input
-        action.""" 
-        model_inputs = (observation, action)
-        target_q1: QModelOutputs = self.model["target_q1"](*model_inputs)
-        target_q2: QModelOutputs = self.model["target_q2"](*model_inputs)
-        return target_q1.q_value, target_q2.q_value
+        action."""
+        target_q1: QModelOutputs = self.model["target_q1"](observation, action)
+        target_q2: QModelOutputs = self.model["target_q2"](observation, action)
+        return target_q1["q_value"], target_q2["q_value"]
 
-    def pi(self,
-        observation: Buffer[torch.Tensor],
-    ) -> Tuple[torch.Tensor, torch.Tensor, DistInfoStd]:
+    def pi(
+        self,
+        observation: ArrayTree[Tensor],
+    ) -> tuple[Tensor, Tensor]:
         """Compute action log-probabilities for state/observation, and
         sample new action (with grad).  Uses special ``sample_loglikelihood()``
         method of Gaussian distriution, which handles action squashing
         through this process."""
-        model_inputs = (observation,)
-        model_outputs: PiModelOutputs = self.model["pi"](*model_inputs)
-        dist_info = DistInfoStd(mean=model_outputs.mean, log_std=model_outputs.log_std)
-        action, log_pi = self.distribution.sample_loglikelihood(dist_info)
-        return action, log_pi, dist_info
+        dist_params: PiModelOutputs = self.model["pi"](observation)
+        action, log_pi = self.distribution.sample_loglikelihood(dist_params)
+        return action, log_pi
 
     def freeze_q_models(self, freeze: bool) -> None:
         self.model["q1"].requires_grad_(not freeze)
         self.model["q2"].requires_grad_(not freeze)
 
-    def update_target(self, tau: Union[float, int] = 1) -> None:
+    def update_target(self, tau: float | int = 1) -> None:
         update_state_dict(self.model["target_q1"], self.model["q1"].state_dict(), tau)
         update_state_dict(self.model["target_q2"], self.model["q2"].state_dict(), tau)
 
@@ -118,12 +114,14 @@ class SacAgent(TorchAgent):
         self.model["q1"].eval()
         self.model["q2"].eval()
         if elapsed_steps == 0:
-            logger.debug(f"Agent at {elapsed_steps} steps, sample std: {self.pretrain_std}")
+            logger.debug(
+                f"Agent at {elapsed_steps} steps, sample std: {self.pretrain_std}"
+            )
         std = None if elapsed_steps >= self.learning_starts else self.pretrain_std
-        self.distribution.set_std(std)  # If None: std from policy dist_info.
+        self.distribution.set_std(std)  # If None: std from policy dist_params.
 
     def eval_mode(self, elapsed_steps: int) -> None:
         super().eval_mode(elapsed_steps)
         self.model["q1"].eval()
         self.model["q2"].eval()
-        self.distribution.set_std(0.)  # Deterministic (dist_info std ignored).
+        self.distribution.set_std(0.0)  # Deterministic (dist_params std ignored).

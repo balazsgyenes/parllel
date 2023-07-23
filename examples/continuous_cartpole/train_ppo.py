@@ -1,30 +1,27 @@
+import multiprocessing as mp
 from contextlib import contextmanager
 from datetime import datetime
-import multiprocessing as mp
 from pathlib import Path
-from typing import Dict
 
 import hydra
-from omegaconf import DictConfig, OmegaConf
 import torch
 import wandb
+from gymnasium import spaces
+from omegaconf import DictConfig, OmegaConf
 
-from parllel.arrays import buffer_from_example
-from parllel.buffers import AgentSamples, buffer_asarray, buffer_method, Samples
-from parllel.cages import TrajInfo
 import parllel.logger as logger
+from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
-from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
-    add_obs_normalization, add_reward_clipping, add_reward_normalization,
-    build_cages_and_env_buffers)
+from parllel.patterns import (add_advantage_estimation, add_agent_info,
+                              add_bootstrap_value, add_obs_normalization,
+                              add_reward_clipping, add_reward_normalization,
+                              build_cages_and_sample_tree)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.gaussian import GaussianPgAgent
-from parllel.torch.algos.ppo import PPO, build_dataloader_buffer
+from parllel.torch.algos.ppo import PPO, build_loss_sample_tree
 from parllel.torch.distributions import Gaussian
-from parllel.torch.handler import TorchHandler
-from parllel.torch.utils import torchify_buffer, buffer_to_device
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
@@ -33,7 +30,7 @@ from models.pg_model import GaussianCartPoleFfPgModel
 
 
 @contextmanager
-def build(config: Dict) -> OnPolicyRunner:
+def build(config: DictConfig) -> OnPolicyRunner:
 
     parallel = config["parallel"]
     batch_spec = BatchSpec(
@@ -42,7 +39,7 @@ def build(config: Dict) -> OnPolicyRunner:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    cages, batch_action, batch_env = build_cages_and_env_buffers(
+    cages, sample_tree, metadata = build_cages_and_sample_tree(
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
@@ -50,9 +47,9 @@ def build(config: Dict) -> OnPolicyRunner:
         batch_spec=batch_spec,
         parallel=parallel,
     )
-
-    spaces = cages[0].spaces
-    obs_space, action_space = spaces.observation, spaces.action
+    obs_space, action_space = metadata.obs_space, metadata.action_space
+    assert isinstance(obs_space, spaces.Box)
+    assert isinstance(action_space, spaces.Box)
 
     # instantiate model
     model = GaussianCartPoleFfPgModel(
@@ -60,62 +57,51 @@ def build(config: Dict) -> OnPolicyRunner:
         action_space=action_space,
         **config["model"],
     )
-    distribution = Gaussian(dim=action_space.shape)
+    distribution = Gaussian(dim=action_space.shape[0])
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)
     device = torch.device(device)
-
-    # write dict into namedarraytuple and read it back out. this ensures the
-    # example is in a standard format (i.e. namedarraytuple).
-    batch_env.observation[0] = obs_space.sample()
-    example_obs = batch_env.observation[0]
 
     # instantiate agent
     agent = GaussianPgAgent(
         model=model,
         distribution=distribution,
-        example_obs=example_obs,
+        example_obs=metadata.example_obs_batch,
         device=device,
     )
-    agent = TorchHandler(agent=agent)
 
-    # get example output from agent
-    _, agent_info = agent.step(example_obs)
-
-    # allocate batch buffer based on examples
-    batch_agent_info = buffer_from_example(agent_info, (batch_spec.T,))
-    batch_agent = AgentSamples(batch_action, batch_agent_info)
-    batch_buffer = Samples(batch_agent, batch_env)
+    # add agent info, which stores value predictions
+    sample_tree = add_agent_info(sample_tree, agent, metadata.example_obs_batch)
 
     # for advantage estimation, we need to estimate the value of the last
     # state in the batch
-    batch_buffer = add_bootstrap_value(batch_buffer)
+    sample_tree = add_bootstrap_value(sample_tree)
 
     # add several helpful transforms
     batch_transforms, step_transforms = [], []
 
-    batch_buffer, step_transforms = add_obs_normalization(
-        batch_buffer,
+    sample_tree, step_transforms = add_obs_normalization(
+        sample_tree,
         step_transforms,
         initial_count=config["obs_norm_initial_count"],
     )
 
-    batch_buffer, batch_transforms = add_reward_normalization(
-        batch_buffer,
+    sample_tree, batch_transforms = add_reward_normalization(
+        sample_tree,
         batch_transforms,
         discount=config["algo"]["discount"],
     )
 
-    batch_buffer, batch_transforms = add_reward_clipping(
-        batch_buffer,
+    sample_tree, batch_transforms = add_reward_clipping(
+        sample_tree,
         batch_transforms,
         reward_clip_min=config["reward_clip_min"],
         reward_clip_max=config["reward_clip_max"],
     )
 
     # add advantage normalization, required for PPO
-    batch_buffer, batch_transforms = add_advantage_estimation(
-        batch_buffer,
+    sample_tree, batch_transforms = add_advantage_estimation(
+        sample_tree,
         batch_transforms,
         discount=config["algo"]["discount"],
         gae_lambda=config["algo"]["gae_lambda"],
@@ -126,22 +112,22 @@ def build(config: Dict) -> OnPolicyRunner:
         batch_spec=batch_spec,
         envs=cages,
         agent=agent,
-        sample_buffer=batch_buffer,
+        sample_tree=sample_tree,
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=True,
         obs_transform=Compose(step_transforms),
         batch_transform=Compose(batch_transforms),
     )
 
-    dataloader_buffer = build_dataloader_buffer(batch_buffer)
-    dataloader_buffer = buffer_asarray(dataloader_buffer)
-    dataloader_buffer = torchify_buffer(dataloader_buffer)
+    loss_sample_tree = build_loss_sample_tree(sample_tree)
+    loss_sample_tree = loss_sample_tree.to_ndarray()
+    loss_sample_tree = loss_sample_tree.apply(torch.from_numpy)
 
     dataloader = BatchedDataLoader(
-        buffer=dataloader_buffer,
+        tree=loss_sample_tree,
         sampler_batch_spec=batch_spec,
         n_batches=config["algo"]["minibatches"],
-        pre_batches_transform=lambda x: buffer_to_device(x, device=device),
+        pre_batches_transform=lambda tree: tree.to(device=device),
     )
 
     optimizer = torch.optim.Adam(
@@ -175,7 +161,7 @@ def build(config: Dict) -> OnPolicyRunner:
         agent.close()
         for cage in cages:
             cage.close()
-        buffer_method(batch_buffer, "close")
+        sample_tree.close()
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo")

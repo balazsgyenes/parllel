@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence, SupportsFloat
+from typing import Any, Sequence, SupportsFloat
 
 import numpy as np
 from gymnasium import spaces
 from numpy.typing import NDArray
 
 
-class PointCloud(spaces.Box):
+class PointCloudSpace(spaces.Box):
     def __init__(
         self,
         max_num_points: int,
@@ -15,12 +15,12 @@ class PointCloud(spaces.Box):
         high: SupportsFloat | NDArray[Any],
         feature_shape: Sequence[int] | None = None,
         dtype: type[np.floating[Any]] | type[np.integer[Any]] = np.float32,
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ):
         super().__init__(low, high, feature_shape, dtype, seed)
         self.max_num_points = max_num_points
 
-    def sample(self):
+    def sample(self) -> np.ndarray:
         n_points = self.np_random.integers(
             self.max_num_points // 2, self.max_num_points
         )

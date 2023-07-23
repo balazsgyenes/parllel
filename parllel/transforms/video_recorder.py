@@ -1,15 +1,18 @@
+from __future__ import annotations
+
 import distutils.spawn
 import distutils.version
+import itertools
 import os
-from pathlib import Path
 import subprocess
-from typing import Iterator, List, Optional, Tuple
+from pathlib import Path
+from typing import Iterator, Mapping, Optional, TypeVar
 
 import numba
 import numpy as np
 
-from parllel.buffers import Buffer, Samples
 import parllel.logger as logger
+from parllel import Array, ArrayDict
 
 from .transform import BatchTransform
 
@@ -17,14 +20,14 @@ from .transform import BatchTransform
 class RecordVectorizedVideo(BatchTransform):
     def __init__(self,
         output_dir: Path,
-        batch_buffer: Samples,
+        batch_buffer: ArrayDict[Array],
         buffer_key_to_record: str, # e.g. "observation" or "env_info.rendering"
         record_every_n_steps: int,
         video_length: int,
-        env_fps: Optional[int] = None,
+        env_fps: int | None = None,
         output_fps: int = 30,
-        tiled_height: Optional[int] = None,
-        tiled_width: Optional[int] = None,
+        tiled_height: int | None = None,
+        tiled_width: int | None = None,
     ) -> None:
         self.output_dir = Path(output_dir)
         self.record_every = int(record_every_n_steps)
@@ -35,7 +38,7 @@ class RecordVectorizedVideo(BatchTransform):
 
         self.output_dir.mkdir(parents=True)
 
-        images = buffer_get_nested(batch_buffer.env, self.keys)
+        images = dict_get_nested(batch_buffer, self.keys)
         batch_T, batch_B, n_channels, height, width = images.shape
         self.batch_B = n_images = batch_B
         self.batch_size = batch_T * batch_B
@@ -71,7 +74,7 @@ class RecordVectorizedVideo(BatchTransform):
         self.steps_since_last_recording = self.record_every
         self.recording = False
 
-    def __call__(self, batch_samples: Samples) -> Samples:
+    def __call__(self, batch_samples: ArrayDict[Array]) -> ArrayDict[Array]:
         # check if we should start recording
         if not self.recording:
             if self.steps_since_last_recording + self.batch_size >= self.record_every:
@@ -104,9 +107,9 @@ class RecordVectorizedVideo(BatchTransform):
         self.recorded_frames = 0
         self.recording = True
 
-    def _record_batch(self, batch_samples: Samples) -> None:
-        images_batch = buffer_get_nested(batch_samples.env, self.keys)
-        valid_batch = getattr(batch_samples.env, "valid", None)
+    def _record_batch(self, batch_samples: ArrayDict[Array]) -> None:
+        images_batch = dict_get_nested(batch_samples, self.keys)
+        valid_batch = batch_samples.get("valid", None)
         
         # convert to numpy arrays
         images_batch = np.asarray(images_batch)
@@ -152,14 +155,15 @@ class RecordVectorizedVideo(BatchTransform):
             self._stop_recording()
 
 
-def buffer_get_nested(buffer: Buffer, keys: List[str]) -> Buffer:
+ValueType = TypeVar("ValueType")
+def dict_get_nested(buffer: Mapping[str, ValueType], keys: list[str]) -> ValueType:
     result = buffer
     for key in keys:
-        result = getattr(result, key)
+        result = result[key]
     return result
 
 
-def find_tiling(n_images: int) -> Tuple[int, int]:
+def find_tiling(n_images: int) -> tuple[int, int]:
     """Find a tiling to represent `n_images` images in one big PxQ tiling.
     P and Q are chosen to be factors of n_images, as long as this is possible
     with an aspect ratio between 1:1 and 2:1. Otherwise P and Q are chosen to
@@ -188,19 +192,17 @@ def find_tiling(n_images: int) -> Tuple[int, int]:
 
 def zip_with_valid(
     array: np.ndarray,
-    valid: Optional[np.ndarray],
-) -> Iterator[Tuple[np.ndarray, Optional[np.ndarray]]]:
+    valid: np.ndarray | None,
+) -> Iterator[tuple[np.ndarray, np.ndarray | None]]:
     if valid is None:
-        for elem in array:
-            yield elem, valid
-    else:
-        yield from zip(array, valid)
+        valid = itertools.repeat(None)
+    yield from zip(array, valid)
 
 
 @numba.njit
 def write_tiles_to_frame(
     images: np.ndarray,
-    valid: Optional[np.ndarray],
+    valid: np.ndarray | None,
     tiled_height: int,
     tiled_width: int,
     tiled_frame: np.ndarray,

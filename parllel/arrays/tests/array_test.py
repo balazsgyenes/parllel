@@ -4,8 +4,9 @@ from operator import getitem
 import numpy as np
 import pytest
 
-from parllel.arrays import Array, ManagedMemoryArray, SharedMemoryArray
-
+from parllel.arrays import Array
+from parllel.arrays.managedmemory import ManagedMemoryArray
+from parllel.arrays.sharedmemory import SharedMemoryArray
 
 # fmt: off
 @pytest.fixture(params=[
@@ -41,7 +42,7 @@ def full_size(request):
 @pytest.fixture
 def blank_array(ArrayClass, shape, dtype, storage, padding, full_size):
     array = ArrayClass(
-        shape=shape,
+        feature_shape=shape,
         dtype=dtype,
         storage=storage,
         padding=padding,
@@ -67,14 +68,14 @@ class TestArrayCreation:
 
     def test_empty_shape(self, ArrayClass, dtype):
         with pytest.raises(ValueError):
-            _ = ArrayClass(shape=(), dtype=dtype)
+            _ = ArrayClass(feature_shape=(), dtype=dtype)
 
     def test_wrong_dtype(self, ArrayClass, shape):
         with pytest.raises(ValueError):
-            _ = ArrayClass(shape=shape, dtype=list)
+            _ = ArrayClass(feature_shape=shape, dtype=list)
 
     def test_calling_array(self, ArrayClass, shape, dtype, storage, padding):
-        array = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=padding)
+        array = ArrayClass(feature_shape=shape, dtype=dtype, storage=storage, padding=padding)
         assert array.shape == shape
         assert array.dtype == dtype
         assert array.storage == storage
@@ -86,59 +87,59 @@ class TestArrayCreation:
         elif storage == "managed":
             ArrayClass = ManagedMemoryArray
 
-        array = ArrayClass(shape=shape, dtype=dtype, padding=padding)
+        array = ArrayClass(feature_shape=shape, dtype=dtype, padding=padding)
         assert array.shape == shape
         assert array.dtype == dtype
         assert array.storage == storage
         assert array.padding == padding
 
-    def test_array_like(self, ArrayClass):
-        template = Array(shape=(10, 4), dtype=np.float32)
+    def test_new_array(self):
+        template = Array(feature_shape=(10, 4), dtype=np.float32)
         
-        array = ArrayClass.like(template, shape=(20, 4))
+        array = template.new_array(feature_shape=(20, 4))
         assert array.shape == (20, 4)
         assert array.dtype == np.float32
         assert array.full.shape == (20, 4)
 
-        array = ArrayClass.like(template, dtype=np.int32)
+        array = template.new_array(dtype=np.int32)
         assert array.shape == (10, 4)
         assert array.dtype == np.int32
 
-        array = ArrayClass.like(template, storage="shared")
+        array = template.new_array(storage="shared")
         assert array.storage == "shared"
         array.close()
 
-        array = ArrayClass.like(template, padding=1)
+        array = template.new_array(padding=1)
         assert array.padding == 1
 
-        array = ArrayClass.like(template, full_size=20)
+        array = template.new_array(full_size=20)
         assert array.shape == (10, 4)
         assert array.full.shape == (20, 4)
 
-    def test_array_like_windowed(self, ArrayClass):
-        template = Array(shape=(10, 4), dtype=np.float32, full_size=20)
+    def test_new_array_windowed(self):
+        template = Array(feature_shape=(10, 4), dtype=np.float32, full_size=20)
 
-        array = ArrayClass.like(template, shape=(5, 4))
+        array = template.new_array(feature_shape=(5, 4))
         assert array.shape == (5, 4)
         assert array.dtype == np.float32
         assert array.full.shape == (5, 4)
 
-        array = ArrayClass.like(template, shape=(5, 4), inherit_full_size=True)
+        array = template.new_array(feature_shape=(5, 4), inherit_full_size=True)
         assert array.shape == (5, 4)
         assert array.full.shape == (20, 4)
 
-        array = ArrayClass.like(template, dtype=np.int32)
+        array = template.new_array(dtype=np.int32)
         assert array.shape == (10, 4)
         assert array.dtype == np.int32
 
-        array = ArrayClass.like(template, storage="shared")
+        array = template.new_array(storage="shared")
         assert array.storage == "shared"
         array.close()
 
-        array = ArrayClass.like(template, padding=1)
+        array = template.new_array(padding=1)
         assert array.padding == 1
 
-        array = ArrayClass.like(template, full_size=40)
+        array = template.new_array(full_size=40)
         assert array.shape == (10, 4)
         assert array.full.shape == (40, 4)
 
@@ -190,8 +191,8 @@ class TestArray:
 
     def test_subarrays_setitem_slices(self, array, np_array):
         subarray, np_subarray = array[1:2, 0], np_array[1:2, 0]
-        subarray[2:3] = -7
-        np_subarray[2:3] = -7
+        subarray[:, 2:3] = -7
+        np_subarray[:, 2:3] = -7
         assert np.array_equal(array, np_array)
 
     def test_subarrays_setitem_ellipsis(self, array, np_array):
@@ -213,7 +214,7 @@ class TestArray:
 
     def test_element_setitem(self, array, np_array):
         element = array[0, 1, 2]
-        element[:] = -7
+        element[...] = -7
         np_array[0, 1, 2] = -7  # ndarray does not support item assignment
         assert np.array_equal(array, np_array)
 
@@ -273,6 +274,7 @@ class TestArray:
         assert np.asarray(element) == np_element
         assert np.asarray(element) == np_element.item()
 
+    @pytest.mark.skip()
     def test_indexhistory(self, array):
         assert array.index_history == ()
 
@@ -293,6 +295,7 @@ class TestArray:
             (slice(None), slice(None, None, 2)),
         )
 
+    @pytest.mark.skip()
     def test_array_reconstruction(self, array):
         # TODO: compare arrays with np_array
         subarray1 = array

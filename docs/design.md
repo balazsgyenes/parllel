@@ -51,52 +51,53 @@ rlpyt is a great piece of software, but there are several pain points when it co
             - Maybe use cloudpickle like SB3 does
             - If serializing to yaml, ensure no collisions with wandb's config.yaml file
         - Add vectorized rendering of environments without pixel observations, using a rendering schedule. Ensure cage correctly calls render on gymnasium environment.
-    - **!!** Allocators
+    - Allocators
         - Add allocators module with user-configurable and default logic for what Array type should be used for what buffer element
-        - Set parallel attribute in allocator module and then get default CageCls everywhere else
     - Callbacks?
+- Agents:
+    - Implement CPU sampling by duplicating the agent with a model parameters on the CPU. Override `sampling_mode` and `training_mode`, etc. to know when to sync model parameters.
 - Algos
-    - Handle termination and truncation differently, e.g. for advantage computation and in SAC
+    - **!!** Handle termination and truncation differently, e.g. for advantage computation and in SAC
+    - Add eval mode to distributions
     - DDPG
     - Jax PPO :)
-- Arrays
+- Array
+    - JaggedArray
+        - **!!** Allow JaggedArray to accept elements of any size
+        - JaggedArray should preserve batch dimensions in ptr array when converting to ndarray
+        - JaggedArray should take max_points_per_item as init arg
+    - Cythonize indexlib
     - Add `begin` and `end` attributes, where `end` is intended to be used in a slice
     - Rename `rotate` to something like `next_iteration`
-    - Enforce that `-1` is never used to index the last element, i.e. `-1` is never passed to the underlying `ndarray`.
-    - SwitchingArray wraps two arrays and switches between them on `rotate`. This is useful for asynchronous sampling, where different parts of the array are simultaneously written to by the sampler and read from by the algorithm.
-        - Overloading `rotate` is useful because the batch buffer is already rotated before each batch.
-        - SwitchingRotatingArray needs to add 4x padding or maybe we should just allocate 2 arrays.
-    - implement `previous` and `next` for `Array` objects with indexing history, returning an array of the same shape but with the time index shifting backward or forward by one, respectively
+    - Rename `rotatable` to `original`
     - `LazyFramesArray`, which only saves the most recent frame in a LazyFrames object, and recreates the frame stack in its `__array__` method
-    - Array equality check verifies that buffer ids and (internal) current_indices are the same (because indices in standard form should be equivalent). This allows the `SynchronizedProcessCage` to check whether the expected array slice was passed.
-- Buffers
-    - `buffer_get_attr` and `buffer_set_attr`
-    - NamedArrayTuple/NamedTuple `__repr__` method should return a dict for easier debug viewing.
-    - **!!** Replace NamedTuple and NamedArrayTuple with ArrayDict based on TensorDict.
+    - `SwitchingArray` wraps two arrays and switches between them on `rotate`. This is useful for asynchronous sampling, where different parts of the array are simultaneously written to by the sampler and read from by the algorithm.
+        - Overloading `rotate` is useful because the batch buffer is already rotated before each batch.
+        - `SwitchingArray` needs to add 4x padding or maybe we should just allocate 2 arrays.
+- ArrayDict
+    - TypedDictArray
+    - Use `__slots__` to improve performance
 - Cages:
+    - Use partial (or hydra) to remove env_kwargs from Cage init parameters
     - Add `__getattr__`, `__setattr__`, and `env_method` methods to Cage, allowing direct access to env.
-    - If `set_samples_buffer` is called on a SharedMemoryArray, it verifies that the buffers are registered before sending the reduced buffer across the pipe. This allows for consistent use in all cases, and supports configurations like a replay buffer in shared memory with ProcessCage.
     - `SynchronizedProcessCage`, where a single Event object is shared among multiple Cages, such that all begin stepping as soon as one of them is called to step. Based on how Events are shared, this supports alternating sampling too.
         - The array slices passed to `async_step` are not sent to the child process, but the parent process verifies that they are the expected ones.
         - When `set_samples_buffer` is called on the `SynchronizedProcessCage`, it saves the array slice that it should iterate through during sampling. Since the array slice is also sent on each time step, other Cage types can ignore it.
     - VectorizedCage, similar to VecEnc in StableBaselines3, which allows for multiple environments in a single process.
     - Add argument to `ProcessCage` to choose between process creation methods
-- Handler:
-    - Make Handler a subclass of Agent to prevent silly linter problems and redundant wrapper functions.
-    - Implement CPU sampling by duplicating the agent with a model parameters on the CPU. Handler overrides `sampling_mode` and `training_mode`, etc. to know when to sync model parameters.
 - Runners
     - Add `ChainRunner`, which chains multiple Runners to execute in sequence. `ChainRunner` must implement some resource management, such that resources for a runner are not created until needed, and destroyed after they are no longer needed. This is difficult because it's likely that some resources are shared between runners.
 - Samplers
-    - All samplers call `set_samples_buffer` on the cages at least once (AsynchronousSampler calls before each batch), where each cage is passed the Array slice where it should write. 
     - AlternatingSampler, which alternates stepping half of the envs at a time to provide better performance for slow environments.
     - AsynchronousSampler, which samples in a child process while the algorithm is optimizing.
         - This class should inherit from the standard sampler types much like how ProcessCage inherits from Cage.
-        - Calls `set_samples_buffer` on cages before each batch, so that they write to the correct buffer
 - Transforms
+    - **!!** Merge step and batch transforms
     - Add `freeze` method to stop statistics from being updated when evaluating agent.
     - Add `stats` attribute to normalizing transforms (and anything else in the transform that is stateful and could be logged)
     - Add test for `NormalizeObservation` transformation, which verifies that environments that are already done are not factored into running statistics.
 - Misc
+    - Remove nptyping
     - Add simple interface to Stable Baselines in the form of a gym wrapper that looks like the parallel vector wrapper but preallocates memory.
 
 

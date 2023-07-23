@@ -9,7 +9,7 @@ max_steps_decorrelate: 50
 env:
   max_episode_steps: 1000
   reward_type: sparse
-device: null
+device: "cpu"
 algo:
   replay_length: 2560  # 20 iterations
   learning_starts: 10000

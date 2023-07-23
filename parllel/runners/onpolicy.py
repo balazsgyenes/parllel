@@ -1,7 +1,7 @@
 from tqdm import tqdm
 
+from parllel.agents import Agent
 from parllel.algorithm import Algorithm
-from parllel.handlers import Agent
 import parllel.logger as logger
 from parllel.samplers import Sampler
 from parllel.types import BatchSpec

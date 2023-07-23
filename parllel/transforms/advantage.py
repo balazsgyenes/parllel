@@ -1,8 +1,10 @@
+from __future__ import annotations
+
+from nptyping import NDArray
 from numba import njit
 import numpy as np
-from nptyping import NDArray
 
-from parllel.buffers import Samples
+from parllel import Array, ArrayDict
 
 from .transform import BatchTransform
 
@@ -86,15 +88,15 @@ class EstimateAdvantage(BatchTransform):
         else:
             self.estimator = compute_gae_advantage
 
-    def __call__(self, batch_samples: Samples) -> Samples:
+    def __call__(self, batch_samples: ArrayDict[Array]) -> ArrayDict[Array]:
         self.estimator(
-            np.asarray(batch_samples.env.reward),
-            np.asarray(batch_samples.agent.agent_info.value),
-            np.asarray(batch_samples.env.done),
-            np.asarray(batch_samples.agent.bootstrap_value),
+            np.asarray(batch_samples["reward"]),
+            np.asarray(batch_samples["agent_info"]["value"]),
+            np.asarray(batch_samples["done"]),
+            np.asarray(batch_samples["bootstrap_value"]),
             self.discount,
             self.gae_lambda,
-            np.asarray(batch_samples.env.advantage),
-            np.asarray(batch_samples.env.return_),
+            np.asarray(batch_samples["advantage"]),
+            np.asarray(batch_samples["return_"]),
         )
         return batch_samples

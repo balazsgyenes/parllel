@@ -7,7 +7,8 @@ import numpy.random as random
 import pytest
 
 from parllel.arrays.indices import (Index, Location, add_locations,
-                                    clean_slice, compute_indices, index_slice,
+                                    batch_dims_from_location, clean_slice,
+                                    compute_indices, index_slice,
                                     index_slice_with_int, init_location,
                                     predict_copy_on_index, shape_from_location)
 
@@ -601,3 +602,35 @@ class TestShapeFromLocation:
         subarray = np_array[location]
         loc_cleaned = add_locations(init_location(np_array.shape), location, np_array.shape)  # clean location
         assert subarray.shape == shape_from_location(loc_cleaned, np_array.shape)
+
+    @pytest.mark.parametrize("n_batch_dims,current_batch_dims", [
+        (5, 3),
+        (4, 2),
+        (3, 2),
+        (2, 1),
+        (1, 0),
+        (0, 0),
+    ])
+    def test_batch_dims_from_location_standard(self, n_batch_dims, current_batch_dims):
+        location = [4, slice(3, 4), slice(5, None, -1), 6, slice(None)]
+        assert batch_dims_from_location(location, n_batch_dims) == current_batch_dims
+
+    @pytest.mark.parametrize("n_batch_dims,current_batch_dims", [
+        (6, 3),
+        (5, 2),
+        (4, 2),
+        (3, 2),
+        (2, 1),
+        (1, 1),
+        (0, 0),
+    ])
+    def test_batch_dims_from_location_advanced(self, rng, n_batch_dims, current_batch_dims):
+        location = [
+            rng.integers(20, size=(10,)),
+            rng.integers(20, size=(10,)),
+            slice(9, None),
+            rng.integers(20, size=(10,)),
+            9,
+            slice(8, 1, -2),
+        ]
+        assert batch_dims_from_location(location, n_batch_dims) == current_batch_dims
