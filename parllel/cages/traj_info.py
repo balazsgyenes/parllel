@@ -5,7 +5,7 @@ from dataclasses import astuple, dataclass, field, fields
 from functools import partial
 from typing import Any, ClassVar, Iterator
 
-from .collections import (ActionType, ObsType, RewardType, DoneType, EnvInfoType)
+from .collections import ActionType, DoneType, EnvInfoType, ObsType, RewardType
 
 
 @dataclass
@@ -26,7 +26,7 @@ class TrajInfo:
         observation: ObsType,
         action: ActionType,
         reward: RewardType,
-        done: DoneType, 
+        done: DoneType,
         terminated: DoneType,
         truncated: DoneType,
         env_info: EnvInfoType,
@@ -51,6 +51,7 @@ class MultiAgentTrajInfo(TrajInfo):
         observation: ObsType,
         action: ActionType,
         reward: dict[str, RewardType],
+        done: DoneType, 
         terminated: DoneType,
         truncated: DoneType,
         env_info: EnvInfoType,

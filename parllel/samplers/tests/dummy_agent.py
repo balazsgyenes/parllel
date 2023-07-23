@@ -4,8 +4,9 @@ import gymnasium as gym
 import numpy as np
 from numpy import random
 
-from parllel import Array
+from parllel import Array, ArrayTree, Index, dict_map
 from parllel.agents import Agent
+from parllel.tree.array_dict import ArrayDict
 from parllel.types import BatchSpec
 
 
@@ -31,20 +32,20 @@ class DummyAgent(Agent):
         )
 
         self._step_ctr = 0
-        batch_action = buffer_from_dict_example(
+        self.samples = ArrayDict()
+        self.samples["action"] = dict_map(
+            Array.from_numpy,
             self.action_space.sample(),
             batch_shape=(n_batches * batch_spec.T, batch_spec.B),
-            name="action",
         )
-        batch_info = buffer_from_dict_example(
+        self.samples["agent_info"] = dict_map(
+            Array.from_numpy,
             {
                 "observation": self.observation_space.sample(),
                 "previous_state": np.array(0, dtype=np.float32),
             },
             batch_shape=(n_batches * batch_spec.T, batch_spec.B),
-            name="agentinfo",
         )
-        self.samples = AgentSamples(batch_action, batch_info)
         self.values = Array(
             feature_shape=(),
             batch_shape=(n_batches, batch_spec.B),
@@ -66,9 +67,8 @@ class DummyAgent(Agent):
 
         self.rng = random.default_rng()
 
-    def get_agent_info(self) -> DummyInfo:
-        agent_info = buffer_asarray(self.samples.agent_info[0, 0])
-        return buffer_method(agent_info, "copy")
+    def get_agent_info(self) -> ArrayDict[np.ndarray]:
+        return self.samples["agent_info"][0, 0].to_ndarray().copy()
 
     def reset(self) -> None:
         self.resets[self._step_ctr - 1] = True
@@ -89,7 +89,7 @@ class DummyAgent(Agent):
         self.resets[self._step_ctr - 1, env_index] = True
         self.states[self._step_ctr, env_index] = 0
 
-    def initial_rnn_state(self) -> Buffer:
+    def initial_rnn_state(self) -> np.ndarray:
         # sampling batch may have stopped early
         batch_ctr = (self._step_ctr - 1) // self.batch_spec.T + 1
         # advance counter to the next batch
@@ -101,26 +101,31 @@ class DummyAgent(Agent):
 
     def step(
         self,
-        observation: Buffer,
+        observation: ArrayTree[Array],
         *,
-        env_indices: Union[int, slice] = ...,
-    ) -> AgentStep:
+        env_indices: Index = ...,
+    ) -> tuple[ArrayTree, ArrayDict]:
+        # write values into internal arrays
         for b in range(self.batch_spec.B):
-            self.samples.action[self._step_ctr, b] = self.action_space.sample()
-        action = buffer_asarray(self.samples.action[self._step_ctr])
-        action = buffer_method(action, "copy")
-        agent_info = DummyInfo(
-            buffer_method(observation, "copy"),
-            buffer_method(buffer_asarray(self.states[self._step_ctr]), "copy"),
-        )
-        self.samples.agent_info[self._step_ctr] = agent_info
+            self.samples["action"][self._step_ctr, b] = self.action_space.sample()
+        self.samples["agent_info"][self._step_ctr] = {
+            "observation": observation,
+            "previous_state": self.states[self._step_ctr],
+        }
+
+        # prepare return values by making a copy of internal arrays
+        sample = self.samples[self._step_ctr].to_ndarray().copy()
+        action = sample["action"]
+        agent_info = sample["agent_info"]
+
+        # update states and counter
         next_state = self.rng.random(self.batch_spec.B)
         self.states[self._step_ctr + 1] = next_state
         self._step_ctr += 1
 
-        return AgentStep(action, agent_info)
+        return action, agent_info
 
-    def value(self, observation: Buffer) -> Buffer:
+    def value(self, observation: ArrayTree[Array]) -> np.ndarray:
         batch_ctr = (self._step_ctr - 1) // self.batch_spec.T
         value = self.rng.random(self.batch_spec.B)
         self.values[batch_ctr] = value
