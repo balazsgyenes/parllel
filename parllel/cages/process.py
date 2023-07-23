@@ -87,7 +87,6 @@ class ProcessCage(Cage, mp.Process):
         *,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
-        out_done: Array | None = None,
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
@@ -97,7 +96,6 @@ class ProcessCage(Cage, mp.Process):
             action,
             out_obs,
             out_reward,
-            out_done,
             out_terminated,
             out_truncated,
             out_info,
@@ -128,7 +126,6 @@ class ProcessCage(Cage, mp.Process):
         out_action: ArrayTree[Array] | None = None,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
-        out_done: Array | None = None,
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
@@ -138,7 +135,6 @@ class ProcessCage(Cage, mp.Process):
             out_action,
             out_obs,
             out_reward,
-            out_done,
             out_terminated,
             out_truncated,
             out_info,
@@ -186,16 +182,15 @@ class ProcessCage(Cage, mp.Process):
                     action,
                     out_obs,
                     out_reward,
-                    out_done,
                     out_terminated,
                     out_truncated,
                     out_info,
                 ) = data
-                obs, reward, done, terminated, truncated, env_info = self._step_env(
+                obs, reward, terminated, truncated, env_info = self._step_env(
                     action
                 )
 
-                if done:
+                if (done := terminated or truncated):
                     if self.reset_automatically:
                         # reset immediately and overwrite last observation
                         obs, reset_info = self._reset_env()
@@ -208,19 +203,11 @@ class ProcessCage(Cage, mp.Process):
                 try:
                     out_obs[...] = obs
                     out_reward[...] = reward
-                    out_done[...] = done
                     out_terminated[...] = terminated
                     out_truncated[...] = truncated
                     out_info[...] = env_info
                 except TypeError as e:
-                    outs = (
-                        out_obs,
-                        out_reward,
-                        out_done,
-                        out_terminated,
-                        out_truncated,
-                        out_info,
-                    )
+                    outs = data[1:]
                     if any(out is None for out in outs):
                         if not all(out is None for out in outs):
                             # if user passed a combination of None and Array, it's probably a mistake
@@ -230,7 +217,7 @@ class ProcessCage(Cage, mp.Process):
 
                         # return step result if user passed no output args at all
                         self._child_pipe.send(
-                            (obs, reward, done, terminated, truncated, env_info)
+                            (obs, reward, terminated, truncated, env_info)
                         )
                     else:
                         # otherwise this was an unexpected error
@@ -254,7 +241,6 @@ class ProcessCage(Cage, mp.Process):
                     out_action,
                     out_obs,
                     out_reward,
-                    out_done,
                     out_terminated,
                     out_truncated,
                     out_info,
@@ -263,7 +249,6 @@ class ProcessCage(Cage, mp.Process):
                     action,
                     obs,
                     reward,
-                    done,
                     terminated,
                     truncated,
                     env_info,
@@ -273,20 +258,11 @@ class ProcessCage(Cage, mp.Process):
                     out_action[...] = action
                     out_obs[...] = obs
                     out_reward[...] = reward
-                    out_done[...] = done
                     out_terminated[...] = terminated
                     out_truncated[...] = truncated
                     out_info[...] = env_info
                 except TypeError as e:
-                    outs = (
-                        out_action,
-                        out_obs,
-                        out_reward,
-                        out_done,
-                        out_terminated,
-                        out_truncated,
-                        out_info,
-                    )
+                    outs = data
                     if any(out is None for out in outs):
                         if not all(out is None for out in outs):
                             # if user passed a combination of None and Array, it's probably a mistake
@@ -296,7 +272,7 @@ class ProcessCage(Cage, mp.Process):
 
                         # return step result if user passed no output args at all
                         self._child_pipe.send(
-                            (action, obs, reward, done, terminated, truncated, env_info)
+                            (action, obs, reward, terminated, truncated, env_info)
                         )
                     else:
                         # otherwise this was an unexpected error

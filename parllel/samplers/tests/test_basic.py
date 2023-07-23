@@ -136,7 +136,7 @@ def batch_buffer(
 ):
     # get example output from env
     envs[0].random_step_async()
-    action, obs, reward, done, terminated, truncated, info = envs[0].await_step()
+    action, obs, reward, terminated, truncated, info = envs[0].await_step()
     agent_info = agent.get_agent_info()
 
     sample_tree: ArrayDict[Array] = ArrayDict()
@@ -167,7 +167,7 @@ def batch_buffer(
         dtype=bool,
     )
     sample_tree["done"] = Array.from_numpy(
-        done,
+        terminated,
         batch_shape=tuple(batch_spec),
         feature_shape=(),
         dtype=bool,

@@ -14,12 +14,11 @@ RewardType = Union[SupportsFloat, ArrayOrMapping[np.ndarray]]
 DoneType = Union[bool, np.ndarray]
 EnvInfoType = ArrayOrMapping
 
-EnvStepType = tuple[ObsType, RewardType, DoneType, DoneType, DoneType, EnvInfoType]
+EnvStepType = tuple[ObsType, RewardType, DoneType, DoneType, EnvInfoType]
 EnvRandomStepType = tuple[
     ActionType,
     ObsType,
     RewardType,
-    DoneType,
     DoneType,
     DoneType,
     EnvInfoType,

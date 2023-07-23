@@ -127,7 +127,6 @@ class RecurrentSampler(Sampler):
                     action[t, b],
                     out_obs=observation[t + 1, b],
                     out_reward=reward[t, b],
-                    out_done=done[t, b],
                     out_terminated=terminated[t, b],
                     out_truncated=truncated[t, b],
                     out_info=env_info[t, b],
@@ -138,6 +137,7 @@ class RecurrentSampler(Sampler):
 
             # calculate validity of samples in next time step
             # this might be required by the obs_transform
+            done[t] = np.logical_or(terminated[t], truncated[t])
             valid[t + 1] = np.logical_and(valid[t], np.logical_not(done[t]))
 
         if self.get_bootstrap_value:

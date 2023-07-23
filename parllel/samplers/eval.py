@@ -80,7 +80,6 @@ class EvalSampler(Sampler):
                     action[0, b],
                     out_obs=observation[0, b],
                     out_reward=reward[0, b],
-                    out_done=done[0, b],
                     out_terminated=terminated[0, b],
                     out_truncated=truncated[0, b],
                     out_info=env_info[0, b],
@@ -89,13 +88,15 @@ class EvalSampler(Sampler):
             for b, env in enumerate(self.envs):
                 env.await_step()
 
+            done[:] = np.logical_or(terminated, truncated)
+
             # if environment is done, reset agent
             # environment has already been reset inside cage
-            if np.any(dones := done[0]):
-                n_completed_trajs += np.sum(dones)
+            if np.any(done):
+                n_completed_trajs += np.sum(done)
                 if n_completed_trajs >= self.min_trajectories:
                     break
-                self.agent.reset_one(np.asarray(dones))
+                self.agent.reset_one(np.asarray(done))
 
         # collect all completed trajectories from envs
         completed_trajectories = [

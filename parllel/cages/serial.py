@@ -51,14 +51,13 @@ class SerialCage(Cage):
         *,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
-        out_done: Array | None = None,
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
     ) -> None:
-        obs, reward, done, terminated, truncated, env_info = self._step_env(action)
+        obs, reward, terminated, truncated, env_info = self._step_env(action)
 
-        if done:
+        if terminated or truncated:
             if self.reset_automatically:
                 # reset immediately and overwrite last observation and info
                 obs, reset_info = self._reset_env()
@@ -71,7 +70,6 @@ class SerialCage(Cage):
         try:
             out_obs[...] = obs
             out_reward[...] = reward
-            out_done[...] = done
             out_terminated[...] = terminated
             out_truncated[...] = truncated
             out_info[...] = env_info
@@ -79,7 +77,6 @@ class SerialCage(Cage):
             outs = (
                 out_obs,
                 out_reward,
-                out_done,
                 out_terminated,
                 out_truncated,
                 out_info,
@@ -92,7 +89,7 @@ class SerialCage(Cage):
                     )
 
                 # return step result if user passed no output args at all
-                self._step_result = (obs, reward, done, terminated, truncated, env_info)
+                self._step_result = (obs, reward, terminated, truncated, env_info)
             else:
                 # otherwise this was an unexpected error
                 raise e
@@ -113,7 +110,6 @@ class SerialCage(Cage):
         out_action: ArrayTree[Array] | None = None,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
-        out_done: Array | None = None,
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
@@ -122,7 +118,6 @@ class SerialCage(Cage):
             action,
             obs,
             reward,
-            done,
             terminated,
             truncated,
             env_info,
@@ -132,7 +127,6 @@ class SerialCage(Cage):
             out_action[...] = action
             out_obs[...] = obs
             out_reward[...] = reward
-            out_done[...] = done
             out_terminated[...] = terminated
             out_truncated[...] = truncated
             out_info[...] = env_info
@@ -141,7 +135,6 @@ class SerialCage(Cage):
                 out_action,
                 out_obs,
                 out_reward,
-                out_done,
                 out_terminated,
                 out_truncated,
                 out_info,
@@ -158,7 +151,6 @@ class SerialCage(Cage):
                     action,
                     obs,
                     reward,
-                    done,
                     terminated,
                     truncated,
                     env_info,

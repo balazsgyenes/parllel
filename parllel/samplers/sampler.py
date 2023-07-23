@@ -123,7 +123,6 @@ class Sampler(ABC):
                     out_action=action[T_last, b],
                     out_obs=observation[T_last + 1, b],
                     out_reward=reward[T_last, b],
-                    out_done=done[T_last, b],
                     out_terminated=terminated[T_last, b],
                     out_truncated=truncated[T_last, b],
                     out_info=env_info[T_last, b],
@@ -134,6 +133,7 @@ class Sampler(ABC):
 
             # no need to reset environments, since they are always reset
             # automatically when calling random_step_async
+            done[T_last] = np.logical_or(terminated[T_last], truncated[T_last])
 
         # discard any completed trajectories. The incomplete ones will be
         # continued during batch collection

@@ -63,7 +63,7 @@ def build_cages_and_env_buffers(
 
     # get example output from env
     example_cage.random_step_async()
-    action, obs, reward, done, terminated, truncated, info = example_cage.await_step()
+    action, obs, reward, terminated, truncated, info = example_cage.await_step()
 
     example_cage.close()
 
@@ -121,7 +121,7 @@ def build_cages_and_env_buffers(
         # TODO: ideally, we only would add padding if we know we want reward
         # normalization, but how to do this?
         sample_tree["done"] = Array.from_numpy(
-            done,
+            terminated,
             batch_shape=tuple(batch_spec),
             feature_shape=(),
             dtype=bool,

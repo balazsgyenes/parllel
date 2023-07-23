@@ -93,26 +93,25 @@ class Cage(ABC):
         action = dict_map(np.asarray, action)
 
         obs, reward, terminated, truncated, env_info = self._env.step(action)
-        done = terminated or truncated
-        self._traj_info.step(obs, action, reward, done, terminated, truncated, env_info)
+        self._traj_info.step(obs, action, reward, terminated, truncated, env_info)
 
         if self._render:
             env_info["rendering"] = rendering
 
-        return obs, reward, done, terminated, truncated, env_info
+        return obs, reward, terminated, truncated, env_info
 
     def _random_step_env(self) -> EnvRandomStepType:
         action: ArrayOrMapping[np.ndarray] = self._env.action_space.sample()
 
-        obs, reward, done, terminated, truncated, env_info = self._step_env(action)
+        obs, reward, terminated, truncated, env_info = self._step_env(action)
 
-        if done:
+        if terminated or truncated:
             # reset immediately and overwrite last observation
             obs, reset_info = self._reset_env()
             if not self.ignore_reset_info:
                 env_info = reset_info
 
-        return action, obs, reward, done, terminated, truncated, env_info
+        return action, obs, reward, terminated, truncated, env_info
 
     def _reset_env(
         self,
@@ -131,7 +130,6 @@ class Cage(ABC):
         *,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
-        out_done: Array | None = None,
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
@@ -173,7 +171,6 @@ class Cage(ABC):
         out_action: ArrayTree[Array] | None = None,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
-        out_done: Array | None = None,
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
