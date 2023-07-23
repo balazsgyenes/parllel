@@ -18,7 +18,7 @@ class ModelOutputs(TypedDict):
     next_rnn_state: NotRequired[ArrayTree[Tensor]]
 
 
-class CategoricalPgAgent(PgAgent[torch.nn.Module, Categorical]):
+class CategoricalPgAgent(PgAgent):
     """Agent for policy gradient algorithm using categorical action
     distribution for discrete action spaces.
 
@@ -35,6 +35,8 @@ class CategoricalPgAgent(PgAgent[torch.nn.Module, Categorical]):
         - previous_action: action sampled from distribution from last time step
         - rnn_state: hidden recurrent state from last time step
     """
+
+    distribution: Categorical
 
     def __init__(
         self,
@@ -102,27 +104,20 @@ class CategoricalPgAgent(PgAgent[torch.nn.Module, Categorical]):
         dist_params = model_outputs["dist_params"]
         action = self.distribution.sample(dist_params)
 
-        # value may be None
-        value = model_outputs["value"]
+        # collect agent_info
+        agent_info = ArrayDict({"dist_params": dist_params})
+        if "value" in model_outputs:
+            agent_info["value"] = model_outputs["value"]
 
         if self.recurrent:
             assert "next_rnn_state" in model_outputs
             # overwrite saved rnn_state and action as inputs to next step
-            previous_action = self._advance_states(
+            agent_info["previous_action"] = self._advance_states(
                 model_outputs["next_rnn_state"],
                 action,
                 env_indices,
             )
-        else:
-            previous_action = None
 
-        agent_info = ArrayDict(
-            {
-                "dist_params": dist_params,
-                "value": value,
-                "previous_action": previous_action,
-            }
-        )
         return action.cpu(), agent_info.cpu()
 
     @torch.no_grad()

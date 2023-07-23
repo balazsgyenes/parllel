@@ -119,10 +119,11 @@ class PPO(Algorithm):
         the ``agent.distribution`` to compute likelihoods and entropies.  Valid
         for feedforward or recurrent agents.
         """
+        valid = batch.get("valid", None)
         agent_prediction: PgPrediction = self.agent.predict(
             batch["observation"],
             batch["agent_info"],
-            batch["init_rnn_state"],
+            batch.get("initial_rnn_state", None),
         )
         dist_params, value = agent_prediction["dist_params"], agent_prediction["value"]
         dist = self.agent.distribution
@@ -135,22 +136,22 @@ class PPO(Algorithm):
         clipped_ratio = torch.clamp(ratio, 1.0 - self.ratio_clip, 1.0 + self.ratio_clip)
         surr_2 = clipped_ratio * batch["advantage"]
         surrogate = torch.min(surr_1, surr_2)
-        pi_loss = -valid_mean(surrogate, batch["valid"])
+        pi_loss = -valid_mean(surrogate, valid)
 
         if self.value_clipping_mode == "none":
             # No clipping
             value_error = 0.5 * (value - batch["return_"]) ** 2
         elif self.value_clipping_mode == "ratio":
             # Clipping the value per time step in respect to the ratio between old and new values
-            value_ratio = value / batch["old_values"]
+            value_ratio = value / batch["old_value"]
             clipped_values = torch.where(
                 value_ratio > 1.0 + self.value_clip,
-                batch["old_values"] * (1.0 + self.value_clip),
+                batch["old_value"] * (1.0 + self.value_clip),
                 value,
             )
             clipped_values = torch.where(
                 value_ratio < 1.0 - self.value_clip,
-                batch["old_values"] * (1.0 - self.value_clip),
+                batch["old_value"] * (1.0 - self.value_clip),
                 clipped_values,
             )
             clipped_value_error = 0.5 * (clipped_values - batch["return_"]) ** 2
@@ -159,15 +160,15 @@ class PPO(Algorithm):
         elif self.value_clipping_mode == "delta":
             # Clipping the value per time step with its original (old) value in the boundaries of value_clip
             clipped_values = torch.min(
-                torch.max(value, batch["old_values"] - self.value_clip),
-                batch["old_values"] + self.value_clip,
+                torch.max(value, batch["old_value"] - self.value_clip),
+                batch["old_value"] + self.value_clip,
             )
             value_error = 0.5 * (clipped_values - batch["return_"]) ** 2
         elif self.value_clipping_mode == "delta_max":
             # Clipping the value per time step with its original (old) value in the boundaries of value_clip
             clipped_values = torch.min(
-                torch.max(value, batch["old_values"] - self.value_clip),
-                batch["old_values"] + self.value_clip,
+                torch.max(value, batch["old_value"] - self.value_clip),
+                batch["old_value"] + self.value_clip,
             )
             clipped_value_error = 0.5 * (clipped_values - batch["return_"]) ** 2
             standard_value_error = 0.5 * (value - batch["return_"]) ** 2
@@ -177,9 +178,9 @@ class PPO(Algorithm):
                 f"Invalid value clipping mode '{self.value_clipping_mode}'"
             )
 
-        value_loss = self.value_loss_coeff * valid_mean(value_error, batch["valid"])
+        value_loss = self.value_loss_coeff * valid_mean(value_error, valid)
 
-        entropy = dist.mean_entropy(dist_params, batch["valid"])
+        entropy = dist.mean_entropy(dist_params, valid)
         entropy_loss = -self.entropy_loss_coeff * entropy
 
         loss = pi_loss + value_loss + entropy_loss
@@ -198,7 +199,7 @@ class PPO(Algorithm):
                 )
                 return loss
 
-            perplexity = dist.mean_perplexity(dist_params, batch["valid"])
+            perplexity = dist.mean_perplexity(dist_params, valid)
 
             self.algo_log_info["loss"].append(loss.item())
             self.algo_log_info["policy_gradient_loss"].append(pi_loss.item())
@@ -221,7 +222,6 @@ class PPO(Algorithm):
 
 def build_dataloader_buffer(
     sample_buffer: ArrayDict[Array],
-    recurrent: bool = False,
 ) -> ArrayDict[Array]:
     dataloader_buffer = ArrayDict(
         {
@@ -230,10 +230,16 @@ def build_dataloader_buffer(
             "action": sample_buffer["action"],
             "return_": sample_buffer["return_"],
             "advantage": sample_buffer["advantage"],
-            "valid": sample_buffer["valid"] if recurrent else None,
-            "old_dist_params": sample_buffer["agent_info"]["dist_params"],
-            "old_values": sample_buffer["agent_info"]["value"],
-            "init_rnn_state": sample_buffer["initial_rnn_state"] if recurrent else None,
         }
     )
+
+    # move these to the top level for convenience
+    # anything else in agent_info is agent-specific state
+    dataloader_buffer["old_value"] = dataloader_buffer["agent_info"].pop("value")
+    dataloader_buffer["old_dist_params"] = dataloader_buffer["agent_info"].pop("dist_params")
+    
+    if "valid" in sample_buffer:
+        dataloader_buffer["valid"] = sample_buffer["valid"]
+        assert "initial_rnn_state" in sample_buffer
+        dataloader_buffer["initial_rnn_state"] = sample_buffer["initial_rnn_state"]
     return dataloader_buffer

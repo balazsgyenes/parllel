@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from os import PathLike
-from typing import Callable, Generic, TypeVar
+from typing import Callable
 
 import torch
 from torch import Tensor
@@ -11,11 +11,7 @@ from parllel.handlers import Agent
 from parllel.torch.distributions import Distribution
 
 
-DistType = TypeVar("DistType", bound=Distribution)
-ModelType = TypeVar("ModelType", bound=torch.nn.Module)
-
-
-class TorchAgent(Agent, Generic[ModelType, DistType]):
+class TorchAgent(Agent):
     """The agent manages a model and a sampling state for each environment
     instance. Outputs from the model are converted into actions during
     sampling, usually with the help of a distribution.
@@ -23,12 +19,12 @@ class TorchAgent(Agent, Generic[ModelType, DistType]):
 
     def __init__(
         self,
-        model: ModelType,
-        distribution: DistType,
+        model: torch.nn.Module,
+        distribution: Distribution,
         device: torch.device | None = None,
     ) -> None:
-        self.model: ModelType = model
-        self.distribution: DistType = distribution
+        self.model = model
+        self.distribution = distribution
 
         # possibly move model to GPU
         if device is None:

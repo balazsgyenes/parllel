@@ -137,7 +137,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
         batch_transform=Compose(batch_transforms),
     )
 
-    optimizer_sample_tree = build_dataloader_buffer(sample_tree, recurrent=True)
+    optimizer_sample_tree = build_dataloader_buffer(sample_tree)
     optimizer_sample_tree = optimizer_sample_tree.to_ndarray()
     optimizer_sample_tree = optimizer_sample_tree.apply(torch.from_numpy)
 
@@ -145,7 +145,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
         tree=optimizer_sample_tree,
         sampler_batch_spec=batch_spec,
         n_batches=config["algo"]["minibatches"],
-        batch_only_fields=["init_rnn_state"],
+        batch_only_fields=["initial_rnn_state"],
         recurrent=True,
         pre_batches_transform=lambda tree: tree.to(device=device),
     )

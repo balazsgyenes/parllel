@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Generic, TypedDict
+from typing import TypedDict
 
-import torch
 from torch import Tensor
 from typing_extensions import NotRequired
 
 from parllel import ArrayDict, ArrayTree, MappingTree
-from parllel.torch.distributions.distribution import Distribution
 
-from .agent import DistType, ModelType, TorchAgent
+from .agent import TorchAgent
 
 
 class PgPrediction(TypedDict):
@@ -18,12 +16,7 @@ class PgPrediction(TypedDict):
     value: NotRequired[Tensor]
 
 
-class PgAgent(
-    # must specify Distribution, otherwise its type is Unknown
-    TorchAgent[torch.nn.Module, Distribution],
-    # must reinherit from Generic so that child classes can specialize further
-    Generic[ModelType, DistType],
-):
+class PgAgent(TorchAgent):
     @abstractmethod
     def predict(
         self,

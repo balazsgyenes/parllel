@@ -3,11 +3,13 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Mapping, MutableMapping
 from operator import getitem
-from typing import Any, Callable, Generic, Iterable, Iterator, Union
+from typing import Any, Callable, Generic, Iterable, Iterator, TypeVar
 
 import numpy as np
 
 from parllel.dict import ArrayLike, ArrayTree, ArrayType, MappingTree
+
+_T = TypeVar("_T")
 
 
 class ArrayDict(MutableMapping, Generic[ArrayType]):
@@ -22,15 +24,23 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
 
     def __init__(
         self,
-        items: MappingTree | Iterable[tuple[str, MappingTree]],
+        items: MappingTree | Iterable[tuple[str, MappingTree]] | None = None,
+        _run_checks: bool = True,
     ) -> None:
-        # clean tree to ensure only leaf nodes or ArrayDicts
-        dict_ = dict(items)
-        for key, value in dict_.items():
-            if isinstance(value, dict):
-                dict_[key] = ArrayDict(value)
+        dict_ = dict(items) if items is not None else {}
+
+        if _run_checks:
+            # clean tree to ensure only leaf nodes or ArrayDicts
+            # this also shallow copies all the Mapping objects without copying
+            # the leaf nodes
+            for key, value in dict_.items():
+                if isinstance(value, Mapping):
+                    dict_[key] = ArrayDict(value)
 
         self._dict: dict[str, ArrayTree[ArrayType]] = dict_
+
+    def get(self, key: str, default: _T = None) -> ArrayTree[ArrayType] | _T:
+        return self._dict.get(key, default)
 
     def __getitem__(self, key: Any) -> ArrayTree[ArrayType]:
         if isinstance(key, str):
@@ -38,17 +48,18 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
 
         try:
             return ArrayDict(
-                (field, arr[key] if arr is not None else None)
-                for field, arr in self._dict.items()
+                ((field, arr[key]) for field, arr in self._dict.items()),
+                _run_checks=False,
             )
         except IndexError as e:
             for field, arr in self._dict.items():
                 try:
-                    _ = arr[key] if arr is not None else None
+                    _ = arr[key]
                 except IndexError:
                     raise IndexError(
                         f"Index error in field '{field}' for index '{key}'"
                     ) from e
+            raise e
 
     def __setitem__(self, key: Any, value: Any) -> None:
         if isinstance(key, str):
@@ -66,14 +77,12 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
 
         for field, arr in self._dict.items():
             subvalue = getter(value, field)
-
-            if arr is not None and subvalue is not None:
-                try:
-                    arr[key] = subvalue
-                except IndexError as e:
-                    raise IndexError(
-                        f"Index error in field '{field}' for index '{key}'"
-                    ) from e
+            try:
+                arr[key] = subvalue
+            except IndexError as e:
+                raise IndexError(
+                    f"Index error in field '{field}' for index '{key}'"
+                ) from e
 
     def __delitem__(self, __key: str) -> None:
         if isinstance(__key, str):
@@ -93,16 +102,16 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
     def __getattr__(self, name: str) -> ArrayAttrDict:
         try:
             return ArrayAttrDict(
-                (
-                    (field, getattr(arr, name) if arr is not None else None)
-                    for field, arr in self._dict.items()
-                ),
+                ((field, getattr(arr, name)) for field, arr in self._dict.items()),
                 name=name,
+                _run_checks=False,
+                # _run_checks=True would converted nested ArrayAttrDicts back
+                # to ArrayDict
             )
         except AttributeError as e:
             for field, arr in self._dict.items():
                 try:
-                    _ = getattr(arr, name) if arr is not None else None
+                    _ = getattr(arr, name)
                 except IndexError:
                     raise IndexError(
                         f"Attribute error in field '{field}' for attribute '{name}'"
@@ -126,16 +135,20 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
         raise NotImplementedError
 
     def apply(self, fn: Callable, **kwargs) -> ArrayDict:
-        items = []
-        for field, arr in self._dict.items():
-            if isinstance(arr, ArrayDict):  # non-leaf node
-                items.append((field, arr.apply(fn, **kwargs)))
-
-            # leaf node
-            else:
-                items.append((field, fn(arr, **kwargs) if arr is not None else None))
-
-        return ArrayDict(items)
+        return ArrayDict(
+            (
+                (
+                    field,
+                    (
+                        arr.apply(fn, **kwargs)
+                        if isinstance(arr, ArrayDict)
+                        else fn(arr, **kwargs)
+                    ),
+                )
+                for field, arr in self.items()
+            ),
+            _run_checks=False,
+        )
 
     def to_ndarray(self) -> ArrayDict[np.ndarray]:
         return self.apply(to_ndarray)
@@ -143,12 +156,8 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
     map = apply
 
 
-def to_ndarray(
-    leaf: ArrayLike,
-) -> Union[np.ndarray, ArrayDict[np.ndarray]]:
-    if leaf is None:
-        return
-    elif hasattr(leaf, "to_ndarray"):
+def to_ndarray(leaf: ArrayLike) -> np.ndarray | ArrayDict[np.ndarray]:
+    if hasattr(leaf, "to_ndarray"):
         return leaf.to_ndarray()
     return np.asarray(leaf)
 
@@ -162,7 +171,7 @@ class ArrayAttrDict(ArrayDict):
         items = []
         for field, method in self._dict.items():
             try:
-                result = method(*args, **kwds) if method is not None else None
+                result = method(*args, **kwds)
             except Exception as e:
                 if not callable(method):
                     raise RuntimeError(

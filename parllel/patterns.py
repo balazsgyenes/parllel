@@ -23,12 +23,12 @@ from parllel.types import BatchSpec
 class Metadata:
     obs_space: gym.Space
     action_space: gym.Space
-    example_obs_batch: ArrayTree[np.ndarray]
-    example_action_batch: ArrayTree[np.ndarray]
     example_obs: MappingTree[np.ndarray]
     example_action: MappingTree[np.ndarray]
     example_reward: MappingTree[np.ndarray]
     example_info: MappingTree[np.ndarray]
+    example_obs_batch: ArrayTree[np.ndarray] | None = None
+    example_action_batch: ArrayTree[np.ndarray] | None = None
 
 
 def build_cages_and_env_buffers(
@@ -72,7 +72,7 @@ def build_cages_and_env_buffers(
     else:
         logger.debug("Allocating batch buffer.")
 
-    sample_tree: ArrayDict[Array] = ArrayDict({})
+    sample_tree: ArrayDict[Array] = ArrayDict()
 
     if {"obs", "observation"} & set(keys_to_skip) == set():
         # allocate batch buffer based on examples
@@ -154,7 +154,7 @@ def build_cages_and_env_buffers(
     if "agent_info" not in keys_to_skip:
         # add empty agent_info field by default
         # user is free to set a different value later
-        sample_tree["agent_info"] = ArrayDict({})
+        sample_tree["agent_info"] = ArrayDict()
 
     logger.debug(f"Instantiating {batch_spec.B} environments...")
 
@@ -169,16 +169,23 @@ def build_cages_and_env_buffers(
 
     # get example obs and actions for metadata
     # write sample into the sample_tree and read it back out. This ensures the example is in a standard form (i.e. if using JaggedArray or LazyFramesArray)
-    sample_tree["observation"][0] = obs_space.sample()
-    example_obs = sample_tree["observation"][0]
-    sample_tree["action"][0] = action_space.sample()
-    example_action = sample_tree["action"][0]
+    if "observation" in sample_tree:
+        sample_tree["observation"][0] = obs_space.sample()
+        obs_batch = sample_tree["observation"][0]
+    else:
+        obs_batch = None
+
+    if "action" in sample_tree:
+        sample_tree["action"][0] = action_space.sample()
+        action_batch = sample_tree["action"][0]
+    else:
+        action_batch = None
 
     metadata = Metadata(
         obs_space=obs_space,
         action_space=action_space,
-        example_obs_batch=example_obs,
-        example_action_batch=example_action,
+        example_obs_batch=obs_batch,
+        example_action_batch=action_batch,
         example_obs=obs,
         example_action=action,
         example_reward=reward,

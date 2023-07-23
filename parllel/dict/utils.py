@@ -17,18 +17,14 @@ def dict_map(
             ((field, dict_map(func, arr, *args, **kwargs)) for field, arr in tree.items())
         )
     # leaf node
-    if tree is None:
-        return None
     return func(tree, *args, **kwargs)
 
 
 def dict_all(tree: ArrayTree, predicate: Callable[[ArrayLike], bool]) -> bool:
     if isinstance(tree, Mapping):  # non-leaf node
-        return all(dict_all(elem, predicate) for elem in tree if elem is not None)
+        return all(dict_all(elem, predicate) for elem in tree)
 
-    # leaf node (None elements already filtered out, unless called tree = None)
-    if tree is None:
-        return False
+    # leaf node
     return predicate(tree)
 
 

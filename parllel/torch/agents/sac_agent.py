@@ -21,8 +21,11 @@ class QModelOutputs(TypedDict):
     q_value: Tensor
 
 
-class SacAgent(TorchAgent[torch.nn.ModuleDict, SquashedGaussian]):
+class SacAgent(TorchAgent):
     """Agent for SAC algorithm, including action-squashing, using twin Q-values."""
+
+    model: torch.nn.ModuleDict
+    distribution: SquashedGaussian
 
     def __init__(
         self,
@@ -57,7 +60,7 @@ class SacAgent(TorchAgent[torch.nn.ModuleDict, SquashedGaussian]):
         observation = observation.to(device=self.device)
         dist_params: PiModelOutputs = self.model["pi"](observation)
         action = self.distribution.sample(dist_params)
-        return action.cpu(), ArrayDict({})
+        return action.cpu(), ArrayDict()
 
     def q(
         self,

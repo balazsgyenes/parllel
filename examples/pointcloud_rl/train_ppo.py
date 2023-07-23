@@ -62,6 +62,8 @@ def build(config: DictConfig) -> OnPolicyRunner:
         storage="managed" if parallel else "local",
         padding=1,
     )
+    sample_tree["observation"][0] = obs_space.sample()
+    example_obs_batch = sample_tree["observation"][0]
 
     # instantiate model
     model = PointNetPgModel(
@@ -78,12 +80,12 @@ def build(config: DictConfig) -> OnPolicyRunner:
     agent = CategoricalPgAgent(
         model=model,
         distribution=distribution,
-        example_obs=metadata.example_obs_batch,
+        example_obs=example_obs_batch,
         device=device,
     )
 
     # add agent info, which stores value predictions
-    sample_tree = add_agent_info(sample_tree, agent, metadata.example_obs_batch)
+    sample_tree = add_agent_info(sample_tree, agent, example_obs_batch)
 
     # for advantage estimation, we need to estimate the value of the last
     # state in the batch
