@@ -150,7 +150,7 @@ def explained_variance(y_pred: Tensor, y_true: Tensor) -> float:
     """
     assert y_true.ndim == y_pred.ndim
     var_y = y_true.var()
-    if torch.allclose(var_y, var_y.new_zeros()):
+    if torch.allclose(var_y, torch.zeros_like(var_y)):
         return torch.nan  # surprisingly, torch.nan is a float
     # call `item()` here to prevent the caller from doing `torch.nan.item()`
     return (1 - (y_true - y_pred).var() / var_y).item()

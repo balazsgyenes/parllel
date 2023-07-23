@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 import gymnasium as gym
 import numpy as np
 
 import parllel.logger as logger
-from parllel import Array, ArrayDict, ArrayTree, dict_map
+from parllel import Array, ArrayDict, ArrayTree, dict_map, MappingTree
 from parllel.cages import Cage, ProcessCage, SerialCage
 from parllel.handlers import Agent
 from parllel.samplers import EvalSampler
@@ -23,8 +23,12 @@ from parllel.types import BatchSpec
 class Metadata:
     obs_space: gym.Space
     action_space: gym.Space
-    example_obs_batch: ArrayTree
-    example_action_batch: ArrayTree
+    example_obs_batch: ArrayTree[np.ndarray]
+    example_action_batch: ArrayTree[np.ndarray]
+    example_obs: MappingTree[np.ndarray]
+    example_action: MappingTree[np.ndarray]
+    example_reward: MappingTree[np.ndarray]
+    example_info: MappingTree[np.ndarray]
 
 
 def build_cages_and_env_buffers(
@@ -35,6 +39,7 @@ def build_cages_and_env_buffers(
     batch_spec: BatchSpec,
     parallel: bool,
     full_size: int | None = None,
+    keys_to_skip: str | Sequence[str] = (),
 ) -> tuple[list[Cage], ArrayDict[Array], Metadata]:
     if parallel:
         CageCls = ProcessCage
@@ -42,6 +47,9 @@ def build_cages_and_env_buffers(
     else:
         CageCls = SerialCage
         storage = "local"
+
+    if isinstance(keys_to_skip, str):
+        keys_to_skip = (keys_to_skip,)
 
     cage_kwargs = dict(
         EnvClass=EnvClass,
@@ -66,79 +74,87 @@ def build_cages_and_env_buffers(
 
     sample_tree: ArrayDict[Array] = ArrayDict({})
 
-    # allocate batch buffer based on examples
-    sample_tree["observation"] = dict_map(
-        Array.from_numpy,
-        obs,
-        batch_shape=tuple(batch_spec),
-        storage=storage,
-        padding=1,
-        full_size=full_size,
-    )
+    if {"obs", "observation"} & set(keys_to_skip) == set():
+        # allocate batch buffer based on examples
+        sample_tree["observation"] = dict_map(
+            Array.from_numpy,
+            obs,
+            batch_shape=tuple(batch_spec),
+            storage=storage,
+            padding=1,
+            full_size=full_size,
+        )
 
-    # in case environment creates rewards of shape (1,) or of integer type,
-    # force to be correct shape and type
-    sample_tree["reward"] = dict_map(
-        Array.from_numpy,
-        reward,
-        batch_shape=tuple(batch_spec),
-        feature_shape=(),
-        dtype=np.float32,
-        storage=storage,
-        full_size=full_size,
-    )
+    if "reward" not in keys_to_skip:
+        # in case environment creates rewards of shape (1,) or of integer type,
+        # force to be correct shape and type
+        sample_tree["reward"] = dict_map(
+            Array.from_numpy,
+            reward,
+            batch_shape=tuple(batch_spec),
+            feature_shape=(),
+            dtype=np.float32,
+            storage=storage,
+            full_size=full_size,
+        )
 
-    sample_tree["terminated"] = Array.from_numpy(
-        terminated,
-        batch_shape=tuple(batch_spec),
-        feature_shape=(),
-        dtype=bool,
-        storage=storage,
-    )
+    if "terminated" not in keys_to_skip:
+        sample_tree["terminated"] = Array.from_numpy(
+            terminated,
+            batch_shape=tuple(batch_spec),
+            feature_shape=(),
+            dtype=bool,
+            storage=storage,
+        )
 
-    sample_tree["truncated"] = Array.from_numpy(
-        truncated,
-        batch_shape=tuple(batch_spec),
-        feature_shape=(),
-        dtype=bool,
-        storage=storage,
-    )
+    if "truncated" not in keys_to_skip:
+        sample_tree["truncated"] = Array.from_numpy(
+            truncated,
+            batch_shape=tuple(batch_spec),
+            feature_shape=(),
+            dtype=bool,
+            storage=storage,
+        )
 
-    # add padding in case reward normalization is used
-    # TODO: ideally, we only would add padding if we know we want reward
-    # normalization, but how to do this?
-    sample_tree["done"] = Array.from_numpy(
-        done,
-        batch_shape=tuple(batch_spec),
-        feature_shape=(),
-        dtype=bool,
-        storage=storage,
-        padding=1,
-        full_size=full_size,
-    )
+    if "done" not in keys_to_skip:
+        # add padding in case reward normalization is used
+        # TODO: ideally, we only would add padding if we know we want reward
+        # normalization, but how to do this?
+        sample_tree["done"] = Array.from_numpy(
+            done,
+            batch_shape=tuple(batch_spec),
+            feature_shape=(),
+            dtype=bool,
+            storage=storage,
+            padding=1,
+            full_size=full_size,
+        )
 
-    sample_tree["env_info"] = dict_map(
-        Array.from_numpy,
-        info,
-        batch_shape=tuple(batch_spec),
-        storage=storage,
-    )
+    if "env_info" not in keys_to_skip:
+        sample_tree["env_info"] = dict_map(
+            Array.from_numpy,
+            info,
+            batch_shape=tuple(batch_spec),
+            storage=storage,
+        )
 
-    # in discrete problems, integer actions are used as array indices during
-    # optimization. Pytorch requires indices to be 64-bit integers, so we
-    # force actions to be 32 bits only if they are floats
-    sample_tree["action"] = dict_map(
-        Array.from_numpy,
-        action,
-        batch_shape=tuple(batch_spec),
-        force_32bit="float",
-        storage=storage,
-        full_size=full_size,
-    )
+    if "action" not in keys_to_skip:
+        # in discrete problems, integer actions are used as array indices during
+        # optimization. Pytorch requires indices to be 64-bit integers, so we
+        # force actions to be 32 bits only if they are floats
+        sample_tree["action"] = dict_map(
+            Array.from_numpy,
+            action,
+            batch_shape=tuple(batch_spec),
+            force_32bit="float",
+            storage=storage,
+            full_size=full_size,
+        )
 
-    # add empty agent_info field by default
-    # user is free to set a different value later
-    sample_tree["agent_info"] = ArrayDict({})
+    if "agent_info" not in keys_to_skip:
+        # add empty agent_info field by default
+        # user is free to set a different value later
+        sample_tree["agent_info"] = ArrayDict({})
 
     logger.debug(f"Instantiating {batch_spec.B} environments...")
 
@@ -163,6 +179,10 @@ def build_cages_and_env_buffers(
         action_space=action_space,
         example_obs_batch=example_obs,
         example_action_batch=example_action,
+        example_obs=obs,
+        example_action=action,
+        example_reward=reward,
+        example_info=info,
     )
 
     return cages, sample_tree, metadata

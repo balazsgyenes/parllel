@@ -1,23 +1,24 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 from gymnasium import spaces
+from torch import Tensor
 from torch_geometric.nn import MLP, PointNetConv, fps, global_max_pool, radius
 
 from parllel import ArrayDict
-from parllel.torch.agents.categorical import ModelOutputs
+from parllel.torch.agents.categorical import DistParams, ModelOutputs
+
+from pointcloud import PointCloudSpace
 
 
 class SAModule(torch.nn.Module):
-    def __init__(self, ratio, r, nn):
+    def __init__(self, ratio: float, r: float, nn: torch.nn.Module):
         super().__init__()
         self.ratio = ratio
         self.r = r
         self.conv = PointNetConv(nn, add_self_loops=False)
 
-    def forward(self, x, pos, batch):
+    def forward(self, x: Tensor | None, pos: Tensor, batch: Tensor):
         idx = fps(pos, batch, ratio=self.ratio)
         row, col = radius(
             pos, pos[idx], self.r, batch, batch[idx], max_num_neighbors=64
@@ -30,11 +31,11 @@ class SAModule(torch.nn.Module):
 
 
 class GlobalSAModule(torch.nn.Module):
-    def __init__(self, nn):
+    def __init__(self, nn: torch.nn.Module):
         super().__init__()
         self.nn = nn
 
-    def forward(self, x, pos, batch):
+    def forward(self, x: Tensor, pos: Tensor, batch: Tensor):
         x = self.nn(torch.cat([x, pos], dim=1))
         x = global_max_pool(x, batch)
         pos = pos.new_zeros((x.size(0), 3))
@@ -45,17 +46,17 @@ class GlobalSAModule(torch.nn.Module):
 class PointNetPgModel(torch.nn.Module):
     def __init__(
         self,
-        obs_space: spaces.Box,
+        obs_space: PointCloudSpace,
         action_space: spaces.Discrete,
         hidden_sizes: int | list[int] | None = None,
-        hidden_nonlinearity: Optional[str] = None,
+        hidden_nonlinearity: str | None = None,
     ):
         super().__init__()
-        assert isinstance(obs_space, spaces.Box)
+        assert isinstance(obs_space, PointCloudSpace)
         obs_shape = obs_space.shape[0]
 
         assert isinstance(action_space, spaces.Discrete)
-        n_actions = action_space.n
+        n_actions = int(action_space.n)
 
         if hidden_sizes is None:
             hidden_sizes = [1024, 512, 256]
@@ -73,25 +74,24 @@ class PointNetPgModel(torch.nn.Module):
         self.pi = MLP(hidden_sizes + [n_actions], norm=None, act=hidden_nonlinearity)
         self.value = MLP(hidden_sizes + [1], norm=None, act=hidden_nonlinearity)
 
-    def forward(self, data):
+    def forward(self, data: ArrayDict[Tensor]) -> ModelOutputs:
         # convert to pytorch geometric batch representation
-        pos, batch = namedtuple_to_batched_data(data)
+        pos, batch = dict_to_batched_data(data)
 
         sa0_out = (None, pos, batch)
         sa1_out = self.sa1_module(*sa0_out)
         sa2_out = self.sa2_module(*sa1_out)
         sa3_out = self.sa3_module(*sa2_out)
         x, pos, batch = sa3_out
+        probs = self.pi(x).softmax(dim=-1)
+        value = self.value(x).squeeze(-1)
 
-        return ModelOutputs(
-            prob=self.pi(x).softmax(dim=-1),
-            value=self.value(x).squeeze(-1),
-        )
+        return ModelOutputs(dist_params=DistParams(probs=probs), value=value)
 
 
 def dict_to_batched_data(
-    array_dict: ArrayDict[torch.tensor],
-) -> tuple[torch.Tensor, torch.Tensor]:
+    array_dict: ArrayDict[Tensor],
+) -> tuple[Tensor, Tensor]:
     pos, ptr = array_dict["pos"], array_dict["ptr"]
     num_nodes = ptr[1:] - ptr[:-1]
     batch = torch.repeat_interleave(
