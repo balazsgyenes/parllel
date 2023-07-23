@@ -120,7 +120,7 @@ class GaussianPgAgent(PgAgent):
         return action.cpu(), agent_info.cpu()
 
     @torch.no_grad()
-    def value(self, observation: ArrayTree[Array]) -> ArrayTree[Tensor]:
+    def value(self, observation: ArrayTree[Array]) -> Tensor:
         observation = observation.to_ndarray()
         observation = dict_map(torch.from_numpy, observation)
         observation = observation.to(device=self.device)

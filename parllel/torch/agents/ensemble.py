@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import Sequence
 
 import torch
 
@@ -20,9 +22,10 @@ class AgentProfile:
             the whole observation.
         action_key: the part of action for which this agent is responsible.
     """
+
     instance: TorchAgent
     action_key: str
-    obs_key: Optional[str] = None
+    obs_key: str | None = None
 
 
 class EnsembleAgent(TorchAgent):
@@ -41,25 +44,31 @@ class EnsembleAgent(TorchAgent):
             environment.
     """
 
-    def __init__(self, agent_profiles: Sequence[AgentProfile]):
+    model: torch.nn.ModuleDict
+    distribution: MultiDistribution
 
+    def __init__(self, agent_profiles: Sequence[AgentProfile]):
         self._agent_profiles = agent_profiles
-        self._agent_instances = set(profile.instance for profile in self._agent_profiles)
+        self._agent_instances = set(
+            profile.instance for profile in self._agent_profiles
+        )
 
         # allows convenient access to all parameters via ensemble agent's
         # model property
-        model = torch.nn.ModuleDict({
-            profile.action_key: profile.instance.model
-            for profile
-            in self._agent_profiles
-        })
+        model = torch.nn.ModuleDict(
+            {
+                profile.action_key: profile.instance.model
+                for profile in self._agent_profiles
+            }
+        )
 
         # exposes multi-agent distribution methods to algorithm
-        distribution = MultiDistribution({
-            profile.action_key: profile.instance.distribution
-            for profile
-            in self._agent_profiles
-        })
+        distribution = MultiDistribution(
+            {
+                profile.action_key: profile.instance.distribution
+                for profile in self._agent_profiles
+            }
+        )
 
         devices = [profile.instance.device for profile in self._agent_profiles]
         device = devices[0]
