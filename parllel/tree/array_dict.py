@@ -7,7 +7,7 @@ from typing import Any, Callable, Generic, Iterable, Iterator, TypeVar
 
 import numpy as np
 
-from parllel.tree import ArrayLike, ArrayTree, ArrayType, MappingTree
+from parllel.tree import ArrayLike, ArrayTree, ArrayType, ArrayOrMapping
 
 _T = TypeVar("_T")
 
@@ -24,7 +24,7 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
 
     def __init__(
         self,
-        items: MappingTree | Iterable[tuple[str, MappingTree]] | None = None,
+        items: ArrayOrMapping | Iterable[tuple[str, ArrayOrMapping]] | None = None,
         _run_checks: bool = True,
     ) -> None:
         dict_ = dict(items) if items is not None else {}

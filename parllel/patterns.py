@@ -8,7 +8,7 @@ import gymnasium as gym
 import numpy as np
 
 import parllel.logger as logger
-from parllel import Array, ArrayDict, ArrayTree, dict_map, MappingTree
+from parllel import Array, ArrayDict, ArrayTree, dict_map, ArrayOrMapping
 from parllel.agents import Agent
 from parllel.cages import Cage, ProcessCage, SerialCage
 from parllel.samplers import EvalSampler
@@ -23,10 +23,10 @@ from parllel.types import BatchSpec
 class Metadata:
     obs_space: gym.Space
     action_space: gym.Space
-    example_obs: MappingTree[np.ndarray]
-    example_action: MappingTree[np.ndarray]
-    example_reward: MappingTree[np.ndarray]
-    example_info: MappingTree[np.ndarray]
+    example_obs: ArrayOrMapping[np.ndarray]
+    example_action: ArrayOrMapping[np.ndarray]
+    example_reward: ArrayOrMapping[np.ndarray]
+    example_info: ArrayOrMapping[np.ndarray]
     example_obs_batch: ArrayTree[np.ndarray] | None = None
     example_action_batch: ArrayTree[np.ndarray] | None = None
 

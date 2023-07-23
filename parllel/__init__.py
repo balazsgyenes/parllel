@@ -1,5 +1,5 @@
 from parllel.tree import (ArrayDict, ArrayLike, ArrayTree, ArrayType,
-                          MappingTree, dict_map)
+                          ArrayOrMapping, dict_map)
 from parllel.arrays import Array, Index, Location
 
 __all__ = [
@@ -8,7 +8,7 @@ __all__ = [
     "ArrayLike",
     "ArrayTree",
     "ArrayType",
-    "MappingTree",
+    "ArrayOrMapping",
     "Index",
     "Location",
     "dict_map",

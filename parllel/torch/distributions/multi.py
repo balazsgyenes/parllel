@@ -3,12 +3,12 @@ from typing import Mapping
 import torch
 from torch import Tensor
 
-from parllel import MappingTree
+from parllel import ArrayOrMapping
 
 from .distribution import Distribution
 
-ActionType = Mapping[str, MappingTree[Tensor]]
-DistParamsType = Mapping[str, Mapping[str, MappingTree[Tensor]]]
+ActionType = Mapping[str, ArrayOrMapping[Tensor]]
+DistParamsType = Mapping[str, Mapping[str, ArrayOrMapping[Tensor]]]
 
 
 class MultiDistribution(Distribution):

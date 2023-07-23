@@ -21,7 +21,7 @@ class ArrayLike(Protocol):
 
 ArrayType = TypeVar("ArrayType", bound=ArrayLike)
 ArrayTree = Union[ArrayType, "ArrayDict[ArrayType]"]
-MappingTree = Union[ArrayType, Mapping[str, "MappingTree[ArrayType]"]]
+ArrayOrMapping = Union[ArrayType, Mapping[str, "ArrayOrMapping[ArrayType]"]]
 
 from .array_dict import ArrayDict
 from .utils import dict_map
@@ -31,6 +31,6 @@ __all__ = [
     "ArrayType",
     "ArrayTree",
     "ArrayDict",
-    "MappingTree",
+    "ArrayOrMapping",
     "dict_map",
 ]

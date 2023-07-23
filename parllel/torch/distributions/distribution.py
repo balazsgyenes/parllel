@@ -6,11 +6,11 @@ from typing import Mapping
 import torch
 from torch import Tensor
 
-from parllel import MappingTree
+from parllel import ArrayOrMapping
 from parllel.torch.utils import valid_mean
 
-ActionType = MappingTree[Tensor]
-DistParamsType = Mapping[str, MappingTree]
+ActionType = ArrayOrMapping[Tensor]
+DistParamsType = Mapping[str, ArrayOrMapping]
 
 
 class Distribution(ABC):

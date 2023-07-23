@@ -5,12 +5,12 @@ from typing import Any, Callable, Iterable
 
 import numpy as np
 
-from parllel.tree import ArrayDict, ArrayLike, ArrayTree, ArrayType, MappingTree
+from parllel.tree import ArrayDict, ArrayLike, ArrayTree, ArrayType, ArrayOrMapping
 
 
 def dict_map(
     func: Callable[[ArrayType], Any],
-    tree: MappingTree[ArrayType],
+    tree: ArrayOrMapping[ArrayType],
     *args,
     **kwargs,
 ) -> ArrayTree:
