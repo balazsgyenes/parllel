@@ -138,16 +138,16 @@ class GaussianPgAgent(PgAgent):
         self,
         observation: ArrayTree[Tensor],
         agent_info: ArrayDict[Tensor],
-        init_rnn_state: ArrayTree[Tensor] | None,
+        initial_rnn_state: ArrayTree[Tensor] | None,
     ) -> PgPrediction:
         """Performs forward pass on training data, for algorithm."""
         model_inputs = (observation,)
         if self.recurrent:
-            assert init_rnn_state is not None
+            assert initial_rnn_state is not None
             previous_action = agent_info["previous_action"]
             # rnn_states were saved into the samples buffer as [B,N,H]
             # transform back [B,N,H] --> [N,B,H].
-            init_rnn_state = init_rnn_state.transpose(0, 1).contiguous()
-            model_inputs += (previous_action, init_rnn_state)
+            initial_rnn_state = initial_rnn_state.transpose(0, 1).contiguous()
+            model_inputs += (previous_action, initial_rnn_state)
         model_outputs: ModelOutputs = self.model(*model_inputs)
         return model_outputs

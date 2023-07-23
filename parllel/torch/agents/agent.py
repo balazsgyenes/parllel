@@ -55,9 +55,9 @@ class TorchAgent(Agent):
     @torch.no_grad()
     def initial_rnn_state(self) -> ArrayTree[Tensor]:
         # transpose the rnn_states from [N,B,H] -> [B,N,H] for storage.
-        init_rnn_state, _ = self._get_states(...)
-        init_rnn_state = init_rnn_state.transpose(0, 1)
-        return init_rnn_state.cpu()
+        rnn_state, _ = self._get_states(...)
+        rnn_state = rnn_state.transpose(0, 1)
+        return rnn_state.cpu()
 
     def _get_states(
         self,

@@ -169,7 +169,7 @@ def build(config: Dict) -> OnPolicyRunner:
         buffer=dataloader_buffer,
         sampler_batch_spec=batch_spec,
         n_batches=config["algo"]["minibatches"],
-        batch_only_fields=["init_rnn_state"],
+        batch_only_fields=["initial_rnn_state"],
         recurrent=True,
         pre_batches_transform=lambda x: buffer_to_device(x, device=device),
     )

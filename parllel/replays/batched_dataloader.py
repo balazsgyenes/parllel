@@ -15,10 +15,10 @@ ArrayType = TypeVar("ArrayType", bound=ArrayLike)
 class BatchedDataLoader(Generic[ArrayType]):
     """Iterates through a tree of samples in a fixed number of batches.
     Fields that cannot be indexed according to time (e.g.
-    `agent.initial_rnn_state`) are only indexed according to batch dimension.
+    `initial_rnn_state`) are only indexed according to batch dimension.
     This data structure provides a convenient way to structure samples how the
     algo expects them, abstracting the shuffling and sampling operations. Using
-    the `apply_func` method, the all samples can be moved to the GPU at once.
+    pre_batch_transform, the all samples can be moved to the GPU at once.
     """
 
     def __init__(

@@ -22,6 +22,6 @@ class PgAgent(TorchAgent):
         self,
         observation: ArrayTree[Tensor],
         agent_info: ArrayDict[Tensor],
-        init_rnn_state: ArrayTree[Tensor] | None,
+        initial_rnn_state: ArrayTree[Tensor] | None,
     ) -> PgPrediction:
         pass

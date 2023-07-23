@@ -58,7 +58,7 @@ class DummyAgent(Agent):
         )
 
         if self.recurrent:
-            self.init_rnn_states = Array(
+            self.initial_rnn_states = Array(
                 feature_shape=(),
                 batch_shape=(n_batches, batch_spec.B),
                 dtype=np.float32,
@@ -95,9 +95,9 @@ class DummyAgent(Agent):
         # advance counter to the next batch
         self._step_ctr = batch_ctr * self.batch_spec.T
 
-        init_rnn_state = self.rng.random(self.batch_spec.B)
-        self.init_rnn_states[batch_ctr] = init_rnn_state
-        return init_rnn_state
+        initial_rnn_state = self.rng.random(self.batch_spec.B)
+        self.initial_rnn_states[batch_ctr] = initial_rnn_state
+        return initial_rnn_state
 
     def step(
         self,

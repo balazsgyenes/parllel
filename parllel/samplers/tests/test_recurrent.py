@@ -268,8 +268,8 @@ class TestRecurrentSampler:
             agent_state_next_batch = np.asarray(agent.states[(i + 1) * batch_spec.T])
             assert np.all(agent_state_next_batch[done_envs] == 0)
 
-            # verify init_rnn_state
-            assert buffer_equal(batch.agent.initial_rnn_state, agent.init_rnn_states[i])
+            # verify rnn_states
+            assert buffer_equal(batch.agent.initial_rnn_state, agent.initial_rnn_states[i])
 
             if get_bootstrap:
                 # check bootstrap values

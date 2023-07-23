@@ -122,7 +122,7 @@ class IndependentPgAgents(EnsembleAgent, PgAgent):
         self,
         observation: ArrayTree[Tensor],
         agent_info: ArrayDict[Tensor],
-        init_rnn_state: ArrayDict[Tensor] | None,
+        initial_rnn_state: ArrayDict[Tensor] | None,
     ) -> PgPrediction:
         previous_actions: ArrayDict[Tensor] = agent_info.get("previous_action")
         dist_params = {}
@@ -139,8 +139,8 @@ class IndependentPgAgents(EnsembleAgent, PgAgent):
             if agent.instance.recurrent:
                 assert previous_actions is not None
                 subagent_info["previous_action"] = previous_actions[agent.action_key]
-                assert init_rnn_state is not None
-                subagent_rnn_state = init_rnn_state[agent.action_key]
+                assert initial_rnn_state is not None
+                subagent_rnn_state = initial_rnn_state[agent.action_key]
 
             subagent_prediction = agent.instance.predict(
                 subagent_observation,
