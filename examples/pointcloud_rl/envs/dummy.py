@@ -6,7 +6,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from .pointcloud import PointCloud
+from pointcloud import PointCloudSpace
 
 ObsType = np.ndarray
 ActionType = SupportsInt
@@ -17,7 +17,7 @@ class DummyEnv(gym.Env):
         self,
         prob_done: float,
     ) -> None:
-        self.observation_space = PointCloud(
+        self.observation_space = PointCloudSpace(
             max_num_points=50,
             low=-np.inf,
             high=np.inf,

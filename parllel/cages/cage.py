@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Mapping
 
 import gymnasium as gym
+import numpy as np
 
-from parllel.arrays import Array
-from parllel.buffers import (Buffer, buffer_asarray, dict_to_namedtuple,
-                             namedtuple_to_dict)
+from parllel import Array, ArrayLike, ArrayTree, ArrayOrMapping, dict_map
 
 from .collections import (EnvInfoType, EnvRandomStepType, EnvSpaces,
                           EnvStepType, ObsType)
@@ -25,7 +24,7 @@ class Cage(ABC):
     immediately when done is True, replacing the returned observation with the
     reset observation. If False, environment is not reset and the
     `needs_reset` flag is set to True.
-    ;param ignore_reset_info (bool): If True (default), the info dictionary 
+    ;param ignore_reset_info (bool): If True (default), the info dictionary
     returned by env.reset() gets ignored. If False, the dict is treated the
     same way as info dicts returned by env.step() calls
     """
@@ -33,7 +32,7 @@ class Cage(ABC):
     def __init__(
         self,
         EnvClass: Callable,
-        env_kwargs: Dict,
+        env_kwargs: Mapping[str, Any],
         TrajInfoClass: Callable,
         reset_automatically: bool = True,
         ignore_reset_info: bool = True,
@@ -48,7 +47,7 @@ class Cage(ABC):
         self._render: bool = False
 
     def _create_env(self) -> None:
-        self._completed_trajs: List[TrajInfo] = []
+        self._completed_trajs: list[TrajInfo] = []
         self._traj_info: TrajInfo = self.TrajInfoClass()
 
         self._env: gym.Env = self.EnvClass(**self.env_kwargs)
@@ -79,15 +78,19 @@ class Cage(ABC):
     def render(self, value: bool) -> None:
         self._render = value
 
-    def _step_env(self, action: Buffer) -> EnvStepType:
+    def _step_env(
+        self,
+        action: ArrayTree[Array] | ArrayOrMapping[ArrayLike],
+    ) -> EnvStepType:
         # if rendering, render before step is taken so that the renderings
         # line up with the corresponding observation
         if self._render:
             rendering = self._env.render()
 
-        # get underlying numpy arrays and convert to dict if needed
-        action = buffer_asarray(action)
-        action = namedtuple_to_dict(action)
+        # get underlying numpy arrays
+        # handles dicts of ndarrays, in case called from _random_step_env
+        # warning: this won't handle things like JaggedArray that require `to_ndarray`
+        action = dict_map(np.asarray, action)
 
         obs, reward, terminated, truncated, env_info = self._env.step(action)
         self._traj_info.step(obs, action, reward, terminated, truncated, env_info)
@@ -98,8 +101,7 @@ class Cage(ABC):
         return obs, reward, terminated, truncated, env_info
 
     def _random_step_env(self) -> EnvRandomStepType:
-        action = self._env.action_space.sample()
-        action = dict_to_namedtuple(action, "action")
+        action: ArrayOrMapping[np.ndarray] = self._env.action_space.sample()
 
         obs, reward, terminated, truncated, env_info = self._step_env(action)
 
@@ -112,38 +114,25 @@ class Cage(ABC):
         return action, obs, reward, terminated, truncated, env_info
 
     def _reset_env(
-        self, seed: Optional[int] = None, options: Optional[dict] = None
-    ) -> Tuple[ObsType, EnvInfoType]:
+        self,
+        seed: int | None = None,
+        options: dict | None = None,
+    ) -> tuple[ObsType, EnvInfoType]:
         # store finished trajectory and start new one
         self._completed_trajs.append(self._traj_info)
         self._traj_info = self.TrajInfoClass()
         return self._env.reset(seed=seed, options=options)
 
     @abstractmethod
-    def set_samples_buffer(
-        self,
-        action: Buffer,
-        obs: Buffer,
-        reward: Buffer,
-        done: Array,
-        info: Buffer,
-    ) -> None:
-        """Declare buffers that will be used during sampling, allowing
-        optimized communication during sampling (e.g. with a child process).
-        If buffers were passed during cage creation, this is not required.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def step_async(
         self,
-        action: Buffer,
+        action: ArrayTree[Array],
         *,
-        out_obs: Optional[Buffer] = None,
-        out_reward: Optional[Buffer] = None,
-        out_terminated: Optional[Buffer] = None,
-        out_truncated: Optional[Buffer] = None,
-        out_info: Optional[Buffer] = None,
+        out_obs: ArrayTree[Array] | None = None,
+        out_reward: ArrayTree[Array] | None = None,
+        out_terminated: Array | None = None,
+        out_truncated: Array | None = None,
+        out_info: ArrayTree[Array] | None = None,
     ) -> None:
         """Step the environment asynchronously using action. If out arguments
         are provided, the result will be written there, otherwise it will be
@@ -169,7 +158,7 @@ class Cage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def collect_completed_trajs(self) -> List[TrajInfo]:
+    def collect_completed_trajs(self) -> list[TrajInfo]:
         """Return a list of the TrajInfo objects from trajectories that have
         been completed since the last time this function was called.
         """
@@ -179,12 +168,12 @@ class Cage(ABC):
     def random_step_async(
         self,
         *,
-        out_action: Optional[Buffer] = None,
-        out_obs: Optional[Buffer] = None,
-        out_reward: Optional[Buffer] = None,
-        out_terminated: Optional[Buffer] = None,
-        out_truncated: Optional[Buffer] = None,
-        out_info: Optional[Buffer] = None,
+        out_action: ArrayTree[Array] | None = None,
+        out_obs: ArrayTree[Array] | None = None,
+        out_reward: ArrayTree[Array] | None = None,
+        out_terminated: Array | None = None,
+        out_truncated: Array | None = None,
+        out_info: ArrayTree[Array] | None = None,
     ) -> None:
         """Take a step with a random action from the env's action space. If
         out arguments are provided, the result will be written there,
@@ -197,7 +186,10 @@ class Cage(ABC):
 
     @abstractmethod
     def reset_async(
-        self, *, out_obs: Optional[Buffer] = None, out_info: Optional[Buffer]
+        self,
+        *,
+        out_obs: ArrayTree[Array] | None = None,
+        out_info: ArrayTree[Array] | None = None,
     ) -> None:
         """Reset the environment. If out_obs is provided, the reset observation
         is written there, otherwise it is returned the next time that

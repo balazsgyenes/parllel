@@ -1,16 +1,17 @@
 # dependencies
-import parllel.buffers
+import parllel.tree
 
 from .array import Array
-from .utils import buffer_from_example, buffer_from_dict_example
+from .indices import Index, Location
 
-# these types are only imported so they can be registered
-from .jagged import JaggedArray
-from .managedmemory import ManagedMemoryArray
-from .sharedmemory import SharedMemoryArray
+# these modules are only imported to register the types they define
+import parllel.arrays.jagged
+import parllel.arrays.managedmemory
+import parllel.arrays.sharedmemory
 
 
 __all__ = [
     "Array",
-    "buffer_from_example", "buffer_from_dict_example",
+    "Index",
+    "Location",
 ]

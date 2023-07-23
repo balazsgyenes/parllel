@@ -1,16 +1,18 @@
-from __future__ import annotations  # full returns another Array
+from __future__ import annotations
 
-from functools import reduce
-from typing import Any, Optional, Tuple, TypeVar
+from typing import Any, Literal, TypeVar
 
 import numpy as np
 
-from parllel.buffers import Buffer, Index, Indices
+from parllel import ArrayTree
+from parllel.arrays.indices import (Index, Location, add_locations,
+                                    batch_dims_from_location, index_slice,
+                                    init_location, shape_from_location)
 
 Self = TypeVar("Self", bound="Array")
 
 
-class Array(Buffer):
+class Array:
     """An object wrapping a numpy array for use in sampling. An Array remembers
     indexing operations used to get subarrays. Math operations are generally
     not supported, use `np.asarray(arr)` to get the underlying numpy array.
@@ -19,17 +21,31 @@ class Array(Buffer):
         >>> array = Array(shape=(4, 4, 4), dtype=np.float32)
         >>> array[:, slice(1, 3), 2] = 5.
     """
+
     _subclasses = {}
     storage = "local"
     kind = "default"
+    _base_array: np.ndarray
 
-    def __init_subclass__(cls, /, kind: Optional[str] = None, storage: Optional[str] = None, **kwargs) -> None:
+    def __init_subclass__(
+        cls,
+        *,
+        kind: str | None = None,
+        storage: str | None = None,
+        **kwargs,
+    ) -> None:
         super().__init_subclass__(**kwargs)
         kind = kind if kind is not None else "default"
         storage = storage if storage is not None else "local"
         cls._subclasses[(kind, storage)] = cls
 
-    def __new__(cls, *args, kind: Optional[str] = None, storage: Optional[str] = None, **kwargs):
+    def __new__(
+        cls,
+        *args,
+        kind: str | None = None,
+        storage: str | None = None,
+        **kwargs,
+    ) -> Array:
         # fill in empty arguments with values from class used to instantiate
         # can instantiate a subclass directly by just not passing kind/storage
         # e.g. SharedMemoryArray(shape=(4,4), dtype=np.float32)
@@ -43,18 +59,23 @@ class Array(Buffer):
         try:
             subcls = cls._subclasses[(kind, storage)]
         except KeyError:
-            raise ValueError(f"No array registered under storage type '{storage}'")
+            raise ValueError(
+                f"No array subclass registered under {kind=} and {storage=}"
+            )
         return super().__new__(subcls)
 
-    def __init__(self,
-        shape: Tuple[int, ...],
+    def __init__(
+        self,
+        feature_shape: tuple[int, ...],
         dtype: np.dtype,
         *,
-        kind: Optional[str] = None,  # consumed by __new__
-        storage: Optional[str] = None,  # consumed by __new__
+        batch_shape: tuple[int, ...] = (),
+        kind: str | None = None,  # consumed by __new__
+        storage: str | None = None,  # consumed by __new__
         padding: int = 0,
-        full_size: Optional[int] = None,
+        full_size: int | None = None,
     ) -> None:
+        shape = batch_shape + feature_shape
 
         if not shape:
             raise ValueError("Non-empty shape required.")
@@ -86,78 +107,129 @@ class Array(Buffer):
 
         self.dtype = dtype
         self.padding = padding
-
-        self._default_size = shape[0]  # size of leading dim of unindexed array
-        self._full_size = full_size  # size of leading dim of full array, without padding
-        self._offset = 0  # offset of visible region within full array, without padding
-        self._shift = self._offset + padding  # offset of visible region within base array
-        # add padding onto both ends of first dimension
+        # size of leading dim of full array, without padding
+        self.full_size = full_size
         self._base_shape = (full_size + 2 * padding,) + shape[1:]
+        self._base_batch_dims = len(batch_shape)
 
-        self._buffer_id: int = id(self)
-        self._index_history: list[Indices] = []
+        self._allocate(shape=self._base_shape, dtype=dtype, name="_base_array")
 
-        self._allocate()
-
-        self._current_array = self._base_array  # the result of np.asarray()
-        self._apparent_shape = shape  # shape of current array
-
-        # used to enable indexing into a single element like element[:] = 0
-        # set to the previous value of current_array, or the base_array
-        self._previous_array = self._base_array
-
+        self._current_location = init_location(self._base_shape)
+        init_slice = slice(padding, shape[0] + padding)
+        self._unresolved_indices: list[Location] = [init_slice]
         self._resolve_indexing_history()
 
-    @classmethod
-    def like(cls,
-        template: Array,
-        shape: Optional[Tuple[int, ...]] = None,
-        dtype: Optional[np.dtype] = None,
-        kind: Optional[str] = None,
-        storage: Optional[str] = None,
-        padding: Optional[int] = None,
-        full_size: Optional[int] = None,
+        self._rotatable = True
+
+    def new_array(
+        self,
+        feature_shape: tuple[int, ...] | None = None,
+        dtype: np.dtype | None = None,
+        batch_shape: tuple[int, ...] | None = None,
+        kind: str | None = None,
+        storage: str | None = None,
+        padding: int | None = None,
+        full_size: int | None = None,
         inherit_full_size: bool = False,
     ) -> Array:
         """Creates an Array with the same shape and type as a given Array
-        (similar to numpy's zeros_like function). By default, the full size of
+        (similar to torch's new_zeros function). By default, the full size of
         the created Array is just the apparent size of the template. To set it
         to another value, either pass it manually or set the
         `inherit_full_size` flag to True to use the template's full size.
-
-        # TODO: turn this into a normal method called new_array
         """
-        shape = shape if shape is not None else template.shape
-        dtype = dtype or template.dtype
-        kind = kind or template.kind
-        storage = storage or template.storage
-        padding = padding if padding is not None else template.padding
-        # only inherit full_size from template if full_size is not the default and flag set to true
-        full_size = full_size if full_size is not None else (
-            template._full_size
-            if (inherit_full_size and template._full_size > template._default_size) else
-            None
+        batch_shape = batch_shape if batch_shape is not None else self.batch_shape
+        feature_shape = (
+            feature_shape
+            if feature_shape is not None
+            else self.shape[self.n_batch_dims :]
         )
-        return cls(
-            shape,
-            dtype,
+        dtype = dtype or self.dtype
+        kind = kind if kind is not None else self.kind
+        storage = storage if storage is not None else self.storage
+        padding = padding if padding is not None else self.padding
+        full_size = (
+            full_size
+            if full_size is not None
+            else (
+                # only inherit full_size from self if the user explicitly
+                # requests it, the array has not been indexed, and full_size
+                # is not the default
+                self.full_size
+                if (
+                    inherit_full_size
+                    and self._rotatable
+                    and self.full_size > self.shape[0]
+                )
+                else None
+            )
+        )
+        return type(self)(
+            feature_shape=feature_shape,
+            dtype=dtype,
+            batch_shape=batch_shape,
             kind=kind,
             storage=storage,
             padding=padding,
             full_size=full_size,
         )
 
-    def _allocate(self) -> None:
+    @classmethod
+    def from_numpy(
+        cls,
+        example: Any,
+        feature_shape: tuple[int, ...] | None = None,
+        dtype: np.dtype | None = None,
+        force_32bit: Literal[True, "float", "int", False] = True,
+        batch_shape: tuple[int, ...] = (),
+        kind: str | None = None,
+        storage: str | None = None,
+        padding: int = 0,
+        full_size: int | None = None,
+    ) -> Array:
+        np_example = np.asanyarray(example)  # promote scalars to 0d arrays
+        feature_shape = feature_shape if feature_shape is not None else np_example.shape
+        if dtype is None:
+            dtype = np_example.dtype
+            if dtype == np.int64 and force_32bit in {True, "int"}:
+                dtype = np.int32
+            elif dtype == np.float64 and force_32bit in {True, "float"}:
+                dtype = np.float32
+        return cls(
+            feature_shape=feature_shape,
+            dtype=dtype,
+            batch_shape=batch_shape,
+            kind=kind,
+            storage=storage,
+            padding=padding,
+            full_size=full_size,
+        )
+
+    def _allocate(self, shape: tuple[int, ...], dtype: np.dtype, name: str) -> None:
         # initialize numpy array
-        self._base_array = np.zeros(shape=self._base_shape, dtype=self.dtype)
+        setattr(self, name, np.zeros(shape=shape, dtype=dtype))
 
     @property
-    def shape(self):
-        if self._apparent_shape is None:
+    def shape(self) -> tuple[int, ...]:
+        if self._shape is None:
             self._resolve_indexing_history()
 
-        return self._apparent_shape
-        
+        return self._shape
+
+    @property
+    def n_batch_dims(self) -> int:
+        if self._shape is None:
+            self._resolve_indexing_history()
+
+        return self._n_batch_dims
+
+    @property
+    def batch_shape(self) -> tuple[int, ...]:
+        if self._shape is None:
+            self._resolve_indexing_history()
+
+        return self._batch_shape
+
     @property
     def first(self) -> int:
         """The index of the first element in the array, not including padding.
@@ -171,165 +243,161 @@ class Array(Buffer):
         Replaces indexing at -1 in numpy arrays.
         e.g. array[-1] -> rot_array[rot_array.last]
         """
-        if self._apparent_shape is None:
+        if self._shape is None:
             self._resolve_indexing_history()
-        
-        return self._apparent_shape[0] - 1
 
-    def __getitem__(self, location: Indices) -> Self:
+        return self._shape[0] - 1
+
+    def __getitem__(self: Self, indices: Location) -> Self:
         # new Array object initialized through a (shallow) copy. Attributes
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
         # need to be modified.
-        result: Array = self.__new__(type(self))
-        result.__dict__.update(self.__dict__)
-        # assign *copy* of _index_history with additional element for this
+        subarray: Self = self.__new__(type(self))
+        subarray.__dict__.update(self.__dict__)
+        # disallow rotate and reset on subarrays
+        subarray._rotatable = False
+        # assign *copy* of _unresolved_indices with additional element for this
         # indexing operation
-        result._index_history = result._index_history + [location]
-        # current array and shape are not computed until needed
-        result._current_array = None
-        result._apparent_shape = None
-        # if self._current_array is not None, saves extra computation
-        # if it is None, then it must be recomputed anyway
-        result._previous_array = self._current_array
-        return result
+        subarray._unresolved_indices = subarray._unresolved_indices + [indices]
+        # set shape to None to indicate that indexing must be resolved
+        subarray._shape = None
+        return subarray
 
     def _resolve_indexing_history(self) -> None:
-        array = self._base_array
-        self._shift = shift = self._offset + self.padding
+        for location in self._unresolved_indices:
+            self._current_location = add_locations(
+                self._current_location,
+                location,
+                self._base_shape,
+                neg_from_end=False,
+            )
 
-        if self._index_history:
-            # shift only the first indices, leave the rest (if there are more)
-            index_history = [shift_indices(
-                self._index_history[0],
-                shift,
-                self._default_size,
-            )] + self._index_history[1:]
-        else:
-            # even if the array was never indexed, only this slice of the array
-            # should be returned by __array__
-            index_history = [slice(shift, shift + self._default_size)]
+        self._unresolved_indices.clear()
 
-        # if index history has only 1 element, this has no effect
-        array = reduce(lambda arr, index: arr[index], index_history[:-1], array)
-        self._previous_array = array
-        
-        # we guarantee that index_history has at least 1 element
-        array = array[index_history[-1]]
+        self._shape = shape_from_location(self._current_location, self._base_shape)
+        self._n_batch_dims = batch_dims_from_location(
+            self._current_location, self._base_batch_dims
+        )
+        self._batch_shape = self._shape[: self._n_batch_dims]
 
-        self._current_array = array
-        self._apparent_shape = array.shape
-    
-    def __setitem__(self, location: Indices, value: Any) -> None:
-        # TODO: optimize this method to avoid resolving history if location
-        # is slice(None) or Ellipsis and history only has one element
-        # in this case, only previous_array is required
-        if self._current_array is None:
+    def __setitem__(self, indices: Location, value: Any) -> None:
+        if self._shape is None:
             self._resolve_indexing_history()
 
-        if self._index_history:
-            if self._apparent_shape == ():
-                # Need to avoid item assignment on a scalar (0-D) array, so we assign
-                # into previous array using the last indices used
-                if not (location == slice(None) or location == ...):
-                    raise IndexError("Cannot take slice of 0-D array.")
-                location = self._index_history[-1]
-                # indices must be shifted if they were the first indices
-                if len(self._index_history) == 1:
-                    location = shift_indices(location, self._shift, self._default_size)
-                destination = self._previous_array
-            else:
-                destination = self._current_array
-        else:
-            location = shift_indices(location, self._shift, self._default_size)
-            destination = self._base_array
-        destination[location] = value
-    
+        destination = tuple(
+            add_locations(
+                self._current_location,
+                indices,
+                self._base_shape,
+                neg_from_end=False,
+            )
+        )
+
+        # write to underlying array at that location
+        self._base_array[destination] = value
+
     @property
-    def full(self) -> Array:
-        full: Array = self.__new__(type(self))
+    def full(self: Self) -> Self:
+        # no need to resolve indexing history since we clear it
+
+        full: Self = self.__new__(type(self))
         full.__dict__.update(self.__dict__)
+        full._rotatable = False
 
-        full._default_size = full._full_size
-        full._offset = 0
+        # clear any unresolved indexing history
+        full._unresolved_indices.clear()
 
-        full._index_history = []
-        full._current_array = None
-        full._apparent_shape = None
+        # assign current location so that full array except padding is visible
+        full._current_location = init_location(full._base_shape)
+        init_slice = slice(full.padding, full.full_size + full.padding)
+        full._unresolved_indices.append(init_slice)
+        full._resolve_indexing_history()
+
         return full
 
     @property
-    def next(self) -> Array:
+    def next(self: Self) -> Self:
         return self._get_at_offset(offset=1)
 
     @property
-    def previous(self) -> Array:
+    def previous(self: Self) -> Self:
         return self._get_at_offset(offset=-1)
 
-    def _get_at_offset(self, offset: int) -> Array:
-        if self._index_history:
-            raise RuntimeError("Only allowed to get at offset from unindexed array")
+    def _get_at_offset(self: Self, offset: int) -> Self:
+        if self._shape is None:
+            self._resolve_indexing_history()
 
-        new: Array = self.__new__(type(self))
-        new.__dict__.update(self.__dict__)
+        offsetted: Self = self.__new__(type(self))
+        offsetted.__dict__.update(self.__dict__)
+        offsetted._rotatable = False
+        offsetted._current_location = list(self._current_location)
 
-        # total shift of offset cannot exceed +/-padding, but we do not check
-        # if padding is exceeded, getitem/setitem may throw error
-        new._offset += offset
+        leading_loc = offsetted._current_location[0]
+        if isinstance(leading_loc, slice):
+            offset_slice = slice(offset, offsetted.shape[0] + offset)
+            offsetted._current_location[0] = index_slice(
+                leading_loc,
+                offset_slice,
+                offsetted._base_shape[0],
+                neg_from_end=False,
+            )
+        else:
+            offsetted._current_location[0] = leading_loc + offset
 
-        # index_history is already empty
-        # current array is now invalid, but apparent shape should still be
-        # correct
-        new._current_array = None
-        return new
+        offsetted._resolve_indexing_history()
+        return offsetted
 
     def reset(self) -> None:
         """Resets array, such that the offset will be 0 after the next time
         that `rotate()` is called. This is useful in the sampler, which calls
         `rotate()` before every batch.
         """
-        if self._index_history:
-            raise RuntimeError("Only allowed to call `reset()` on original array")
-        
-        # if apparent size is not smaller, sets offset to 0
-        self._offset = self._full_size - self._default_size
+        if not self._rotatable:
+            raise ValueError("reset() is only allowed on unindexed array.")
 
-        # current array is now invalid, but apparent shape should still be
-        # correct
-        self._current_array = None
+        self._current_location[0] = slice(
+            self.full_size + self.padding - self.shape[0],
+            self.full_size + self.padding,
+            1,
+        )
 
     def rotate(self) -> None:
+        if not self._rotatable:
+            raise ValueError("rotate() is only allowed on unindexed array.")
 
-        if self._index_history:
-            raise RuntimeError("Only allowed to call `rotate()` on original array")
+        leading_loc: slice = self._current_location[0]
+        start = leading_loc.start + self.shape[0]
+        stop = leading_loc.stop + self.shape[0]
 
-        self._offset += self._default_size
+        if start >= self.full_size:
+            # wrap around to beginning of array
+            start -= self.full_size
+            stop -= self.full_size
 
-        if self.padding and self._offset >= self._full_size:
-            # copy values from end of base array to beginning
-            final_values = slice(
-                self._full_size - self.padding,
-                self._full_size + self.padding,
-            )
-            next_previous_values = slice(-self.padding, self.padding)
-            self.full[next_previous_values] = self.full[final_values]
-
-        self._offset %= self._full_size
-
-        # current array is now invalid, but apparent shape should still be
-        # correct
-        self._current_array = None
+            if self.padding:
+                # copy values from end of base array to beginning
+                final_values = slice(
+                    self.full_size - self.padding,
+                    self.full_size + self.padding,
+                )
+                next_previous_values = slice(-self.padding, self.padding)
+                self.full[next_previous_values] = self.full[final_values]
+        
+        # update current location with modified start/stop
+        self._current_location[0] = slice(start, stop, 1)
 
     def __array__(self, dtype=None) -> np.ndarray:
-        if self._current_array is None:
+        if self._shape is None:
             self._resolve_indexing_history()
-        
-        array = np.asarray(self._current_array)  # promote scalars to 0d arrays
+
+        array = self._base_array[tuple(self._current_location)]
+        array = np.asarray(array)  # promote scalars to 0d arrays
         if dtype is not None:
             array = array.astype(dtype, copy=False)
         return array
 
-    def __buffer__(self) -> Buffer:
+    def to_ndarray(self) -> ArrayTree[np.ndarray]:
         return self.__array__()
 
     def __repr__(self) -> str:
@@ -341,14 +409,14 @@ class Array(Buffer):
             ")"
         )
         return (
-            prefix +
-            np.array2string(
+            prefix
+            + np.array2string(
                 self.__array__(),
                 separator=",",
                 prefix=prefix,
-                suffix=suffix
-            ) +
-            suffix
+                suffix=suffix,
+            )
+            + suffix
         )
 
     def __bool__(self) -> bool:
@@ -361,8 +429,11 @@ class Array(Buffer):
         pass
 
 
-def shift_indices(indices: Indices, shift: int, size: int,
-) -> Tuple[Index, ...]:
+def shift_indices(
+    indices: Location,
+    shift: int,
+    size: int,
+) -> tuple[Index, ...]:
     if isinstance(indices, tuple):
         first, rest = indices[0], indices[1:]
     else:
@@ -370,10 +441,12 @@ def shift_indices(indices: Indices, shift: int, size: int,
     return shift_index(first, shift, size) + rest
 
 
-def shift_index(index: Index, shift: int, size: int,
-) -> Tuple[Index, ...]:
-    """Shifts an array index up by an integer value.
-    """
+def shift_index(
+    index: Index,
+    shift: int,
+    size: int,
+) -> tuple[Index, ...]:
+    """Shifts an array index up by an integer value."""
     if isinstance(index, int):
         if index < -shift:
             raise IndexError(
@@ -399,7 +472,7 @@ def shift_index(index: Index, shift: int, size: int,
             start = index.start + shift
         else:
             start = shift + size - 1 if flipped else shift
-        
+
         if index.stop is not None:
             stop = index.stop + shift
         else:

@@ -6,7 +6,7 @@ from collections import defaultdict
 from enum import IntEnum
 from os import PathLike
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 import warnings
 
 import numpy as np
@@ -19,7 +19,7 @@ try:
 except ImportError:
     has_wandb = False
 
-from parllel.handlers.agent import Agent
+import parllel
 
 from .serializers import JSONConfigSerializer
 from .logwriters import LogWriter, KeyValueWriter, MessageWriter, StdOutWriter
@@ -50,7 +50,7 @@ class Logger:
         stdout: bool,
         verbosity: Verbosity,
     ):
-        self.writers: Dict[str, LogWriter] = {}
+        self.writers: dict[str, LogWriter] = {}
 
         if stdout:
             self.writers["stdout"] = StdOutWriter()
@@ -87,15 +87,15 @@ class Logger:
         logger.model_save_path = model_save_path
 
     def init(self,
-        log_dir: Optional[PathLike] = None,
+        log_dir: PathLike | None = None,
         tensorboard: bool = False, # TODO: add passing tensorboard dir explicitly
-        wandb_run: Optional["wandb.Run"] = None,
+        wandb_run: "wandb.Run" | None = None,
         stdout: bool = True,
-        stdout_max_length: Optional[int] = None,
-        output_files: Dict[str, PathLike] = None,
-        config: Dict[str, Any] = None,
+        stdout_max_length: int | None = None,
+        output_files: dict[str, PathLike] | None = None,
+        config: dict[str, Any] | None = None,
         config_path: PathLike = "config.json",
-        model_save_path: Optional[PathLike] = None,
+        model_save_path: PathLike | None = None,
         verbosity: Verbosity = Verbosity.INFO,
     ) -> None:
         """Initialize logging.
@@ -107,10 +107,10 @@ class Logger:
             the log_dir.
         :param stdout: output additionally to standard output?
         :param stdout_max_length: maximum width of the tabular standard output
-        :param output_files: a Dict of files to write key-value pairs to, where
+        :param output_files: a dict of files to write key-value pairs to, where
             the keys are the file type (txt, json, csv), and the values are the
             filepaths
-        :param config: a Dict of config values to save to a json file in a form
+        :param config: a dict of config values to save to a json file in a form
             that can be reloaded later
         :param config_path: the filepath for saving the config (default:
             config.json)
@@ -276,7 +276,7 @@ class Logger:
     def record(self,
         key: str,
         value: Any,
-        do_not_write_to: Optional[Union[str, Tuple[str, ...]]] = "",
+        do_not_write_to: str | tuple[str, ...] | None = "",
     ) -> None:
         """
         Log a value of some diagnostic
@@ -292,8 +292,8 @@ class Logger:
 
     def record_mean(self,
         key: str,
-        value: Union[np.ndarray, List[float], float],
-        do_not_write_to: Optional[Union[str, Tuple[str, ...]]] = "",
+        value: np.ndarray | list[float] | float,
+        do_not_write_to: str | tuple[str, ...] | None = "",
     ) -> None:
         """
         The same as record(), but if called many times, values averaged.
@@ -338,7 +338,7 @@ class Logger:
         self.counts.clear()
         self.excluded_writers.clear()
 
-    def save_model(self, agent: Agent):
+    def save_model(self, agent: "parllel.agents.agent.Agent"):
         if self.model_save_path is not None:
             agent.save_model(self.model_save_path)
 

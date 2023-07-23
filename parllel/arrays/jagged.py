@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 import itertools
-from typing import Literal, Optional, TypeVar, Union
+from typing import Literal, TypeVar
 
 import numpy as np
 
 import parllel.logger as logger
+from parllel import ArrayDict
 from parllel.arrays.array import Array
-from parllel.buffers import Buffer, Indices, NamedTupleClass
-
-from .array import Array
-from .indices import (add_locations, index_slice, init_location,
-                      shape_from_location)
-
-PointBatch = NamedTupleClass("PointBatch", ["pos", "ptr"])
+from parllel.arrays.indices import (Location, add_locations, index_slice,
+                                    init_location)
+from parllel.arrays.managedmemory import ManagedMemoryArray
+from parllel.arrays.sharedmemory import SharedMemoryArray
 
 Self = TypeVar("Self", bound="JaggedArray")
 
@@ -24,28 +22,33 @@ class JaggedArray(Array, kind="jagged"):
     """
 
     # TODO: maybe create a repr that doesn't call __array__, as this can be expensive
-    # TODO: ensure consistent init args between this and Array
-    # TODO: ensure that shape and batch_shape are stored
     kind = "jagged"
+    _base_array: np.ndarray
+    _ptr: np.ndarray
 
     def __init__(
         self,
-        shape: tuple[int, ...],
+        feature_shape: tuple[int, ...],
         dtype: np.dtype,
         *,
-        kind: Optional[str] = None,
-        storage: Optional[str] = None,
         batch_shape: tuple[int, ...],
+        kind: str | None = None,
+        storage: str | None = None,
         padding: int = 0,
-        full_size: Optional[int] = None,
+        full_size: int | None = None,
         on_overflow: Literal["drop", "resize", "wrap"] = "drop",
     ) -> None:
-        dtype = np.dtype(dtype)
-        if dtype == np.object_:
-            raise ValueError("Data type should not be object.")
+        if not feature_shape:
+            raise ValueError("Non-empty feature shape required.")
 
         if batch_shape == ():
             batch_shape = (1,)
+
+        shape = batch_shape + feature_shape
+
+        dtype = np.dtype(dtype)
+        if dtype == np.object_:
+            raise ValueError("Data type should not be object.")
 
         if padding < 0:
             raise ValueError("Padding must be non-negative.")
@@ -55,104 +58,69 @@ class JaggedArray(Array, kind="jagged"):
                 f"dimension {shape[0]}."
             )
 
+        if full_size is None:
+            full_size = shape[0]
+        if full_size < shape[0]:
+            raise ValueError(
+                f"Full size ({full_size}) cannot be less than "
+                f"leading dimension {shape[0]}."
+            )
+        if full_size % shape[0] != 0:
+            raise ValueError(
+                f"The leading dimension {shape[0]} must divide the full "
+                f"size ({full_size}) evenly."
+            )
+
         if on_overflow not in {"drop", "resize", "wrap"}:
             raise ValueError(f"Unknown on_overflow option {on_overflow}")
         elif on_overflow in {"resize", "wrap"}:
             raise NotImplementedError(f"{on_overflow=}")
 
-        if full_size is None:
-            full_size = batch_shape[0]
-        if full_size < batch_shape[0]:
-            raise ValueError(
-                f"Full size ({full_size}) cannot be less than "
-                f"leading batch dimension {batch_shape[0]}."
-            )
-        if full_size % batch_shape[0] != 0:
-            raise ValueError(
-                f"The leading dimension {batch_shape[0]} must divide the full "
-                f"size ({full_size}) evenly."
-            )
-
         self.dtype = dtype
         self.padding = padding
-
-        base_T_size = full_size + 2 * padding
-        N_size = shape[0]
-
-        # shape that base array appears to be
-        self._virtual_base_shape = (base_T_size,) + batch_shape[1:] + shape
-
-        # size of leading dim of full array, without padding
-        self._full_size = full_size
-
-        # multiply the T dimension into the node dimension
-        self._flattened_size = base_T_size * N_size
-        self._base_shape = batch_shape[1:] + (self._flattened_size,) + shape[1:]
-        self._n_batch_dim = len(batch_shape)
-
         self.on_overflow = on_overflow
+        # size of leading dim of full array, without padding
+        self.full_size = full_size
+        # shape that base array appears to be
+        self._base_shape = (full_size + 2 * padding,) + shape[1:]
+        self._base_batch_dims = len(batch_shape)
+        # multiply the T dimension into the node dimension
+        self._flattened_size = self._base_shape[0] * feature_shape[0]
 
-        self._buffer_id: int = id(self)
-        self._index_history: list[Indices] = []
-        self._current_location = init_location(self._virtual_base_shape)
-
-        init_slice = slice(padding, batch_shape[0] + padding)
-        self._current_location = add_locations(
-            self._current_location,
-            init_slice,
-            self._virtual_base_shape,
-        )
-
-        self._allocate()
-
-        self._current_array = None  # not used by JaggedArray
-        self._apparent_shape = batch_shape + shape  # shape of current array
-        self._rotatable = True
-
-    def _allocate(self) -> None:
-        self._base_array = np.zeros(shape=self._base_shape, dtype=self.dtype)
+        allocate_shape = batch_shape[1:] + (self._flattened_size,) + feature_shape[1:]
+        self._allocate(shape=allocate_shape, dtype=self.dtype, name="_base_array")
 
         # add an extra element to node dimension so it's always possible to
         # access the element at t+1
-        base_batch_shape = self._virtual_base_shape[: self._n_batch_dim]
-        ptr_shape = base_batch_shape[1:] + (base_batch_shape[0] + 1,)
+        ptr_shape = batch_shape[1:] + (self._base_shape[0] + 1,)
+        self._allocate(shape=ptr_shape, dtype=np.int64, name="_ptr")
 
-        self._ptr = np.zeros(shape=ptr_shape, dtype=np.int64)
+        self._current_location = init_location(self._base_shape)
+        init_slice = slice(padding, shape[0] + padding)
+        self._unresolved_indices: list[Location] = [init_slice]
+        self._resolve_indexing_history()
+
+        self._rotatable = True
 
     def _resolve_indexing_history(self) -> None:
-        for location in self._index_history:
-            self._current_location = add_locations(
-                self._current_location,
-                location,
-                self._virtual_base_shape,
-                neg_from_end=False,
-            )
-
-        self._index_history.clear()
-
-        self._apparent_shape = shape_from_location(
-            self._current_location, self._virtual_base_shape
-        )
+        super()._resolve_indexing_history()
 
         # TODO: if current location is a single graph, set real size of that graph
         # as apparent size
 
-    def __getitem__(self, location: Indices) -> Self:
-        result = super().__getitem__(location)
-        result._rotatable = False
-        return result
-
     def __setitem__(
-        self, location: Indices, value: Union[float, int, np.number, list, JaggedArray]
+        self,
+        indices: Location,
+        value: float | int | np.number | list | JaggedArray,
     ) -> None:
-        if self._apparent_shape is None:
+        if self._shape is None:
             self._resolve_indexing_history()
 
         destination = tuple(
             add_locations(
                 self._current_location,
-                location,
-                self._virtual_base_shape,
+                indices,
+                self._base_shape,
                 neg_from_end=False,
             )
         )
@@ -171,8 +139,8 @@ class JaggedArray(Array, kind="jagged"):
 
         # split into batch locations and feature locations, which are handled differently
         batch_locs, feature_locs = (
-            destination[: self._n_batch_dim],
-            destination[self._n_batch_dim :],
+            destination[: self._base_batch_dims],
+            destination[self._base_batch_dims :],
         )
 
         # loop over all batch locations by taking the product of slices
@@ -211,47 +179,13 @@ class JaggedArray(Array, kind="jagged"):
             # compute the subarray within the slice of all nodes
             start, end = ptrs[t_loc], ptrs[t_loc + 1]
             n_slice = slice(start, end, 1)  # standard slice must have integer step
+            # use neg_from_end=True here to ensure that slice doesn't get
+            # extended beyond the size of the point cloud
             n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
             real_loc = batch_loc + (n_loc,) + feature_locs[1:]
 
             # write to underlying array at that location
             self._base_array[real_loc] = value
-
-    @property
-    def full(self) -> Self:
-        full: JaggedArray = self.__new__(type(self))
-        full.__dict__.update(self.__dict__)
-
-        full._default_size = full._full_size
-        full._offset = 0
-
-        full._index_history = []
-        full._current_array = None
-        full._apparent_shape = None
-        full._rotatable = False
-
-        # clear current location
-        # TODO: this can be deleted once Array has been refactored
-        full._current_location = init_location(full._virtual_base_shape)
-        if full.padding:
-            init_slice = slice(full.padding, full._default_size + full.padding)
-            full._current_location = add_locations(
-                full._current_location,
-                init_slice,
-                full._virtual_base_shape,
-            )
-
-        return full
-
-    def reset(self) -> None:
-        if not self._rotatable:
-            raise ValueError("reset() is only allowed on unindexed array.")
-
-        self._current_location[0] = slice(
-            self._full_size + self.padding - self.shape[0],
-            self._full_size + self.padding,
-            1,
-        )
 
     def rotate(self) -> None:
         # TODO: once setitem supports JaggedArray, no override needed
@@ -263,10 +197,10 @@ class JaggedArray(Array, kind="jagged"):
         stop = leading_loc.stop
 
         start += self.shape[0]
-        if wrap_bounds := start >= self._full_size:
+        if wrap_bounds := start >= self.full_size:
             # wrap both start and stop simultaneously
-            start %= self._full_size
-            stop %= self._full_size
+            start %= self.full_size
+            stop %= self.full_size
         # mod and increment stop in opposite order
         # because stop - start = self.shape[0], we can be sure that stop will
         # be reduced by mod even before incrementing
@@ -277,12 +211,12 @@ class JaggedArray(Array, kind="jagged"):
         if self.padding and wrap_bounds:
             # copy values from end of base array to beginning
             final_values = range(
-                self._full_size - self.padding,
-                self._full_size + self.padding,
+                self.full_size - self.padding,
+                self.full_size + self.padding,
             )
             next_previous_values = range(-self.padding, self.padding)
             b_locs = [
-                range(size) for size in self._virtual_base_shape[1 : self._n_batch_dim]
+                range(size) for size in self._base_shape[1 : self._base_batch_dims]
             ]
             full_array = self.full
             for source, destination in zip(final_values, next_previous_values):
@@ -292,13 +226,13 @@ class JaggedArray(Array, kind="jagged"):
                     )
 
     def __array__(self, dtype=None) -> np.ndarray:
-        if self._apparent_shape is None:
+        if self._shape is None:
             self._resolve_indexing_history()
 
         current_location = tuple(self._current_location)
         batch_locs, feature_locs = (
-            current_location[: self._n_batch_dim],
-            current_location[self._n_batch_dim :],
+            current_location[: self._base_batch_dims],
+            current_location[self._base_batch_dims :],
         )
 
         if any(isinstance(loc, np.ndarray) for loc in feature_locs):
@@ -341,6 +275,8 @@ class JaggedArray(Array, kind="jagged"):
 
             start, end = ptrs[t_loc], ptrs[t_loc + 1]
             n_slice = slice(start, end, 1)
+            # use neg_from_end=True here to ensure that slice doesn't get
+            # extended beyond the size of the point cloud
             n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
             real_loc = b_loc + (n_loc,) + feature_locs[1:]
             graph = self._base_array[real_loc]
@@ -355,20 +291,34 @@ class JaggedArray(Array, kind="jagged"):
         if dtype is not None:
             array = array.astype(dtype, copy=False)
 
-        self._current_ptrs = current_ptrs  # save for consumption by __buffer__
+        self._current_ptrs = current_ptrs  # save for consumption by to_ndarray
         return array
 
-    def __buffer__(self) -> Buffer:
+    def to_ndarray(self) -> ArrayDict[np.ndarray]:
         # TODO: hard-coded that JaggedArray is point/node positions
         # what about point/node features?
         data = self.__array__()
-        return PointBatch(
-            pos=data,
-            ptr=self._current_ptrs,  # updated during execution of __array__
+        return ArrayDict(
+            {
+                "pos": data,
+                "ptr": self._current_ptrs,  # updated during execution of __array__
+            }
         )
 
 
-def slice_to_range(slice_: slice) -> list[int]:
+class SharedMemoryJaggedArray(
+    SharedMemoryArray, JaggedArray, kind="jagged", storage="shared"
+):
+    pass
+
+
+class ManagedMemoryJaggedArray(
+    ManagedMemoryArray, JaggedArray, kind="jagged", storage="managed"
+):
+    pass
+
+
+def slice_to_range(slice_: slice) -> range:
     start, stop, step = slice_.start, slice_.stop, slice_.step
     stop = -1 if stop is None else stop
     return range(start, stop, step)

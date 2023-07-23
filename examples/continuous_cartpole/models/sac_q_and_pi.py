@@ -1,25 +1,28 @@
-from typing import List, Tuple, Union
+from __future__ import annotations
 
-from gymnasium import spaces
+from typing import Sequence
+
 import numpy as np
 import torch
-from torch import nn
+import torch.nn as nn
+from gymnasium import spaces
+from torch import Tensor
 
 from parllel.torch.agents.sac_agent import PiModelOutputs, QModelOutputs
-from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 from parllel.torch.models import MlpModel
+from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 
 
 class PiMlpModel(nn.Module):
     """Action distrubition MLP model for SAC agent."""
 
     def __init__(
-            self,
-            obs_space: spaces.Box,
-            action_space: spaces.Box,
-            hidden_sizes: Union[int, List[int], None],
-            hidden_nonlinearity: str,
-            ):
+        self,
+        obs_space: spaces.Box,
+        action_space: spaces.Box,
+        hidden_sizes: int | Sequence[int] | None,
+        hidden_nonlinearity: str,
+    ):
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
         self._obs_ndim = len(obs_space.shape)
@@ -37,24 +40,24 @@ class PiMlpModel(nn.Module):
             hidden_nonlinearity=hidden_nonlinearity,
         )
 
-    def forward(self, observation):
+    def forward(self, observation: Tensor) -> PiModelOutputs:
         lead_dim, T, B, _ = infer_leading_dims(observation, self._obs_ndim)
         output = self.mlp(observation.view(T * B, -1))
-        mu, log_std = output[:, :self._action_size], output[:, self._action_size:]
-        mu, log_std = restore_leading_dims((mu, log_std), lead_dim, T, B)
-        return PiModelOutputs(mu, log_std)
+        mean, log_std = output[:, : self._action_size], output[:, self._action_size :]
+        mean, log_std = restore_leading_dims((mean, log_std), lead_dim, T, B)
+        return PiModelOutputs(mean=mean, log_std=log_std)
 
 
 class QMlpModel(nn.Module):
     """Q portion of the model for DDPG, an MLP."""
 
     def __init__(
-            self,
-            obs_space: spaces.Box,
-            action_space: spaces.Box,
-            hidden_sizes: Union[int, List[int], None],
-            hidden_nonlinearity: str,
-            ):
+        self,
+        obs_space: spaces.Box,
+        action_space: spaces.Box,
+        hidden_sizes: int | Sequence[int] | None,
+        hidden_nonlinearity: str,
+    ):
         """Instantiate neural net according to inputs."""
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
@@ -73,11 +76,11 @@ class QMlpModel(nn.Module):
             hidden_nonlinearity=hidden_nonlinearity,
         )
 
-    def forward(self, observation, action):
-        lead_dim, T, B, _ = infer_leading_dims(observation,
-            self._obs_ndim)
+    def forward(self, observation: Tensor, action: Tensor) -> QModelOutputs:
+        lead_dim, T, B, _ = infer_leading_dims(observation, self._obs_ndim)
         q_input = torch.cat(
-            [observation.view(T * B, -1), action.view(T * B, -1)], dim=1)
+            [observation.view(T * B, -1), action.view(T * B, -1)], dim=1
+        )
         q = self.mlp(q_input).squeeze(-1)
         q = restore_leading_dims(q, lead_dim, T, B)
-        return QModelOutputs(q)
+        return QModelOutputs(q_value=q)
