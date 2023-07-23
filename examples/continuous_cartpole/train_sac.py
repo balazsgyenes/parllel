@@ -1,19 +1,19 @@
-from contextlib import contextmanager
-from datetime import datetime
 import itertools
 import multiprocessing as mp
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
-from gymnasium import spaces
 import hydra
-from omegaconf import DictConfig, OmegaConf
 import torch
 import wandb
+from gymnasium import spaces
+from omegaconf import DictConfig, OmegaConf
 
-from parllel.cages import TrajInfo
 import parllel.logger as logger
+from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
-from parllel.patterns import (build_cages_and_sample_tree, build_eval_sampler, add_agent_info)
+from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
 from parllel.samplers import BasicSampler
@@ -23,7 +23,7 @@ from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.types import BatchSpec
 
 from envs.continuous_cartpole import build_cartpole
-from models.sac_q_and_pi import QMlpModel, PiMlpModel
+from models.sac_q_and_pi import PiMlpModel, QMlpModel
 
 
 @contextmanager

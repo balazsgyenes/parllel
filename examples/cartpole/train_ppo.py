@@ -3,10 +3,10 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from gymnasium import spaces
 import hydra
 import torch
 import wandb
+from gymnasium import spaces
 from omegaconf import DictConfig, OmegaConf
 
 import parllel.logger as logger
