@@ -20,7 +20,7 @@ class EvalSampler(Sampler):
         min_trajectories: int,
         envs: Sequence[Cage],
         agent: Agent,
-        step_buffer: ArrayDict[Array],
+        sample_tree: ArrayDict[Array],
         obs_transform: StepTransform | Transform | None = None,
     ) -> None:
         for cage in envs:
@@ -34,7 +34,7 @@ class EvalSampler(Sampler):
             batch_spec=BatchSpec(1, len(envs)),
             envs=envs,
             agent=agent,
-            sample_buffer=step_buffer,
+            sample_tree=sample_tree,
         )
 
         self.max_traj_length = max_traj_length
@@ -42,16 +42,16 @@ class EvalSampler(Sampler):
         self.obs_transform = obs_transform
 
     def collect_batch(self, elapsed_steps: int) -> list[TrajInfo]:
-        # get references to buffer elements
-        action = self.sample_buffer["action"]
-        agent_info = self.sample_buffer["agent_info"]
-        observation = self.sample_buffer["observation"]
-        reward = self.sample_buffer["reward"]
-        done = self.sample_buffer["done"]
-        terminated = self.sample_buffer["terminated"]
-        truncated = self.sample_buffer["truncated"]
-        env_info = self.sample_buffer["env_info"]
-        sample_buffer = self.sample_buffer
+        # get references to sample tree elements
+        action = self.sample_tree["action"]
+        agent_info = self.sample_tree["agent_info"]
+        observation = self.sample_tree["observation"]
+        reward = self.sample_tree["reward"]
+        done = self.sample_tree["done"]
+        terminated = self.sample_tree["terminated"]
+        truncated = self.sample_tree["truncated"]
+        env_info = self.sample_tree["env_info"]
+        sample_tree = self.sample_tree
 
         # set agent to eval mode, preventing sampler states from being overwritten
         self.agent.eval_mode(elapsed_steps)
@@ -60,7 +60,7 @@ class EvalSampler(Sampler):
         self.reset()
 
         # rotate reset observations to be current values
-        sample_buffer.rotate()
+        sample_tree.rotate()
 
         # TODO: freeze statistics in obs normalization
 
@@ -70,7 +70,7 @@ class EvalSampler(Sampler):
         for t in range(self.max_traj_length):
             # apply any transforms to the observation before the agent steps
             if self.obs_transform is not None:
-                sample_buffer = self.obs_transform(sample_buffer, 0)
+                sample_tree = self.obs_transform(sample_tree, 0)
 
             # agent observes environment and outputs actions
             action[...], agent_info[...] = self.agent.step(observation[0])

@@ -148,12 +148,12 @@ class SAC(Algorithm):
         self.algo_log_info["q1_grad_norm"].append(pi_grad_norm.item())
 
 
-def build_replay_buffer(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array]:
-    replay_buffer = ArrayDict({
+def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array]:
+    replay_buffer_tree = ArrayDict({
         "observation": sample_buffer["observation"].full,
         "action": sample_buffer["action"].full,
         "reward": sample_buffer["reward"].full,
         "done": sample_buffer["done"].full,
         "next_observation": sample_buffer["observation"].full.next,
     })
-    return replay_buffer
+    return replay_buffer_tree

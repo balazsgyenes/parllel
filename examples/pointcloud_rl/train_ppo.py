@@ -16,12 +16,12 @@ from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_agent_info,
                               add_bootstrap_value, add_reward_clipping,
                               add_reward_normalization,
-                              build_cages_and_env_buffers)
+                              build_cages_and_sample_tree)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
-from parllel.torch.algos.ppo import PPO, build_dataloader_buffer
+from parllel.torch.algos.ppo import PPO, build_loss_sample_tree
 from parllel.torch.distributions import Categorical
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
@@ -40,7 +40,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    cages, sample_tree, metadata = build_cages_and_env_buffers(
+    cages, sample_tree, metadata = build_cages_and_sample_tree(
         EnvClass=build_dummy,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
@@ -120,14 +120,14 @@ def build(config: DictConfig) -> OnPolicyRunner:
         batch_spec=batch_spec,
         envs=cages,
         agent=agent,
-        sample_buffer=sample_tree,
+        sample_tree=sample_tree,
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=True,
         obs_transform=Compose(step_transforms),
         batch_transform=Compose(batch_transforms),
     )
 
-    optimizer_sample_tree = build_dataloader_buffer(sample_tree)
+    loss_sample_tree = build_loss_sample_tree(sample_tree)
 
     def batch_transform(tree: ArrayDict[Array]) -> ArrayDict[torch.Tensor]:
         tree = tree.to_ndarray()
@@ -135,7 +135,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
         return tree.to(device=device)
 
     dataloader = BatchedDataLoader(
-        tree=optimizer_sample_tree,
+        tree=loss_sample_tree,
         sampler_batch_spec=batch_spec,
         n_batches=config["algo"]["minibatches"],
         batch_transform=batch_transform,

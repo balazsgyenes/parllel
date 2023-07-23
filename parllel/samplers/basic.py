@@ -23,7 +23,7 @@ class BasicSampler(Sampler):
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
         agent: Agent,
-        sample_buffer: ArrayDict[Array],
+        sample_tree: ArrayDict[Array],
         max_steps_decorrelate: int | None = None,
         get_bootstrap_value: bool = False,
         obs_transform: StepTransform | None = None,
@@ -40,13 +40,13 @@ class BasicSampler(Sampler):
             batch_spec=batch_spec,
             envs=envs,
             agent=agent,
-            sample_buffer=sample_buffer,
+            sample_tree=sample_tree,
             max_steps_decorrelate=max_steps_decorrelate,
         )
 
-        if get_bootstrap_value and "bootstrap_value" not in sample_buffer:
+        if get_bootstrap_value and "bootstrap_value" not in sample_tree:
             raise ValueError(
-                "Expected the sample buffer to have a `bootstrap_value` element. Please allocate it."
+                "Expected the sample tree to have a `bootstrap_value` element. Please allocate it."
             )
         self.get_bootstrap_value = get_bootstrap_value
 
@@ -60,19 +60,19 @@ class BasicSampler(Sampler):
         self,
         elapsed_steps: int,
     ) -> tuple[ArrayDict[Array], list[TrajInfo]]:
-        # get references to buffer elements
-        action = self.sample_buffer["action"]
-        agent_info = self.sample_buffer["agent_info"]
-        observation = self.sample_buffer["observation"]
-        reward = self.sample_buffer["reward"]
-        done = self.sample_buffer["done"]
-        terminated = self.sample_buffer["terminated"]
-        truncated = self.sample_buffer["truncated"]
-        env_info = self.sample_buffer["env_info"]
-        sample_buffer = self.sample_buffer
+        # get references to sample tree elements
+        action = self.sample_tree["action"]
+        agent_info = self.sample_tree["agent_info"]
+        observation = self.sample_tree["observation"]
+        reward = self.sample_tree["reward"]
+        done = self.sample_tree["done"]
+        terminated = self.sample_tree["terminated"]
+        truncated = self.sample_tree["truncated"]
+        env_info = self.sample_tree["env_info"]
+        sample_tree = self.sample_tree
 
         # rotate last values from previous batch to become previous values
-        sample_buffer.rotate()
+        sample_tree.rotate()
 
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
@@ -81,7 +81,7 @@ class BasicSampler(Sampler):
         for t in range(self.batch_spec.T):
             # apply any transforms to the observation before the agent steps
             if self.obs_transform is not None:
-                sample_buffer = self.obs_transform(sample_buffer, t)
+                sample_tree = self.obs_transform(sample_tree, t)
 
             # agent observes environment and outputs actions
             action[t], agent_info[t] = self.agent.step(observation[t])
@@ -108,8 +108,8 @@ class BasicSampler(Sampler):
 
         if self.get_bootstrap_value:
             # get bootstrap value for last observation in trajectory
-            sample_buffer["bootstrap_value"][...] = self.agent.value(
-                self.sample_buffer["observation"][self.batch_spec.T]
+            sample_tree["bootstrap_value"][...] = self.agent.value(
+                self.sample_tree["observation"][self.batch_spec.T]
             )
 
         # collect all completed trajectories from envs
@@ -119,6 +119,6 @@ class BasicSampler(Sampler):
 
         # apply user-defined transforms
         if self.batch_transform is not None:
-            sample_buffer = self.batch_transform(sample_buffer)
+            sample_tree = self.batch_transform(sample_tree)
 
-        return sample_buffer, completed_trajectories
+        return sample_tree, completed_trajectories

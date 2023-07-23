@@ -19,7 +19,7 @@ class ProfilingSampler(Sampler):
     def __init__(self,
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
-        sample_buffer: ArrayDict[Array],
+        sample_tree: ArrayDict[Array],
         n_iterations: int,
         profile_path: Path | None = None,
     ) -> None:
@@ -27,7 +27,7 @@ class ProfilingSampler(Sampler):
             batch_spec=batch_spec,
             envs=envs,
             agent=None,
-            sample_buffer=sample_buffer,
+            sample_tree=sample_tree,
         )
 
         self.n_iterations = n_iterations
@@ -41,20 +41,17 @@ class ProfilingSampler(Sampler):
         # skip resetting agent
         pass
 
-    def collect_batch(self, elapsed_steps: int) -> tuple[ArrayDict[Array], list[TrajInfo]]:
-        raise NotImplementedError
-
-    def time_batches(self):
+    def collect_batch(self, elapsed_steps: int) -> None:
         batch_T, batch_B = self.batch_spec
         durations = self.durations
 
-        action = self.sample_buffer["action"]
-        observation = self.sample_buffer["observation"]
-        reward = self.sample_buffer["reward"]
-        done = self.sample_buffer["done"]
-        terminated = self.sample_buffer["terminated"]
-        truncated = self.sample_buffer["truncated"]
-        env_info = self.sample_buffer["env_info"]
+        action = self.sample_tree["action"]
+        observation = self.sample_tree["observation"]
+        reward = self.sample_tree["reward"]
+        done = self.sample_tree["done"]
+        terminated = self.sample_tree["terminated"]
+        truncated = self.sample_tree["truncated"]
+        env_info = self.sample_tree["env_info"]
 
         if self.profiler is not None:
             self.profiler.enable()

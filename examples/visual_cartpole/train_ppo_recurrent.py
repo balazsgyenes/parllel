@@ -16,12 +16,12 @@ import parllel.logger as logger
 from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_bootstrap_value,
     add_reward_clipping, add_reward_normalization, add_valid,
-    build_cages_and_env_buffers, add_initial_rnn_state)
+    build_cages_and_sample_tree, add_initial_rnn_state)
 from parllel.replays import BatchedDataLoader
 from parllel.runners.onpolicy import OnPolicyRunner
 from parllel.samplers import RecurrentSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
-from parllel.torch.algos.ppo import PPO, build_dataloader_buffer
+from parllel.torch.algos.ppo import PPO, build_loss_sample_tree
 from parllel.torch.distributions import Categorical
 from parllel.torch.handler import TorchHandler
 from parllel.torch.utils import torchify_buffer, buffer_to_device
@@ -43,7 +43,7 @@ def build(config: Dict) -> OnPolicyRunner:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    cages, batch_action, batch_env = build_cages_and_env_buffers(
+    cages, batch_action, batch_env = build_cages_and_sample_tree(
         EnvClass=build_visual_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
@@ -152,13 +152,13 @@ def build(config: Dict) -> OnPolicyRunner:
         batch_spec=batch_spec,
         envs=cages,
         agent=agent,
-        sample_buffer=batch_buffer,
+        sample_tree=batch_buffer,
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=True,
         batch_transform=Compose(batch_transforms),
     )
 
-    dataloader_buffer = build_dataloader_buffer(batch_buffer, recurrent=True)
+    dataloader_buffer = build_loss_sample_tree(batch_buffer, recurrent=True)
     dataloader_buffer = buffer_asarray(dataloader_buffer)
     dataloader_buffer = torchify_buffer(dataloader_buffer)
 

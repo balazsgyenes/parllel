@@ -13,12 +13,12 @@ import wandb
 from parllel.cages import TrajInfo
 import parllel.logger as logger
 from parllel.logger import Verbosity
-from parllel.patterns import (build_cages_and_env_buffers, build_eval_sampler, add_agent_info)
+from parllel.patterns import (build_cages_and_sample_tree, build_eval_sampler, add_agent_info)
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.sac_agent import SacAgent
-from parllel.torch.algos.sac import SAC, build_replay_buffer
+from parllel.torch.algos.sac import SAC, build_replay_buffer_tree
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.types import BatchSpec
 
@@ -36,7 +36,7 @@ def build(config: DictConfig) -> OffPolicyRunner:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    cages, sample_tree, metadata = build_cages_and_env_buffers(
+    cages, sample_tree, metadata = build_cages_and_sample_tree(
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
@@ -90,20 +90,20 @@ def build(config: DictConfig) -> OffPolicyRunner:
         batch_spec=batch_spec,
         envs=cages,
         agent=agent,
-        sample_buffer=sample_tree,
+        sample_tree=sample_tree,
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=False,
     )
 
-    replay_buffer = build_replay_buffer(sample_tree)
+    replay_buffer_tree = build_replay_buffer_tree(sample_tree)
     # because we are only using standard Array types which behave the same as
     # torch Tensors, we can torchify the entire replay buffer here instead of
     # doing it for each batch individually
-    replay_buffer = replay_buffer.to_ndarray()
-    replay_buffer = replay_buffer.apply(torch.from_numpy)
+    replay_buffer_tree = replay_buffer_tree.to_ndarray()
+    replay_buffer_tree = replay_buffer_tree.apply(torch.from_numpy)
 
     replay_buffer = ReplayBuffer(
-        buffer=replay_buffer,
+        tree=replay_buffer_tree,
         sampler_batch_spec=batch_spec,
         size_T=config["algo"]["replay_length"],
         replay_batch_size=config["algo"]["batch_size"],

@@ -4,15 +4,14 @@ from typing import Callable, Generic, Iterator, TypeVar
 
 import numpy as np
 
-from parllel import ArrayDict, ArrayLike, Location
 import parllel.logger as logger
+from parllel import ArrayDict, ArrayLike, Location
 from parllel.types import BatchSpec
 
+TreeType = TypeVar("TreeType", bound=ArrayDict[ArrayLike])
 
-ArrayType = TypeVar("ArrayType", bound=ArrayLike)
 
-
-class BatchedDataLoader(Generic[ArrayType]):
+class BatchedDataLoader(Generic[TreeType]):
     """Iterates through a tree of samples in a fixed number of batches.
     Fields that cannot be indexed according to time (e.g.
     `initial_rnn_state`) are only indexed according to batch dimension.
@@ -71,7 +70,7 @@ class BatchedDataLoader(Generic[ArrayType]):
     def __len__(self) -> int:
         return self.size
 
-    def __getitem__(self, location: Location) -> ArrayDict[ArrayType]:
+    def __getitem__(self, location: Location) -> ArrayDict[TreeType]:
         if not isinstance(location, tuple):
             location = (location,)
 
@@ -87,7 +86,7 @@ class BatchedDataLoader(Generic[ArrayType]):
             item.update(batch_only_item)
         return item
 
-    def batches(self) -> Iterator[ArrayDict[ArrayType]]:
+    def batches(self) -> Iterator[ArrayDict[TreeType]]:
         self.tree = self.pre_batches_transform(self.source_tree)
 
         all_indices = np.arange(self.size, dtype=np.int32)
@@ -116,7 +115,7 @@ class BatchedDataLoader(Generic[ArrayType]):
             batch = self.batch_transform(batch)
             yield batch
 
-    def __iter__(self) -> Iterator[ArrayDict[ArrayType]]:
+    def __iter__(self) -> Iterator[ArrayDict[TreeType]]:
         # calling batches() explicitly is better, but we don't want Python's
         # default iterator behaviour to happen
         yield from self.batches()

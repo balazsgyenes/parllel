@@ -31,7 +31,7 @@ class Metadata:
     example_action_batch: ArrayTree[np.ndarray] | None = None
 
 
-def build_cages_and_env_buffers(
+def build_cages_and_sample_tree(
     EnvClass: Callable,
     env_kwargs: Mapping[str, Any],
     TrajInfoClass: Callable,
@@ -68,14 +68,14 @@ def build_cages_and_env_buffers(
     example_cage.close()
 
     if full_size is not None:
-        logger.debug(f"Allocating replay buffer of size {batch_spec.B * full_size}")
+        logger.debug(f"Allocating replay buffer of size {batch_spec.B * full_size}...")
     else:
-        logger.debug("Allocating batch buffer.")
+        logger.debug("Allocating sample tree...")
 
     sample_tree: ArrayDict[Array] = ArrayDict()
 
     if {"obs", "observation"} & set(keys_to_skip) == set():
-        # allocate batch buffer based on examples
+        # allocate sample tree based on examples
         sample_tree["observation"] = dict_map(
             Array.from_numpy,
             obs,
@@ -205,7 +205,7 @@ def add_agent_info(
 
     batch_shape = sample_tree["done"].batch_shape
 
-    # allocate batch buffer based on examples
+    # allocate array tree based on examples
     sample_tree["agent_info"] = dict_map(
         Array.from_numpy,
         agent_info[0],
@@ -374,7 +374,7 @@ def build_eval_sampler(
     min_trajectories: int,
     step_transforms: list[StepTransform] | None = None,
 ) -> tuple[EvalSampler, ArrayDict[Array]]:
-    # allocate a step buffer with space for a single time step
+    # allocate a sample tree with space for a single time step
     # first, collect only the keys needed for evaluation
     eval_tree_keys = [
         "action",
@@ -389,7 +389,7 @@ def build_eval_sampler(
     eval_tree_example = ArrayDict(
         {key: sample_tree[key] for key in eval_tree_keys},
     )
-    # create a new buffer with leading dimensions (1, B_eval)
+    # create a new tree with leading dimensions (1, B_eval)
     eval_sample_tree = eval_tree_example.new_array(batch_shape=(1, n_eval_envs,))
 
     eval_cage_kwargs = dict(
@@ -408,7 +408,7 @@ def build_eval_sampler(
         min_trajectories=min_trajectories,
         envs=eval_envs,
         agent=agent,
-        step_buffer=eval_sample_tree,
+        sample_tree=eval_sample_tree,
         obs_transform=step_transforms,
     )
 

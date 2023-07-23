@@ -66,7 +66,7 @@ def agent(action_space, observation_space, batch_spec):
 
 
 @pytest.fixture
-def batch_buffer(
+def sample_tree(
     action_space,
     observation_space,
     batch_spec,
@@ -81,7 +81,7 @@ def batch_buffer(
 
     sample_tree: ArrayDict[Array] = ArrayDict()
 
-    # allocate batch buffer based on examples
+    # allocate sample tree based on examples
     sample_tree["observation"] = dict_map(
         Array.from_numpy,
         obs,
@@ -153,7 +153,7 @@ def samples(
     batch_spec,
     envs,
     agent,
-    batch_buffer,
+    sample_tree,
     max_decorrelation_steps,
     get_bootstrap,
 ):
@@ -163,7 +163,7 @@ def samples(
         batch_spec=batch_spec,
         envs=envs,
         agent=agent,
-        sample_buffer=batch_buffer,
+        sample_tree=sample_tree,
         max_steps_decorrelate=max_decorrelation_steps,
         get_bootstrap_value=get_bootstrap,
     )

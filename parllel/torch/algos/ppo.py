@@ -220,26 +220,26 @@ class PPO(Algorithm):
         return loss
 
 
-def build_dataloader_buffer(
-    sample_buffer: ArrayDict[Array],
+def build_loss_sample_tree(
+    sample_tree: ArrayDict[Array],
 ) -> ArrayDict[Array]:
-    dataloader_buffer = ArrayDict(
+    loss_sample_tree = ArrayDict(
         {
-            "observation": sample_buffer["observation"],
-            "agent_info": sample_buffer["agent_info"],
-            "action": sample_buffer["action"],
-            "return_": sample_buffer["return_"],
-            "advantage": sample_buffer["advantage"],
+            "observation": sample_tree["observation"],
+            "agent_info": sample_tree["agent_info"],
+            "action": sample_tree["action"],
+            "return_": sample_tree["return_"],
+            "advantage": sample_tree["advantage"],
         }
     )
 
     # move these to the top level for convenience
     # anything else in agent_info is agent-specific state
-    dataloader_buffer["old_value"] = dataloader_buffer["agent_info"].pop("value")
-    dataloader_buffer["old_dist_params"] = dataloader_buffer["agent_info"].pop("dist_params")
+    loss_sample_tree["old_value"] = loss_sample_tree["agent_info"].pop("value")
+    loss_sample_tree["old_dist_params"] = loss_sample_tree["agent_info"].pop("dist_params")
     
-    if "valid" in sample_buffer:
-        dataloader_buffer["valid"] = sample_buffer["valid"]
-        assert "initial_rnn_state" in sample_buffer
-        dataloader_buffer["initial_rnn_state"] = sample_buffer["initial_rnn_state"]
-    return dataloader_buffer
+    if "valid" in sample_tree:
+        loss_sample_tree["valid"] = sample_tree["valid"]
+        assert "initial_rnn_state" in sample_tree
+        loss_sample_tree["initial_rnn_state"] = sample_tree["initial_rnn_state"]
+    return loss_sample_tree

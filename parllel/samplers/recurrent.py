@@ -19,7 +19,7 @@ class RecurrentSampler(Sampler):
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
         agent: Agent,
-        sample_buffer: ArrayDict[Array],
+        sample_tree: ArrayDict[Array],
         max_steps_decorrelate: int | None = None,
         get_initial_rnn_state: bool = True,
         get_bootstrap_value: bool = False,
@@ -31,7 +31,7 @@ class RecurrentSampler(Sampler):
             batch_spec=batch_spec,
             envs=envs,
             agent=agent,
-            sample_buffer=sample_buffer,
+            sample_tree=sample_tree,
             max_steps_decorrelate=max_steps_decorrelate,
         )
 
@@ -42,28 +42,28 @@ class RecurrentSampler(Sampler):
                 )
 
         # verify that valid field exists
-        if "valid" not in sample_buffer:
+        if "valid" not in sample_tree:
             raise ValueError(
-                "Expected the sample buffer to have a `valid` element. Please allocate it."
+                "Expected the sample tree to have a `valid` element. Please allocate it."
             )
 
         # verify that valid has padding >= 1
         try:
-            # try writing beyond the apparent bounds of the action buffer
-            sample_buffer["valid"][batch_spec.T] = 0
+            # try writing beyond the apparent bounds of the action array tree
+            sample_tree["valid"][batch_spec.T] = 0
         except IndexError:
-            raise ValueError("sample_buffer[`valid`] must have padding >= 1")
+            raise ValueError("sample_tree[`valid`] must have padding >= 1")
 
         # verify that initial_rnn_state field exists
-        if get_initial_rnn_state and "initial_rnn_state" not in sample_buffer:
+        if get_initial_rnn_state and "initial_rnn_state" not in sample_tree:
             raise ValueError(
-                "Expected the sample buffer to have a `initial_rnn_state` element. Please allocate it."
+                "Expected the sample tree to have a `initial_rnn_state` element. Please allocate it."
             )
         self.get_initial_rnn_state = get_initial_rnn_state
 
-        if get_bootstrap_value and "bootstrap_value" not in self.sample_buffer:
+        if get_bootstrap_value and "bootstrap_value" not in self.sample_tree:
             raise ValueError(
-                "Expected the sample buffer to have a `bootstrap_value` element. Please allocate it."
+                "Expected the sample tree to have a `bootstrap_value` element. Please allocate it."
             )
         self.get_bootstrap_value = get_bootstrap_value
 
@@ -77,26 +77,26 @@ class RecurrentSampler(Sampler):
         self,
         elapsed_steps: int,
     ) -> tuple[ArrayDict[Array], list[TrajInfo]]:
-        # get references to buffer elements
-        action = self.sample_buffer["action"]
-        agent_info = self.sample_buffer["agent_info"]
-        observation = self.sample_buffer["observation"]
-        reward = self.sample_buffer["reward"]
-        done = self.sample_buffer["done"]
-        terminated = self.sample_buffer["terminated"]
-        truncated = self.sample_buffer["truncated"]
-        env_info = self.sample_buffer["env_info"]
-        valid = self.sample_buffer["valid"]
-        sample_buffer = self.sample_buffer
+        # get references to sample tree elements
+        action = self.sample_tree["action"]
+        agent_info = self.sample_tree["agent_info"]
+        observation = self.sample_tree["observation"]
+        reward = self.sample_tree["reward"]
+        done = self.sample_tree["done"]
+        terminated = self.sample_tree["terminated"]
+        truncated = self.sample_tree["truncated"]
+        env_info = self.sample_tree["env_info"]
+        valid = self.sample_tree["valid"]
+        sample_tree = self.sample_tree
 
         # rotate last values from previous batch to become previous values
-        sample_buffer.rotate()
+        sample_tree.rotate()
 
         # prepare agent for sampling
         self.agent.sample_mode(elapsed_steps)
 
         if self.get_initial_rnn_state:
-            sample_buffer["initial_rnn_state"][...] = self.agent.initial_rnn_state()
+            sample_tree["initial_rnn_state"][...] = self.agent.initial_rnn_state()
 
         # first time step is always valid, rest are invalid by default
         valid[0] = True
@@ -117,7 +117,7 @@ class RecurrentSampler(Sampler):
 
             # apply any transforms to the observation before the agent steps
             if self.obs_transform is not None:
-                self.batch_samples = self.obs_transform(sample_buffer, t)
+                self.batch_samples = self.obs_transform(sample_tree, t)
 
             # agent observes environment and outputs actions
             action[t], agent_info[t] = self.agent.step(observation[t])
@@ -144,8 +144,8 @@ class RecurrentSampler(Sampler):
             # get bootstrap value for last observation in trajectory
             # if environment is already done, this value is invalid, but then
             # it will be ignored anyway
-            sample_buffer["bootstrap_value"][...] = self.agent.value(
-                self.sample_buffer["observation"][self.batch_spec.T]
+            sample_tree["bootstrap_value"][...] = self.agent.value(
+                self.sample_tree["observation"][self.batch_spec.T]
             )
 
         # reset any environments that need reset in parallel
@@ -172,6 +172,6 @@ class RecurrentSampler(Sampler):
 
         # apply user-defined transforms
         if self.batch_transform is not None:
-            sample_buffer = self.batch_transform(sample_buffer)
+            sample_tree = self.batch_transform(sample_tree)
 
-        return sample_buffer, completed_trajectories
+        return sample_tree, completed_trajectories
