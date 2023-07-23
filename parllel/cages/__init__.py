@@ -1,6 +1,6 @@
 # dependencies
 import parllel.arrays
-import parllel.dict
+import parllel.tree
 
 from .cage import Cage
 from .collections import EnvSpaces

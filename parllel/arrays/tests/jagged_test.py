@@ -4,7 +4,7 @@ import numpy as np
 import numpy.random as random
 import pytest
 
-from parllel.arrays import JaggedArray
+from parllel.arrays.jagged import JaggedArray
 
 MEAN = 0.0
 STD = 2.0

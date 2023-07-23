@@ -338,7 +338,7 @@ class Logger:
         self.counts.clear()
         self.excluded_writers.clear()
 
-    def save_model(self, agent: "parllel.handlers.agent.Agent"):
+    def save_model(self, agent: "parllel.agents.agent.Agent"):
         if self.model_save_path is not None:
             agent.save_model(self.model_save_path)
 

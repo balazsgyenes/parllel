@@ -6,7 +6,7 @@ import pytest
 import torch
 from numpy import random
 
-from parllel.dict.array_dict import ArrayDict
+from parllel.tree.array_dict import ArrayDict
 
 
 @dataclass

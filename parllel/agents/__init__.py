@@ -1,6 +1,6 @@
 # dependencies
 import parllel.arrays
-import parllel.buffers
+import parllel.tree
 
 from .agent import Agent
 

@@ -5,8 +5,8 @@ from typing import Sequence
 import numpy as np
 
 from parllel import Array, ArrayDict
+from parllel.agents import Agent
 from parllel.cages import Cage, TrajInfo
-from parllel.handlers import Agent
 from parllel.transforms import StepTransform, Transform
 from parllel.types import BatchSpec
 

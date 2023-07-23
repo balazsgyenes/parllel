@@ -4,8 +4,9 @@ from operator import getitem
 import numpy as np
 import pytest
 
-from parllel.arrays import Array, ManagedMemoryArray, SharedMemoryArray
-
+from parllel.arrays import Array
+from parllel.arrays.managedmemory import ManagedMemoryArray
+from parllel.arrays.sharedmemory import SharedMemoryArray
 
 # fmt: off
 @pytest.fixture(params=[

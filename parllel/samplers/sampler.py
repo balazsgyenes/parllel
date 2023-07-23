@@ -6,10 +6,10 @@ from typing import Sequence
 import numpy as np
 from numpy import random
 
-from parllel import Array, ArrayDict
 import parllel.logger as logger
+from parllel import Array, ArrayDict
+from parllel.agents import Agent
 from parllel.cages import Cage, TrajInfo
-from parllel.handlers import Agent
 from parllel.types import BatchSpec
 
 

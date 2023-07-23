@@ -1,4 +1,4 @@
-from parllel.dict import (ArrayDict, ArrayLike, ArrayTree, ArrayType,
+from parllel.tree import (ArrayDict, ArrayLike, ArrayTree, ArrayType,
                           MappingTree, dict_map)
 from parllel.arrays import Array, Index, Location
 

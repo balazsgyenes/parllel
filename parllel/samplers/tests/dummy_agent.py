@@ -4,13 +4,9 @@ import gymnasium as gym
 import numpy as np
 from numpy import random
 
-from parllel.arrays import Array, buffer_from_dict_example
-from parllel.buffers import (AgentSamples, Buffer, NamedTupleClass,
-                             buffer_asarray, buffer_method)
-from parllel.handlers import Agent, AgentStep
+from parllel import Array
+from parllel.agents import Agent
 from parllel.types import BatchSpec
-
-DummyInfo = NamedTupleClass("DummyAgentInfo", ["observation", "previous_state"])
 
 
 class DummyAgent(Agent):

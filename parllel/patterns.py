@@ -9,8 +9,8 @@ import numpy as np
 
 import parllel.logger as logger
 from parllel import Array, ArrayDict, ArrayTree, dict_map, MappingTree
+from parllel.agents import Agent
 from parllel.cages import Cage, ProcessCage, SerialCage
-from parllel.handlers import Agent
 from parllel.samplers import EvalSampler
 from parllel.transforms import (ClipRewards, Compose, EstimateAdvantage,
                                 EstimateMultiAgentAdvantage,

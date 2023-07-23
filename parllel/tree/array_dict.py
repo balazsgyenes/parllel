@@ -7,7 +7,7 @@ from typing import Any, Callable, Generic, Iterable, Iterator, TypeVar
 
 import numpy as np
 
-from parllel.dict import ArrayLike, ArrayTree, ArrayType, MappingTree
+from parllel.tree import ArrayLike, ArrayTree, ArrayType, MappingTree
 
 _T = TypeVar("_T")
 

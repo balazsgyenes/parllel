@@ -7,7 +7,7 @@ import torch
 from torch import Tensor
 
 from parllel import ArrayTree, Index, dict_map
-from parllel.handlers import Agent
+from parllel.agents import Agent
 from parllel.torch.distributions import Distribution
 
 

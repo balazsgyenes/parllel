@@ -1,5 +1,5 @@
 # dependencies
-import parllel.dict
+import parllel.tree
 
 from .array import Array
 from .indices import Index, Location
