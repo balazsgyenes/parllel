@@ -105,7 +105,7 @@ class SAC(Algorithm):
             target_q1, target_q2 = self.agent.target_q(samples["next_observation"], next_action)
         min_target_q = torch.min(target_q1, target_q2)
         next_q = min_target_q - self._alpha * next_log_prob
-        y = samples["reward"] + self.discount * ~samples["done"] * next_q
+        y = samples["reward"] + self.discount * ~samples["terminated"] * next_q
         q1, q2 = self.agent.q(samples["observation"], samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
 
