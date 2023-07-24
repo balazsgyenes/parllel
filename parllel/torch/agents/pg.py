@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TypedDict
+from typing import Mapping, TypedDict
 
 from torch import Tensor
 from typing_extensions import NotRequired
@@ -12,7 +12,7 @@ from .agent import TorchAgent
 
 
 class PgPrediction(TypedDict):
-    dist_params: ArrayOrMapping[Tensor]
+    dist_params: Mapping[str, ArrayOrMapping[Tensor]]
     value: NotRequired[Tensor]
 
 
