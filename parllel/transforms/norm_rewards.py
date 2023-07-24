@@ -1,27 +1,26 @@
-from typing import Optional
+from __future__ import annotations
+
+from collections.abc import Mapping
 
 import numpy as np
-from nptyping import NDArray
 from numba import njit
 
-from parllel.buffers import Samples
-from ..buffers.named_tuple import NamedTuple
+from parllel import Array, ArrayDict
 
 from .running_mean_std import RunningMeanStd
 from .transform import BatchTransform
-
 
 EPSILON = 1e-6
 
 
 @njit(fastmath=True)
 def compute_past_discount_return(
-    reward: NDArray[np.float32],
-    done: NDArray[np.bool_],
-    previous_return: NDArray[np.float32],
-    previous_done: NDArray[np.bool_],
+    reward: np.ndarray,
+    done: np.ndarray,
+    previous_return: np.ndarray,
+    previous_done: np.ndarray,
     discount: float,
-    out_return: NDArray[np.float32],
+    out_return: np.ndarray,
 ) -> None:
     """Computes discounted sum of past rewards from T=0 to the current time
     step. Rewards received further in the past are more heavily discounted.
@@ -40,52 +39,56 @@ class NormalizeRewards(BatchTransform):
     buffer for the discounted returns gained by the agent up to the current
     time.
 
-    If .env.valid exists, then only advantage of steps where .env.valid == True
+    If valid exists, then only advantage of steps where valid == True
     are used for calculating statistics. Other data points are ignored.
 
     Requires fields:
-        - .env.reward
-        - .env.done
-        - [.env.valid]
+        - reward
+        - done
+        - [valid]
 
-    Adds fields:
-        - .env.past_return
+    Requires output fields:
+        - past_return
 
-    :param batch_buffer: the batch buffer that will be passed to `__call__`.
+    :param sample_tree: the ArrayDict that will be passed to `__call__`.
     :param discount: discount (gamma) for discounting rewards over time
     :param initial_count: seed the running mean and standard deviation model
         with `initial_count` instances of x~N(0,1). Increase this to improve
         stability, to prevent the mean and standard deviation from changing too
         quickly during early training.
     """
-    def __init__(self,
-        batch_buffer: Samples,
-        discount: float,
-        initial_count: Optional[float] = None
-    ) -> None:
-        if isinstance(batch_buffer.env.reward, NamedTuple):
-            raise NotImplementedError("Not implemented for markov games, where"
-                "rewards are agent-specific.")
 
-        self.only_valid = hasattr(batch_buffer.env, "valid")
+    def __init__(
+        self,
+        sample_tree: ArrayDict[Array],
+        discount: float,
+        initial_count: float | None = None,
+    ) -> None:
+        if isinstance(sample_tree["reward"], Mapping):
+            raise NotImplementedError(
+                "Not implemented for markov games, where" "rewards are agent-specific."
+            )
+
+        self.only_valid = "valid" in sample_tree
         self.discount = discount
 
-        if initial_count is not None and initial_count < 1.:
+        if initial_count is not None and initial_count < 1.0:
             raise ValueError("Initial count must be at least 1")
 
         # create model to track running mean and std_dev of samples
         if initial_count is not None:
-            self.return_statistics = RunningMeanStd(shape=(),
-                initial_count=initial_count)
+            self.return_statistics = RunningMeanStd(
+                shape=(), initial_count=initial_count
+            )
         else:
             self.return_statistics = RunningMeanStd(shape=())
 
-    def __call__(self, batch_samples: Samples) -> Samples:
-        reward = np.asarray(batch_samples.env.reward)
-        past_return = batch_samples.env.past_return
+    def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
+        reward = np.asarray(sample_tree["reward"])
+        past_return = sample_tree["past_return"]
         previous_past_return = np.asarray(past_return[past_return.first - 1])
         past_return = np.asarray(past_return)
-        done = batch_samples.env.done
+        done = sample_tree["done"]
         previous_done = np.asarray(done[done.first - 1])
         done = np.asarray(done)
 
@@ -100,11 +103,11 @@ class NormalizeRewards(BatchTransform):
 
         # update statistics of discounted return
         if self.only_valid:
-            valid = batch_samples.env.valid
+            valid = sample_tree["valid"]
             self.return_statistics.update(past_return[valid])
         else:
             self.return_statistics.update(past_return)
 
         reward[:] = reward / (np.sqrt(self.return_statistics.var + EPSILON))
 
-        return batch_samples
+        return sample_tree

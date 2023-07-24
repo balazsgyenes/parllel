@@ -1,6 +1,6 @@
 # dependencies
 import parllel.arrays
-import parllel.buffers
+import parllel.tree
 
 from .advantage import EstimateAdvantage
 from .clip_rewards import ClipRewards
@@ -11,11 +11,14 @@ from .norm_rewards import NormalizeRewards
 from .transform import BatchTransform, Compose, StepTransform, Transform
 
 __all__ = [
-    EstimateAdvantage,
-    ClipRewards,
-    EstimateMultiAgentAdvantage,
-    NormalizeAdvantage,
-    NormalizeObservations,
-    NormalizeRewards,
-    BatchTransform, Compose, StepTransform, Transform,
+    "EstimateAdvantage",
+    "ClipRewards",
+    "EstimateMultiAgentAdvantage",
+    "NormalizeAdvantage",
+    "NormalizeObservations",
+    "NormalizeRewards",
+    "BatchTransform",
+    "Compose",
+    "StepTransform",
+    "Transform",
 ]

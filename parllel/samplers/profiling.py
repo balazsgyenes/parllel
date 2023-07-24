@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import cProfile
 from pathlib import Path
 import time
-from typing import List, Optional, Sequence, Tuple
+from typing import Sequence
 
 import numpy as np
 
-from parllel.buffers import Samples
+from parllel import Array, ArrayDict
 from parllel.cages import Cage, TrajInfo
 import parllel.logger as logger
 from parllel.types import BatchSpec
@@ -17,15 +19,15 @@ class ProfilingSampler(Sampler):
     def __init__(self,
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
-        sample_buffer: Samples,
+        sample_tree: ArrayDict[Array],
         n_iterations: int,
-        profile_path: Optional[Path] = None,
+        profile_path: Path | None = None,
     ) -> None:
         super().__init__(
             batch_spec=batch_spec,
             envs=envs,
             agent=None,
-            sample_buffer=sample_buffer,
+            sample_tree=sample_tree,
         )
 
         self.n_iterations = n_iterations
@@ -39,22 +41,17 @@ class ProfilingSampler(Sampler):
         # skip resetting agent
         pass
 
-    def collect_batch(self, elapsed_steps: int) -> Tuple[Samples, List[TrajInfo]]:
-        raise NotImplementedError
-
-    def time_batches(self):
+    def collect_batch(self, elapsed_steps: int) -> None:
         batch_T, batch_B = self.batch_spec
         durations = self.durations
 
-        action = self.sample_buffer.agent.action
-        observation, reward, done, terminated, truncated, env_info = (
-            self.sample_buffer.env.observation,
-            self.sample_buffer.env.reward,
-            self.sample_buffer.env.done,
-            self.sample_buffer.env.terminated,
-            self.sample_buffer.env.truncated,
-            self.sample_buffer.env.env_info,
-        )
+        action = self.sample_tree["action"]
+        observation = self.sample_tree["observation"]
+        reward = self.sample_tree["reward"]
+        done = self.sample_tree["done"]
+        terminated = self.sample_tree["terminated"]
+        truncated = self.sample_tree["truncated"]
+        env_info = self.sample_tree["env_info"]
 
         if self.profiler is not None:
             self.profiler.enable()

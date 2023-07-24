@@ -1,24 +1,23 @@
-from typing import Tuple
+from __future__ import annotations
 
 import numpy as np
-from nptyping import NDArray
 from numba import njit
 
 
 @njit
 def update_from_moments(
-    batch_mean: NDArray,
-    batch_var: NDArray,
+    batch_mean: np.ndarray,
+    batch_var: np.ndarray,
     batch_count: int,
-    mean: NDArray,
-    var: NDArray,
-    count: NDArray,
+    mean: np.ndarray,
+    var: np.ndarray,
+    count: np.ndarray,
 ) -> None:
     """Calculates an update to a running mean, std_dev, and count based from
     the mean, std_dev, and count of an incoming batch.
 
     Adapted from https://github.com/openai/baselines/blob/master/baselines/common/vec_env/vec_normalize.py
-    Adapted from https://github.com/astooke/rlpyt/blob/master/rlpyt/models/running_mean_std.py 
+    Adapted from https://github.com/astooke/rlpyt/blob/master/rlpyt/models/running_mean_std.py
     References https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
     """
     delta = batch_mean - mean
@@ -40,7 +39,8 @@ class RunningMeanStd:
     :param shape: the shape of the data stream's output
     :param initial_count: helps with arithmetic issues and stability
     """
-    def __init__(self, shape: Tuple[int, ...], initial_count: float = 1e-4):
+
+    def __init__(self, shape: tuple[int, ...], initial_count: float = 1e-4):
         self.mean = np.zeros(shape, np.float64)
         self.var = np.ones(shape, np.float64)
         self.count = np.array(initial_count, np.float64)
@@ -52,5 +52,6 @@ class RunningMeanStd:
         batch_mean = np.mean(batch, 0)
         batch_var = np.var(batch, 0)
         batch_count = batch.shape[0]
-        update_from_moments(batch_mean, batch_var, batch_count,
-                            self.mean, self.var, self.count)
+        update_from_moments(
+            batch_mean, batch_var, batch_count, self.mean, self.var, self.count
+        )

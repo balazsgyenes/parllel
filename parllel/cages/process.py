@@ -1,22 +1,21 @@
+from __future__ import annotations
+
 import enum
 import multiprocessing as mp
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable
 
-from parllel.arrays import Array, ManagedMemoryArray
-from parllel.buffers import Buffer
-from parllel.buffers.registry import BufferRegistry
-from parllel.buffers.utils import buffer_all
+from parllel import Array, ArrayTree
 
 from .cage import Cage
-from .collections import EnvRandomStepType, EnvSpaces, EnvStepType, ObsType
+from .collections import (EnvInfoType, EnvRandomStepType, EnvResetType,
+                          EnvSpaces, EnvStepType, ObsType)
 from .traj_info import TrajInfo
 
 
 class Command(enum.Enum):
     """Commands for communicating with the subprocess"""
 
-    register_sample_buffer = 1
     step = 2
     collect_completed_trajs = 4
     random_step = 5
@@ -45,19 +44,19 @@ class ProcessCage(Cage, mp.Process):
     immediately when done is True, replacing the returned observation with the
     reset observation. If False, environment is not reset and the
     `needs_reset` flag is set to True.
-    ;param ignore_reset_info (bool): If True (default), the info dictionary 
+    :param ignore_reset_info (bool): If True (default), the info dictionary
     returned by env.reset() gets ignored. If False, the dict is treated the
     same way as info dicts returned by env.step() calls
     """
+    # TODO: add spaces and needs_reset properties
 
     def __init__(
         self,
         EnvClass: Callable,
-        env_kwargs: Dict,
+        env_kwargs: dict[str, Any],
         TrajInfoClass: Callable,
         reset_automatically: bool = False,
         ignore_reset_info: bool = True,
-        buffers: Optional[Sequence[Buffer]] = None,
     ) -> None:
         mp.Process.__init__(self)
 
@@ -72,10 +71,6 @@ class ProcessCage(Cage, mp.Process):
         # pipe is used for communication between main and child processes
         self._parent_pipe, self._child_pipe = mp.Pipe()
 
-        # buffer registry allows for sending buffers (tuples of arrays) as a
-        # buffer ID and an indexing history
-        self.buffer_registry = BufferRegistry(buffers)
-
         # start executing `run` method, which also creates the environment
         self.start()
 
@@ -86,58 +81,40 @@ class ProcessCage(Cage, mp.Process):
         # ensures that `step` is always followed by `await_step`
         self.waiting: bool = False
 
-    def set_samples_buffer(
-        self,
-        action: Buffer,
-        obs: Buffer,
-        reward: Buffer,
-        done: Array,
-        info: Buffer,
-    ) -> None:
-        """Pass reference to samples buffer after process start."""
-        assert not self.waiting
-        samples_buffer = (action, obs, reward, done, info)
-        if not buffer_all(
-            samples_buffer, lambda arr: isinstance(arr, ManagedMemoryArray)
-        ):
-            raise TypeError(
-                "Only ManagedMemoryArray can be set as samples buffer after "
-                "process start. Either use ManagedMemoryArrays or pass the "
-                "sample buffer to the cage on init."
-            )
-        self._parent_pipe.send(Message(Command.register_sample_buffer, samples_buffer))
-        for buf in samples_buffer:
-            self.buffer_registry.register_buffer(buf)
-        self._parent_pipe.recv()  # block until finished
-
     def step_async(
         self,
-        action: Buffer,
+        action: ArrayTree[Array],
         *,
-        out_obs: Optional[Buffer] = None,
-        out_reward: Optional[Buffer] = None,
-        out_terminated: Optional[Buffer] = None,
-        out_truncated: Optional[Buffer] = None,
-        out_info: Optional[Buffer] = None,
+        out_obs: ArrayTree[Array] | None = None,
+        out_reward: ArrayTree[Array] | None = None,
+        out_terminated: Array | None = None,
+        out_truncated: Array | None = None,
+        out_info: ArrayTree[Array] | None = None,
     ) -> None:
         assert not self.waiting
-        args = (action, out_obs, out_reward, out_terminated, out_truncated, out_info)
-        args = tuple(self.buffer_registry.reduce_buffer(buf) for buf in args)
+        args = (
+            action,
+            out_obs,
+            out_reward,
+            out_terminated,
+            out_truncated,
+            out_info,
+        )
         self._parent_pipe.send(Message(Command.step, args))
         self.waiting = True
 
-    def await_step(self) -> Union[EnvStepType, EnvRandomStepType, ObsType]:
+    def await_step(self) -> EnvStepType | EnvRandomStepType | EnvResetType | None:
         assert self.waiting
         result = self._parent_pipe.recv()
         self.waiting = False
         if isinstance(result, bool):
-            # obs, reward, done, info already written to out_args
+            # obs, reward, done, etc. already written to out_args
             self._needs_reset = result
         else:
             self._needs_reset = self._parent_pipe.recv()
             return result
 
-    def collect_completed_trajs(self) -> List[TrajInfo]:
+    def collect_completed_trajs(self) -> list[TrajInfo]:
         assert not self.waiting
         self._parent_pipe.send(Message(Command.collect_completed_trajs))
         trajs = self._parent_pipe.recv()
@@ -146,12 +123,12 @@ class ProcessCage(Cage, mp.Process):
     def random_step_async(
         self,
         *,
-        out_action: Optional[Buffer] = None,
-        out_obs: Optional[Buffer] = None,
-        out_reward: Optional[Buffer] = None,
-        out_terminated: Optional[Buffer] = None,
-        out_truncated: Optional[Buffer] = None,
-        out_info: Optional[Buffer] = None,
+        out_action: ArrayTree[Array] | None = None,
+        out_obs: ArrayTree[Array] | None = None,
+        out_reward: ArrayTree[Array] | None = None,
+        out_terminated: Array | None = None,
+        out_truncated: Array | None = None,
+        out_info: ArrayTree[Array] | None = None,
     ) -> None:
         assert not self.waiting
         args = (
@@ -162,16 +139,16 @@ class ProcessCage(Cage, mp.Process):
             out_truncated,
             out_info,
         )
-        args = tuple(self.buffer_registry.reduce_buffer(buf) for buf in args)
         self._parent_pipe.send(Message(Command.random_step, args))
         self.waiting = True
 
     def reset_async(
-        self, *, out_obs: Optional[Buffer] = None, out_info: Optional[Buffer]
+        self,
+        *,
+        out_obs: ArrayTree[Array] | None = None,
+        out_info: ArrayTree[Array] | None = None,
     ) -> None:
         assert not self.waiting
-        out_obs = self.buffer_registry.reduce_buffer(out_obs)
-        out_info = self.buffer_registry.reduce_buffer(out_info)
         self._parent_pipe.send(Message(Command.reset_async, (out_obs, out_info)))
         self.waiting = True
 
@@ -187,31 +164,20 @@ class ProcessCage(Cage, mp.Process):
         """
         self._create_env()  # create env, traj info, etc.
 
-        _reset_obs: Optional[Buffer] = None
-        _reset_info: Optional[Buffer] = None
-
         # send env spaces back to parent
         # parent process can receive gym Space objects because gym is imported
-        self._child_pipe.send(
-            EnvSpaces(
-                observation=self._env.observation_space,
-                action=self._env.action_space,
-            )
-        )
+        self._child_pipe.send(self._spaces)
+
+        # used to store the result of asynchronous reset
+        _reset_obs: ObsType | None = None
+        _reset_info: EnvInfoType | None = None
 
         while True:
             message: Message = self._child_pipe.recv()
             command: Command = message.command
             data: Any = message.data
 
-            if command == Command.register_sample_buffer:
-                samples_buffer = data
-                for buf in samples_buffer:
-                    self.buffer_registry.register_buffer(buf)
-                self._child_pipe.send(None)
-
-            elif command == Command.step:
-                data = (self.buffer_registry.rebuild_buffer(buf) for buf in data)
+            if command == Command.step:
                 (
                     action,
                     out_obs,
@@ -220,11 +186,11 @@ class ProcessCage(Cage, mp.Process):
                     out_truncated,
                     out_info,
                 ) = data
-                obs, reward, terminated, truncated, env_info = self._step_env(action)
+                obs, reward, terminated, truncated, env_info = self._step_env(
+                    action
+                )
 
-                done = terminated or truncated
-
-                if done:
+                if (done := terminated or truncated):
                     if self.reset_automatically:
                         # reset immediately and overwrite last observation
                         obs, reset_info = self._reset_env()
@@ -234,25 +200,29 @@ class ProcessCage(Cage, mp.Process):
                         # store done state
                         self._needs_reset = True
 
-                if any(
-                    out is None
-                    for out in (
-                        out_obs,
-                        out_reward,
-                        out_terminated,
-                        out_truncated,
-                        out_info,
-                    )
-                ):
-                    self._child_pipe.send(
-                        (obs, reward, terminated, truncated, env_info)
-                    )
-                else:
-                    out_obs[:] = obs
-                    out_reward[:] = reward
-                    out_terminated[:] = terminated
-                    out_truncated[:] = out_truncated
-                    out_info[:] = env_info
+                try:
+                    out_obs[...] = obs
+                    out_reward[...] = reward
+                    out_terminated[...] = terminated
+                    out_truncated[...] = truncated
+                    out_info[...] = env_info
+                except TypeError as e:
+                    outs = data[1:]
+                    if any(out is None for out in outs):
+                        if not all(out is None for out in outs):
+                            # if user passed a combination of None and Array, it's probably a mistake
+                            raise ValueError(
+                                f"Missing {outs.index(None) + 1}nth output argument!"
+                            )
+
+                        # return step result if user passed no output args at all
+                        self._child_pipe.send(
+                            (obs, reward, terminated, truncated, env_info)
+                        )
+                    else:
+                        # otherwise this was an unexpected error
+                        raise e
+
                 self._child_pipe.send(self.needs_reset)
 
                 # this Cage should not be stepped until the end of the batch
@@ -267,7 +237,6 @@ class ProcessCage(Cage, mp.Process):
                 self._child_pipe.send(trajs)
 
             elif command == Command.random_step:
-                data = (self.buffer_registry.rebuild_buffer(buf) for buf in data)
                 (
                     out_action,
                     out_obs,
@@ -285,52 +254,67 @@ class ProcessCage(Cage, mp.Process):
                     env_info,
                 ) = self._random_step_env()
 
-                if any(
-                    out is None
-                    for out in (
-                        out_action,
-                        out_obs,
-                        out_reward,
-                        out_terminated,
-                        out_truncated,
-                        out_info,
-                    )
-                ):
-                    self._child_pipe.send(
-                        (action, obs, reward, terminated, truncated, env_info)
-                    )
-                else:
-                    out_action[:] = action
-                    out_obs[:] = obs
-                    out_reward[:] = reward
-                    out_terminated[:] = terminated
-                    out_truncated[:] = truncated
-                    out_info[:] = env_info
+                try:
+                    out_action[...] = action
+                    out_obs[...] = obs
+                    out_reward[...] = reward
+                    out_terminated[...] = terminated
+                    out_truncated[...] = truncated
+                    out_info[...] = env_info
+                except TypeError as e:
+                    outs = data
+                    if any(out is None for out in outs):
+                        if not all(out is None for out in outs):
+                            # if user passed a combination of None and Array, it's probably a mistake
+                            raise ValueError(
+                                f"Missing {outs.index(None) + 1}nth output argument!"
+                            )
+
+                        # return step result if user passed no output args at all
+                        self._child_pipe.send(
+                            (action, obs, reward, terminated, truncated, env_info)
+                        )
+                    else:
+                        # otherwise this was an unexpected error
+                        raise e
+
                 # needs_reset should always be False unless random_step is
                 # called on an env that already needs reset
                 self._child_pipe.send(self.needs_reset)
 
             elif command == Command.reset_async:
                 out_obs, out_info = data
-                out_obs = self.buffer_registry.rebuild_buffer(out_obs)
-                out_info = self.buffer_registry.rebuild_buffer(out_info)
                 if _reset_obs is not None and _reset_info is not None:
+                    # reset has already been done in the background
                     reset_obs, reset_info = _reset_obs, _reset_info
                     _reset_obs, _reset_info = None, None
                 else:
+                    # unexpected reset requested
                     reset_obs, reset_info = self._reset_env()
 
-                if out_obs is None or out_info is None:
-                    self._child_pipe.send((reset_obs, reset_info))
-                else:
-                    out_obs[:] = reset_obs
+                try:
+                    out_obs[...] = reset_obs
                     if not self.ignore_reset_info:
-                        out_info[:] = reset_info
+                        out_info[...] = reset_info
+                except TypeError as e:
+                    outs = (out_obs, out_info)
+                    if any(out is None for out in outs):
+                        if not all(out is None for out in outs):
+                            # if user passed a combination of None and Array, it's probably a mistake
+                            raise ValueError(
+                                f"Missing {outs.index(None) + 1}nth output argument!"
+                            )
+
+                        # return step result if user passed no output args at all
+                        self._child_pipe.send((reset_obs, reset_info))
+                    else:
+                        # otherwise this was an unexpected error
+                        raise e
+
                 self._needs_reset = False
                 self._child_pipe.send(self.needs_reset)
 
             elif command == Command.close:
-                self.buffer_registry.close()
                 self._close_env()  # close env object
                 break
 

@@ -1,29 +1,30 @@
+from __future__ import annotations
+
 import time
-from typing import Any, Dict, List, Optional, Tuple
 
 import gymnasium as gym
-from nptyping import NDArray
+import numpy as np
 
 
 class DummyEnv(gym.Env):
-    def __init__(self,
-                 step_duration: float,
-                 observation_space: gym.Space,
-                 action_space: Optional[gym.Space] = None,
-                 ) -> None:
+    def __init__(
+        self,
+        step_duration: float,
+        observation_space: gym.Space,
+        action_space: gym.Space | None = None,
+    ) -> None:
         self._step_duration = step_duration
         self.observation_space = observation_space
         self.action_space = action_space
 
-    def step(self, action: NDArray) -> Tuple[NDArray, float, bool, Dict[str, Any]]:
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, dict]:
         time.sleep(self._step_duration)
-        return self.observation_space.sample(), 1., False, False, {}
+        return self.observation_space.sample(), 1.0, False, False, {}
 
-    def reset(self) -> NDArray:
+    def reset(self) -> np.ndarray:
         return self.observation_space.sample()
 
-    def seed(self, seed: Optional[int]) -> List[int]:
-        self.observation_space.seed(seed)
-        if self.action_space is not None:
-            self.action_space.seed(seed+1)
-        return [seed]
+    def seed(self, seed: int | None) -> list[int]:
+        seeds = self.observation_space.seed(seed)
+        more_seeds = self.action_space.seed(seeds[0] + 1)
+        return seeds + more_seeds
