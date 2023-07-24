@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from nptyping import NDArray
 import numpy as np
 
 from parllel import Array, ArrayDict
 
 from .transform import BatchTransform
-
 
 EPSILON = 1e-6
 
@@ -14,16 +12,17 @@ EPSILON = 1e-6
 class NormalizeAdvantage(BatchTransform):
     """Batch normalizes advantage by subtracting the mean and dividing by the
     standard deviation of the current batch of advantage values.
-    
-    If .env.valid exists, then only advantage of steps where .env.valid == True
+
+    If valid exists, then only advantage of steps where valid == True
     are used for calculating statistics. Other data points are ignored.
-    
+
     Requires fields:
-        - .env.advantage
-        - [.env.valid]
+        - advantage
+        - [valid]
 
     :param sample_tree: the ArrayDict that will be passed to `__call__`.
     """
+
     def __init__(self, sample_tree: ArrayDict[Array]) -> None:
         self.only_valid = "valid" in sample_tree
         self.multiagent = np.asarray(sample_tree["advantage"]).ndim > 2
@@ -37,7 +36,7 @@ class NormalizeAdvantage(BatchTransform):
             valid = sample_tree["valid"]
             # shape is [X] for single-agent case, and [X, N] for multiagent
             # where X is number of valid time steps and N is number of agents
-            valid_advantage: NDArray = valid_advantage[valid]
+            valid_advantage = valid_advantage[valid]
 
         if self.multiagent:
             # normalize over all but last axis

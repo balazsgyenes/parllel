@@ -9,7 +9,6 @@ from parllel import Array, ArrayDict
 from .running_mean_std import RunningMeanStd
 from .transform import StepTransform
 
-
 EPSILON = 1e-6
 
 
@@ -17,12 +16,12 @@ class NormalizeObservations(StepTransform):
     """Normalizes the observation by subtracting the mean and dividing by the
     standard deviation.
 
-    If .env.valid exists, then only advantage of steps where .env.valid == True
+    If valid exists, then only advantage of steps where valid == True
     are used for calculating statistics. Other data points are ignored.
-    
+
     Requires fields:
-        - .env.observation
-        - [.env.valid]
+        - observation
+        - [valid]
 
     :param sample_tree: the ArrayDict that will be passed to `__call__`.
     :param obs_shape: shape of a single observation
@@ -31,7 +30,9 @@ class NormalizeObservations(StepTransform):
         stability, to prevent the mean and standard deviation from changing too
         quickly during early training.
     """
-    def __init__(self,
+
+    def __init__(
+        self,
         sample_tree: ArrayDict[Array],
         obs_shape: tuple[int, ...],
         initial_count: float | None = None,
@@ -41,13 +42,15 @@ class NormalizeObservations(StepTransform):
 
         self.only_valid = "valid" in sample_tree
 
-        if initial_count is not None and initial_count < 1.:
+        if initial_count is not None and initial_count < 1.0:
             raise ValueError("Initial count must be at least 1")
 
         # create model to track running mean and std_dev of samples
         if initial_count is not None:
-            self.obs_statistics = RunningMeanStd(shape=obs_shape,
-                initial_count=initial_count)
+            self.obs_statistics = RunningMeanStd(
+                shape=obs_shape,
+                initial_count=initial_count,
+            )
         else:
             self.obs_statistics = RunningMeanStd(shape=obs_shape)
 
@@ -63,6 +66,7 @@ class NormalizeObservations(StepTransform):
             self.obs_statistics.update(step_obs)
 
         step_obs[:] = (step_obs - self.obs_statistics.mean) / (
-            np.sqrt(self.obs_statistics.var + EPSILON))
+            np.sqrt(self.obs_statistics.var + EPSILON)
+        )
 
         return sample_tree
