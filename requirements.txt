@@ -1,4 +1,5 @@
 numpy~=1.22.0
+typing-extensions>=4.1.0
 nptyping<2.0
 numba~=0.56.3
 gymnasium~=0.28.0

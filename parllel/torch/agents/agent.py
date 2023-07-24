@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 from os import PathLike
-from typing import Callable, Optional, Union
+from typing import Callable
 
 import torch
+from torch import Tensor
 
-from parllel.buffers import Buffer, buffer_map
-from parllel.handlers import Agent
+from parllel import ArrayTree, Index, dict_map
+from parllel.agents import Agent
 from parllel.torch.distributions import Distribution
 
 
@@ -13,11 +16,13 @@ class TorchAgent(Agent):
     instance. Outputs from the model are converted into actions during
     sampling, usually with the help of a distribution.
     """
-    def __init__(self,
-            model: torch.nn.Module,
-            distribution: Distribution,
-            device: Optional[torch.device] = None,
-        ) -> None:
+
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        distribution: Distribution,
+        device: torch.device | None = None,
+    ) -> None:
         self.model = model
         self.distribution = distribution
 
@@ -31,8 +36,8 @@ class TorchAgent(Agent):
 
         self.mode = "sample"
         self.recurrent = False
-        self.rnn_states = None
-        self.previous_action = None
+        self.rnn_states: ArrayTree[Tensor] | None = None
+        self.previous_action: Tensor | None = None
         # TODO: I don't know if this makes sense, but I don't think every agent should have a deterministic_eval parameter in their __init__ method
         # I do it this way for now because it leads to the least amount of changes in the codebase.
         # Another alternative would be to pass a bool to the eval_mode methods.
@@ -44,35 +49,48 @@ class TorchAgent(Agent):
         if self.previous_action is not None:
             self.previous_action[:] = 0
 
-    def reset_one(self, env_index) -> None:
+    def reset_one(self, env_index: Index) -> None:
         if self.rnn_states is not None:
             # rnn_states are of shape [N, B, H]
             self.rnn_states[:, env_index] = 0
         if self.previous_action is not None:
             self.previous_action[env_index] = 0
 
-    def _get_states(self, env_indices: Union[int, slice]):
+    @torch.no_grad()
+    def initial_rnn_state(self) -> ArrayTree[Tensor]:
+        # transpose the rnn_states from [N,B,H] -> [B,N,H] for storage.
+        rnn_state, _ = self._get_states(...)
+        rnn_state = rnn_state.transpose(0, 1)
+        return rnn_state.cpu()
+
+    def _get_states(
+        self,
+        env_indices: Index,
+    ) -> tuple[ArrayTree[Tensor], ArrayTree[Tensor]]:
         try:
             # rnn_states has shape [N,B,H]
             rnn_state = self.rnn_states[:, env_indices]
         except TypeError as e:
-            raise ValueError("Could not index into recurrent state. Make sure "
-                "this agent is recurrent.") from e
+            raise ValueError(
+                "Could not index into recurrent state. Make sure this agent is recurrent."
+            ) from e
         previous_action = self.previous_action[env_indices]
         return rnn_state, previous_action
 
-    def _advance_states(self,
-            next_rnn_states: Buffer,
-            action: Buffer,
-            env_indices: Union[int, slice]
-        ) -> Buffer[torch.Tensor]:
+    def _advance_states(
+        self,
+        next_rnn_states: ArrayTree[Tensor],
+        action: ArrayTree[Tensor],
+        env_indices: Index,
+    ) -> ArrayTree[Tensor]:
         try:
             # rnn_states has shape [N,B,H]
             self.rnn_states[:, env_indices] = next_rnn_states
         except TypeError as e:
-            raise ValueError("Could not index into recurrent state. Make sure "
-                "this agent is recurrent.") from e
-        
+            raise ValueError(
+                "Could not index into recurrent state. Make sure this agent is recurrent."
+            ) from e
+
         # copy previous state before advancing, so that it it not overwritten
         previous_action = self.previous_action[env_indices].clone().detach()
         self.previous_action[env_indices] = action
@@ -82,9 +100,10 @@ class TorchAgent(Agent):
     def save_model(self, path: PathLike) -> None:
         torch.save(self.model.state_dict(), path)
 
-    def load_model(self,
+    def load_model(
+        self,
         path: PathLike,
-        load_to_device: Union[Callable, torch.device, str, None] = None,
+        load_to_device: Callable | torch.device | str | None = None,
     ) -> None:
         state_dict = torch.load(path, load_to_device)
         self.model.load_state_dict(state_dict)
@@ -117,10 +136,9 @@ class TorchAgent(Agent):
         # if coming from sampling, store states and set new blank states
         if self.recurrent and self.mode == "sample":
             self._sampler_rnn_states = self.rnn_states
-            self.rnn_states = buffer_map(torch.zeros_like, self.rnn_states)
+            self.rnn_states = dict_map(torch.zeros_like, self.rnn_states)
 
             self._sampler_previous_action = self.previous_action
-            self.previous_action = buffer_map(torch.zeros_like,
-                self.previous_action)
+            self.previous_action = dict_map(torch.zeros_like, self.previous_action)
 
         self.mode = "eval"

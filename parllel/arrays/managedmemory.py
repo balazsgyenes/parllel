@@ -1,11 +1,12 @@
 import os
-from multiprocessing import shared_memory
+from multiprocessing.shared_memory import SharedMemory
 from typing import Any
-import weakref
+from weakref import finalize
 
 import numpy as np
 
 import parllel.logger as logger
+
 from .array import Array
 
 
@@ -16,67 +17,90 @@ class ManagedMemoryArray(Array, storage="managed"):
 
     storage = "managed"
 
-    def _allocate(self) -> None:
+    def _allocate(self, shape: tuple[int, ...], dtype: np.dtype, name: str) -> None:
         # allocate array in OS shared memory
-        size = int(np.prod(self._base_shape))
-        nbytes = size * np.dtype(self.dtype).itemsize
+        size = int(np.prod(shape))
+        nbytes = size * np.dtype(dtype).itemsize
 
         # keep track of which process created this (presumably the main process)
-        self._spawning_process = os.getpid()
+        spawning_pid = os.getpid()
 
         # SharedMemory is given a unique name that other processes can use to
         # attach to it.
-        self._shmem = shared_memory.SharedMemory(create=True, size=nbytes)
+        shmem = SharedMemory(create=True, size=nbytes)
         logger.debug(
-            f"Process {self._spawning_process} allocated {self._shmem.size} "
-            f"bytes of shared memory with name {self._shmem.name}"
+            f"Process {spawning_pid} allocated {shmem.size} bytes of shared "
+            f"memory with name {shmem.name}"
         )
 
         # create a finalizer to ensure that shared memory is cleaned up
-        self._finalizer = weakref.finalize(self, self._cleanup_shmem)
+        finalizer = finalize(self, self._cleanup_shmem, shmem, spawning_pid)
 
-        self._wrap_raw_array()
+        # store allocation for getstate and setstate methods
+        if not hasattr(self, "_allocations"):
+            self._allocations = []
+            self._finalizers = []
+        self._allocations.append((name, shmem, shape, dtype, spawning_pid))
+        self._finalizers.append(finalizer)
 
-    def _cleanup_shmem(self) -> None:
+        array = self._wrap_with_ndarray(shmem, shape, dtype)
+
+        # assign to requested attribute name
+        setattr(self, name, array)
+
+    @staticmethod
+    def _cleanup_shmem(shared_mem: SharedMemory, spawning_pid: int) -> None:
         # close must be called by each instance (i.e. each process) on cleanup
         # calling close on shared memory that has already been unlinked appears
         # not to throw an error
-        self._shmem.close()
+        shared_mem.close()
         # these debug statements may not print if the finalizer is called during
         # process shutdown
-        logger.debug(f"Process {os.getpid()} closed shared memory {self._shmem.name}")
-        if os.getpid() == self._spawning_process:
+        logger.debug(f"Process {os.getpid()} closed shared memory {shared_mem.name}")
+        if os.getpid() == spawning_pid:
             # unlink must be called once and only once to release shared memory
-            self._shmem.unlink()
-            logger.debug(f"Process {os.getpid()} unlinked shared memory {self._shmem.name}")
+            shared_mem.unlink()
+            logger.debug(
+                f"Process {os.getpid()} unlinked shared memory {shared_mem.name}"
+            )
 
-    def _wrap_raw_array(self) -> None:
-        self._base_array = np.ndarray(
-            shape=self._base_shape,
-            dtype=self.dtype,
-            buffer=self._shmem.buf,
-        )
+    @staticmethod
+    def _wrap_with_ndarray(
+        shared_mem: SharedMemory,
+        shape: tuple[int, ...],
+        dtype: np.dtype,
+    ) -> np.ndarray:
+        return np.ndarray(shape=shape, dtype=dtype, buffer=shared_mem.buf)
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
+        # subprocesses should not be able to call rotate()
+        # if processes are started by fork, this is not guaranteed to be called
+        state["_rotatable"] = False
+
         # finalizers are marked dead when transferred between processes
-        del state["_finalizer"]
-        # remove arrays which cannot be pickled
-        del state["_base_array"]
-        del state["_current_array"]
-        del state["_previous_array"]
+        del state["_finalizers"]
+
+        # remove allocated numpy arrays which cannot be pickled
+        for allocation in self._allocations:
+            name = allocation[0]
+            del state[name]
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         # restore state dict entries
         self.__dict__.update(state)
-        # recreate finalizer
-        self._finalizer = weakref.finalize(self, self._cleanup_shmem)
-        # restore _base_array
-        self._wrap_raw_array()
-        # other arrays will be resolved when required
-        self._previous_array = None
-        self._current_array = None
 
-    def close(self):
-        self._finalizer()
+        # restore numpy arrays by re-wrapping them
+        # restore finalizers by recreating them
+        self._finalizers = []
+        for allocation in self._allocations:
+            name, shmem, shape, dtype, spawning_pid = allocation
+            array = self._wrap_with_ndarray(shmem, shape, dtype)
+            setattr(self, name, array)
+            finalizer = finalize(self, self._cleanup_shmem, shmem, spawning_pid)
+            self._finalizers.append(finalizer)
+
+    def close(self) -> None:
+        for finalizer in self._finalizers:
+            finalizer()

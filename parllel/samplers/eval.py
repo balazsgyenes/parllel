@@ -1,12 +1,13 @@
+from __future__ import annotations
+
 from typing import List, Optional, Sequence
 
 import numpy as np
 
-from parllel.buffers import Samples
-from parllel.buffers.utils import buffer_rotate
+from parllel import Array, ArrayDict
+from parllel.agents import Agent
 from parllel.cages import Cage, TrajInfo
-from parllel.handlers import Handler
-from parllel.transforms import StepTransform
+from parllel.transforms import StepTransform, Transform
 from parllel.types import BatchSpec
 
 from .sampler import Sampler
@@ -18,9 +19,9 @@ class EvalSampler(Sampler):
         max_traj_length: int,
         min_trajectories: int,
         envs: Sequence[Cage],
-        agent: Handler,
-        step_buffer: Samples,
-        obs_transform: Optional[StepTransform] = None,
+        agent: Agent,
+        sample_tree: ArrayDict[Array],
+        obs_transform: StepTransform | Transform | None = None,
         deterministic_actions: bool = False,
     ) -> None:
         for cage in envs:
@@ -34,7 +35,7 @@ class EvalSampler(Sampler):
             batch_spec=BatchSpec(1, len(envs)),
             envs=envs,
             agent=agent,
-            sample_buffer=step_buffer,
+            sample_tree=sample_tree,
         )
 
         self.max_traj_length = max_traj_length
@@ -43,34 +44,26 @@ class EvalSampler(Sampler):
         # TODO: This is probably bad.
         self.agent.deterministic_eval = deterministic_actions
 
-        # prepare cages for sampling
-        self.reset_envs()
+    def collect_batch(self, elapsed_steps: int) -> list[TrajInfo]:
+        # get references to sample tree elements
+        action = self.sample_tree["action"]
+        agent_info = self.sample_tree["agent_info"]
+        observation = self.sample_tree["observation"]
+        reward = self.sample_tree["reward"]
+        done = self.sample_tree["done"]
+        terminated = self.sample_tree["terminated"]
+        truncated = self.sample_tree["truncated"]
+        env_info = self.sample_tree["env_info"]
+        sample_tree = self.sample_tree
 
-    def collect_batch(self, elapsed_steps: int) -> List[TrajInfo]:
-        # get references to buffer elements
-        action, agent_info = (
-            self.sample_buffer.agent.action,
-            self.sample_buffer.agent.agent_info,
-        )
-        observation, reward, done, terminated, truncated, env_info = (
-            self.sample_buffer.env.observation,
-            self.sample_buffer.env.reward,
-            self.sample_buffer.env.done,
-            self.sample_buffer.env.terminated,
-            self.sample_buffer.env.truncated,
-            self.sample_buffer.env.env_info,
-        )
-        sample_buffer = self.sample_buffer
-
-        # reset all environments
-        self.reset_envs()
-
-        # rotate last values from previous batch to become previous values
-        buffer_rotate(sample_buffer)
-
-        # prepare agent for sampling
+        # set agent to eval mode, preventing sampler states from being overwritten
         self.agent.eval_mode(elapsed_steps)
-        self.agent.reset()
+
+        # reset all environments and agent recurrent state
+        self.reset()
+
+        # rotate reset observations to be current values
+        sample_tree.rotate()
 
         # TODO: freeze statistics in obs normalization
 
@@ -80,12 +73,10 @@ class EvalSampler(Sampler):
         for t in range(self.max_traj_length):
             # apply any transforms to the observation before the agent steps
             if self.obs_transform is not None:
-                sample_buffer = self.obs_transform(sample_buffer, 0)
+                sample_tree = self.obs_transform(sample_tree, 0)
 
             # agent observes environment and outputs actions
-            self.agent.step(
-                observation[0], out_action=action[0], out_agent_info=agent_info[0]
-            )
+            action[...], agent_info[...] = self.agent.step(observation[0])
 
             for b, env in enumerate(self.envs):
                 env.step_async(
@@ -100,14 +91,15 @@ class EvalSampler(Sampler):
             for b, env in enumerate(self.envs):
                 env.await_step()
 
-            done[0] = np.logical_or(terminated[0], truncated[0])
+            done[:] = np.logical_or(terminated, truncated)
+
             # if environment is done, reset agent
             # environment has already been reset inside cage
-            if np.any(dones := done[0]):
-                n_completed_trajs += np.sum(dones)
+            if np.any(done):
+                n_completed_trajs += np.sum(done)
                 if n_completed_trajs >= self.min_trajectories:
                     break
-                self.agent.reset_one(np.asarray(dones))
+                self.agent.reset_one(np.asarray(done))
 
         # collect all completed trajectories from envs
         completed_trajectories = [

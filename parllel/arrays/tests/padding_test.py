@@ -3,8 +3,6 @@ import functools
 import pytest
 import numpy as np
 
-from parllel.arrays.array import shift_index
-
 # reuse fixtures from array_test
 from array_test import ArrayClass, shape, dtype, storage, full_size, blank_array, np_array
 
@@ -35,7 +33,7 @@ def array(blank_array, np_array, padding, previous_region, next_region):
 class TestPaddedArray:
     def test_negative_padding(self, ArrayClass, shape, dtype, storage):
         with pytest.raises(ValueError):
-            _ = ArrayClass(shape=shape, dtype=dtype, storage=storage, padding=-1)
+            _ = ArrayClass(feature_shape=shape, dtype=dtype, storage=storage, padding=-1)
 
     def test_init(self, blank_array, shape, dtype):
         assert blank_array.shape == shape
@@ -111,6 +109,7 @@ class TestPaddedArray:
         assert np.array_equal(array[:padding], next_region)
         # the state of the rest of the Array is undefined until written to
 
+    @pytest.mark.skip(reason="deprecated feature")
     def test_indexhistory(self, array):
         assert array.index_history == ()
 
@@ -131,6 +130,7 @@ class TestPaddedArray:
             (-1, slice(None, None, 2)),
         )
 
+    @pytest.mark.skip(reason="deprecated feature")
     def test_array_reconstruction(self, array):
         # same as Array test, just start with negative index here
         # TODO: compare arrays with np_array
@@ -152,6 +152,7 @@ class TestPaddedArray:
             in zip(subarray1.index_history, subarray2.index_history))
 
 
+@pytest.mark.skip()
 class TestIndexShifting:
     def test_shift_integer(self):
         assert shift_index(4, 2, size=10) == (6,)

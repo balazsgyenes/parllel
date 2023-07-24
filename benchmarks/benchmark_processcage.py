@@ -146,7 +146,7 @@ def build(config, parallel, profile_path):
     sampler = ProfilingSampler(
         batch_spec=config["sampler"]["batch_spec"],
         envs=cages,
-        sample_buffer=batch_samples,
+        sample_tree=batch_samples,
         n_iterations=config["sampler"]["n_iterations"],
         profile_path=profile_path,
     )
