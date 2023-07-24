@@ -17,5 +17,8 @@ __all__ = [
     "NormalizeAdvantage",
     "NormalizeObservations",
     "NormalizeRewards",
-    "BatchTransform", "Compose", "StepTransform", "Transform",
+    "BatchTransform",
+    "Compose",
+    "StepTransform",
+    "Transform",
 ]

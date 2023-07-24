@@ -12,12 +12,14 @@ class ClipRewards(BatchTransform):
     given, rewards are not clipped from that direction.
 
     Requires fields:
-        - .env.reward
+        - reward
 
     :param reward_min: after normalization, clips rewards from below
     :param reward_max: after normalization, clips rewards from above
     """
-    def __init__(self,
+
+    def __init__(
+        self,
         reward_min: float | None = None,
         reward_max: float | None = None,
     ) -> None:
@@ -25,10 +27,10 @@ class ClipRewards(BatchTransform):
         self.reward_max = reward_max
         if not (reward_min is not None or reward_max is not None):
             raise ValueError("Must provide either reward_min or reward_max")
-    
+
     def __call__(self, batch_samples: ArrayDict[Array]) -> ArrayDict[Array]:
         reward = np.asarray(batch_samples["reward"])
 
         reward[:] = np.clip(reward, self.reward_min, self.reward_max)
-        
+
         return batch_samples

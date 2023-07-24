@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 import numpy as np
-from nptyping import NDArray
 from numba import njit
 
 from parllel import Array, ArrayDict
@@ -11,18 +10,17 @@ from parllel import Array, ArrayDict
 from .running_mean_std import RunningMeanStd
 from .transform import BatchTransform
 
-
 EPSILON = 1e-6
 
 
 @njit(fastmath=True)
 def compute_past_discount_return(
-    reward: NDArray[np.float32],
-    done: NDArray[np.bool_],
-    previous_return: NDArray[np.float32],
-    previous_done: NDArray[np.bool_],
+    reward: np.ndarray,
+    done: np.ndarray,
+    previous_return: np.ndarray,
+    previous_done: np.ndarray,
     discount: float,
-    out_return: NDArray[np.float32],
+    out_return: np.ndarray,
 ) -> None:
     """Computes discounted sum of past rewards from T=0 to the current time
     step. Rewards received further in the past are more heavily discounted.
@@ -41,16 +39,16 @@ class NormalizeRewards(BatchTransform):
     buffer for the discounted returns gained by the agent up to the current
     time.
 
-    If .env.valid exists, then only advantage of steps where .env.valid == True
+    If valid exists, then only advantage of steps where valid == True
     are used for calculating statistics. Other data points are ignored.
 
     Requires fields:
-        - .env.reward
-        - .env.done
-        - [.env.valid]
+        - reward
+        - done
+        - [valid]
 
-    Adds fields:
-        - .env.past_return
+    Requires output fields:
+        - past_return
 
     :param sample_tree: the ArrayDict that will be passed to `__call__`.
     :param discount: discount (gamma) for discounting rewards over time
@@ -59,25 +57,29 @@ class NormalizeRewards(BatchTransform):
         stability, to prevent the mean and standard deviation from changing too
         quickly during early training.
     """
-    def __init__(self,
+
+    def __init__(
+        self,
         sample_tree: ArrayDict[Array],
         discount: float,
-        initial_count: float | None = None
+        initial_count: float | None = None,
     ) -> None:
         if isinstance(sample_tree["reward"], Mapping):
-            raise NotImplementedError("Not implemented for markov games, where"
-                "rewards are agent-specific.")
+            raise NotImplementedError(
+                "Not implemented for markov games, where" "rewards are agent-specific."
+            )
 
         self.only_valid = "valid" in sample_tree
         self.discount = discount
 
-        if initial_count is not None and initial_count < 1.:
+        if initial_count is not None and initial_count < 1.0:
             raise ValueError("Initial count must be at least 1")
 
         # create model to track running mean and std_dev of samples
         if initial_count is not None:
-            self.return_statistics = RunningMeanStd(shape=(),
-                initial_count=initial_count)
+            self.return_statistics = RunningMeanStd(
+                shape=(), initial_count=initial_count
+            )
         else:
             self.return_statistics = RunningMeanStd(shape=())
 

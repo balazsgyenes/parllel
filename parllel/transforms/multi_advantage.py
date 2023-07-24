@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-import enum
+from enum import Enum
 
 import numpy as np
 
 from parllel import Array, ArrayDict
+from parllel.np_utils import broadcast_left_to_right
 
 from .advantage import compute_discount_return, compute_gae_advantage
-from .numpy import broadcast_left_to_right
 from .transform import BatchTransform
 
 
-class ProblemType(enum.Enum):
+class ProblemType(Enum):
     # single reward, single value estimate
     single_critic = 0
     # single reward, unique value estimates for each distribution
@@ -26,23 +26,25 @@ class EstimateMultiAgentAdvantage(BatchTransform):
     value estimates. This wrapper should be used any time the agent has a
     MultiDistribution, either because it is an EnsembleAgent, or because it
     outputs e.g. both discrete and continuous actions.
-    
-    Requires fields:
-        - .env.reward
-        - .env.done
-        - .agent.action
-        - .agent.agent_info.value
-        - .agent.bootstrap_value
-    
-    Adds fields:
-        - .env.advantage
-        - .env.return_
+
+    Requires input fields:
+        - reward
+        - done
+        - action
+        - agent_info["value"]
+        - bootstrap_value
+
+    Requires output fields:
+        - advantage
+        - return_
 
     :param sample_tree: the ArrayDict that will be passed to `__call__`.
     :param discount: discount (gamma) for discounting rewards over time
     :param gae_lambda: lambda parameter for GAE algorithm
     """
-    def __init__(self,
+
+    def __init__(
+        self,
         sample_tree: ArrayDict[Array],
         discount: float,
         gae_lambda: float,
@@ -66,7 +68,7 @@ class EstimateMultiAgentAdvantage(BatchTransform):
                 self.problem_type = ProblemType.markov_game
             else:
                 self.problem_type = ProblemType.independent_critics
-            
+
             if advantage.shape != value.shape:
                 raise ValueError("Advantage and Value must have the same shape")
         else:
@@ -74,8 +76,9 @@ class EstimateMultiAgentAdvantage(BatchTransform):
             if advantage.shape != (value.shape + (1,)):
                 # in algo, advantage must broadcast with distribution values
                 # (e.g. log likelihood, likelihood ratio)
-                raise ValueError("Advantage must match shape of Value except"
-                    " for added trailing singleton dimension")
+                raise ValueError(
+                    "Advantage must match shape of Value except for added trailing singleton dimension."
+                )
 
     def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
         """Cases:
@@ -108,10 +111,30 @@ class EstimateMultiAgentAdvantage(BatchTransform):
 
         # if missing, add singleton trailing dimensions to arrays until they
         # all have the same dimensionality
-        reward, value, done, bootstrap_value, advantage, return_ = broadcast_left_to_right(
-            reward, value, done, bootstrap_value, advantage, return_
+        (
+            reward,
+            value,
+            done,
+            bootstrap_value,
+            advantage,
+            return_,
+        ) = broadcast_left_to_right(
+            reward,
+            value,
+            done,
+            bootstrap_value,
+            advantage,
+            return_,
         )
-        
-        self.estimator(reward, value, done, bootstrap_value, self._discount,
-            self._lambda, advantage, return_)
+
+        self.estimator(
+            reward,
+            value,
+            done,
+            bootstrap_value,
+            self._discount,
+            self._lambda,
+            advantage,
+            return_,
+        )
         return sample_tree

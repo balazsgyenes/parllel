@@ -1,9 +1,8 @@
 channels:
 - pytorch
+- pyg
 dependencies:
 - python=3.9
 - pytorch=1.12
 - cudatoolkit=11.6
-- pip
-- pip:
-  - -r requirements.txt
+- pyg=2.2
