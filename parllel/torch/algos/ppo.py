@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -32,7 +32,7 @@ class PPO(Algorithm):
     def __init__(
         self,
         agent: PgAgent,
-        dataloader: BatchedDataLoader[Tensor],
+        dataloader: BatchedDataLoader[ArrayDict[Tensor]],
         optimizer: Optimizer,
         learning_rate_scheduler: _LRScheduler | None,
         value_loss_coeff: float,
@@ -64,7 +64,7 @@ class PPO(Algorithm):
 
         self.update_counter = 0
         self.early_stopping = False
-        self.algo_log_info: defaultdict[str, int | list[float]] = defaultdict(list)
+        self.algo_log_info: defaultdict[str, Any] = defaultdict(list)
 
     def optimize_agent(
         self,
@@ -85,7 +85,7 @@ class PPO(Algorithm):
         for _ in range(self.epochs):
             for batch in self.dataloader.batches():
                 self.optimizer.zero_grad()
-                loss = self.loss(batch)
+                loss, _ = self.loss(batch)
                 if self.early_stopping:
                     break
                 loss.backward()
@@ -110,7 +110,7 @@ class PPO(Algorithm):
 
         return self.algo_log_info
 
-    def loss(self, batch: ArrayDict[Tensor]) -> torch.Tensor:
+    def loss(self, batch: ArrayDict[Tensor]) -> tuple[torch.Tensor, PgPrediction]:
         """
         Compute the training loss: policy_loss + value_loss + entropy_loss
         Policy loss: min(likelhood-ratio * advantage, clip(likelihood_ratio, 1-eps, 1+eps) * advantage)
@@ -217,7 +217,7 @@ class PPO(Algorithm):
             explained_var = explained_variance(value, batch["return_"])
             self.algo_log_info["explained_variance"].append(explained_var)
 
-        return loss
+        return loss, agent_prediction
 
 
 def build_loss_sample_tree(
