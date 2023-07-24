@@ -1,3 +1,4 @@
+# fmt: off
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -8,7 +9,7 @@ import gymnasium as gym
 import numpy as np
 
 import parllel.logger as logger
-from parllel import Array, ArrayDict, ArrayTree, dict_map, ArrayOrMapping
+from parllel import Array, ArrayDict, ArrayOrMapping, ArrayTree, dict_map
 from parllel.agents import Agent
 from parllel.cages import Cage, ProcessCage, SerialCage
 from parllel.samplers import EvalSampler
@@ -17,6 +18,8 @@ from parllel.transforms import (ClipRewards, Compose, EstimateAdvantage,
                                 NormalizeAdvantage, NormalizeObservations,
                                 NormalizeRewards, StepTransform, Transform)
 from parllel.types import BatchSpec
+
+# fmt: on
 
 
 @dataclass
@@ -105,6 +108,7 @@ def build_cages_and_sample_tree(
             feature_shape=(),
             dtype=bool,
             storage=storage,
+            full_size=full_size,  # used for SAC replay buffer
         )
 
     if "truncated" not in keys_to_skip:
@@ -127,7 +131,6 @@ def build_cages_and_sample_tree(
             dtype=bool,
             storage=storage,
             padding=1,
-            full_size=full_size,
         )
 
     if "env_info" not in keys_to_skip:
@@ -324,8 +327,7 @@ def add_reward_normalization(
 ) -> tuple[ArrayDict[Array], list[Transform]]:
     if sample_tree["done"].padding == 0:
         raise ValueError(
-            "sample_tree['done'] must have padding >= 1 when using "
-            "NormalizeRewards"
+            "sample_tree['done'] must have padding >= 1 when using NormalizeRewards"
         )
 
     # TODO: handle multi-reward case
@@ -390,7 +392,7 @@ def build_eval_sampler(
         {key: sample_tree[key] for key in eval_tree_keys},
     )
     # create a new tree with leading dimensions (1, B_eval)
-    eval_sample_tree = eval_tree_example.new_array(batch_shape=(1, n_eval_envs,))
+    eval_sample_tree = eval_tree_example.new_array(batch_shape=(1, n_eval_envs))
 
     eval_cage_kwargs = dict(
         EnvClass=EnvClass,
