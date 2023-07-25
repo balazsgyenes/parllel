@@ -164,6 +164,9 @@ class JaggedArray(Array, kind="jagged"):
         # TODO: if current location is a single graph, set real size of that graph
         # as apparent size
 
+    def _resolve_requests(self) -> None:
+        ...
+
     def __setitem__(
         self,
         indices: Location,
@@ -171,6 +174,8 @@ class JaggedArray(Array, kind="jagged"):
     ) -> None:
         if self._shape is None:
             self._resolve_indexing_history()
+
+        self._resolve_requests()
 
         destination = tuple(
             add_locations(
@@ -281,6 +286,8 @@ class JaggedArray(Array, kind="jagged"):
     def to_list(self) -> tuple[list[np.ndarray], list[int]]:
         if self._shape is None:
             self._resolve_indexing_history()
+
+        self._resolve_requests()
 
         current_location = tuple(self._current_location)
         batch_locs, feature_locs = (
