@@ -14,10 +14,8 @@ def mp_ctx(request):
 def dtype():
     return np.float32
 
-@pytest.fixture(params=[
-    "inherited",
-    "shared",
-], scope="module")
+
+@pytest.fixture(params=["inherited", "shared"], scope="module")
 def storage(request):
     return request.param
 
@@ -47,7 +45,7 @@ class TestInheritedMemoryArray:
         assert np.array_equal(array, np_array)
 
     def test_setitem_slice(self, array, np_array, mp_ctx):
-        location = (3, slice(1,2))
+        location = (3, slice(1, 2))
         value = -7
 
         p = mp_ctx.Process(target=setitem, args=(array, location, value))

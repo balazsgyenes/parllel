@@ -9,9 +9,9 @@ from parllel import ArrayTree
 from parllel.arrays.indices import (Index, Location, add_locations,
                                     batch_dims_from_location, index_slice,
                                     init_location, shape_from_location)
+from parllel.arrays.storage import Storage, StorageType
 
 # fmt: on
-
 Self = TypeVar("Self", bound="Array")
 
 
@@ -25,64 +25,54 @@ class Array:
         >>> array[:, slice(1, 3), 2] = 5.
     """
 
-    _subclasses: dict[tuple[str, str], type[Array]] = {}
-    storage = "local"
+    _subclasses: dict[str, type[Array]] = {}
     kind = "default"
-    _base_array: np.ndarray
 
     def __init_subclass__(
         cls,
         *,
         kind: str | None = None,
-        storage: str | None = None,
         **kwargs,
     ) -> None:
         super().__init_subclass__(**kwargs)
-        if kind is None and storage is None:
+        if kind is None:
             # subclasses can bypass registration machinery by not specifying
             # either kind or storage
             # for example, JaggedArrayList is not a registered subclass
             return
         kind = kind if kind is not None else "default"
-        storage = storage if storage is not None else "local"
-        cls._subclasses[(kind, storage)] = cls
+        cls._subclasses[kind] = cls
 
     @classmethod
-    def _get_subclass(cls, kind: str | None, storage: str | None) -> type[Array]:
-        if kind is None and storage is None:
-            # instantiate a subclass directly by just not passing kind/storage
+    def _get_subclass(cls, kind: str | None) -> type[Array]:
+        if kind is None:
+            # instantiate a subclass directly by just not passing kind
             # e.g. JaggedArray(shape=(4,4), dtype=np.float32)
             return cls
 
         # fill in None arguments with values from class used to instantiate
         kind = kind if kind is not None else cls.kind
-        storage = storage if storage is not None else cls.storage
 
-        if kind == "default" and storage == "local":
+        if kind == "default":
             # Array is not a registered subclass
             return Array
 
         # otherwise look up name in dictionary of registered subclasses
         try:
-            return cls._subclasses[(kind, storage)]
+            return cls._subclasses[kind]
         except KeyError:
-            raise ValueError(
-                f"No array subclass registered under {kind=} and {storage=}"
-            )
+            raise ValueError(f"No array subclass registered under {kind=}")
 
     def __new__(
         cls,
         *args,
         kind: str | None = None,
-        storage: str | None = None,
         **kwargs,
     ) -> Array:
         # get requested specialization based on kind/storage
-        subcls = cls._get_subclass(kind=kind, storage=storage)
+        subcls = cls._get_subclass(kind=kind)
         # give a change for the subclass to specialize itself further based on args/kwargs
-        subcls = subcls._specialize_subclass(
-            *args, kind=kind, storage=storage, **kwargs
-        )
+        subcls = subcls._specialize_subclass(*args, kind=kind, **kwargs)
         # instantiate that class
         return super().__new__(subcls)
 
@@ -97,7 +87,7 @@ class Array:
         *,
         feature_shape: tuple[int, ...] = (),
         kind: str | None = None,  # consumed by __new__
-        storage: str | None = None,  # consumed by __new__
+        storage: StorageType = "local",
         padding: int = 0,
         full_size: int | None = None,
     ) -> None:
@@ -133,7 +123,11 @@ class Array:
         self._base_shape = (full_size + 2 * padding,) + batch_shape[1:] + feature_shape
         self._base_batch_dims = len(batch_shape)
 
-        self._allocate(shape=self._base_shape, dtype=dtype, name="_base_array")
+        self.storage = Storage(
+            kind=storage,
+            size=np.prod(self._base_shape),
+            dtype=dtype,
+        )
 
         self._current_location = init_location(self._base_shape)
         init_slice = slice(padding, batch_shape[0] + padding)
@@ -149,7 +143,7 @@ class Array:
         *,
         feature_shape: tuple[int, ...] | None = None,
         kind: str | None = None,
-        storage: str | None = None,
+        storage: StorageType | None = None,
         padding: int | None = None,
         full_size: int | None = None,
         inherit_full_size: bool = False,
@@ -169,7 +163,7 @@ class Array:
         )
         dtype = dtype or self.dtype
         kind = kind if kind is not None else self.kind
-        storage = storage if storage is not None else self.storage
+        storage = storage if storage is not None else self.storage.kind
         padding = padding if padding is not None else self.padding
         full_size = (
             full_size
@@ -234,10 +228,6 @@ class Array:
     def _get_from_numpy_kwargs(cls, example: Any, kwargs: dict) -> dict:
         return kwargs
 
-    def _allocate(self, shape: tuple[int, ...], dtype: np.dtype, name: str) -> None:
-        # initialize numpy array
-        setattr(self, name, np.zeros(shape=shape, dtype=dtype))
-
     @property
     def shape(self) -> tuple[int, ...]:
         if self._shape is None:
@@ -276,6 +266,35 @@ class Array:
             self._resolve_indexing_history()
 
         return self._shape[0] - 1
+
+    def resize(
+        self,
+        feature_shape: tuple[int, ...] | None = None,
+        batch_shape: tuple[int, ...] | None = None,
+        dtype: np.dtype | None = None,
+        padding: int | None = None,
+        full_size: int | None = None,
+    ) -> None:
+        # also catches case if batch_shape == ()
+        batch_shape = batch_shape if batch_shape else self.batch_shape
+        feature_shape = (
+            feature_shape
+            if feature_shape is not None
+            else self.shape[self.n_batch_dims :]
+        )
+        dtype = dtype or self.dtype
+        padding = padding if padding is not None else self.padding
+        full_size = full_size if full_size is not None else self.full_size
+
+        self.dtype = dtype
+        self.padding = padding
+        self.full_size = full_size
+        self._base_shape = (full_size + 2 * padding,) + batch_shape[1:] + feature_shape
+        self._base_batch_dims = len(batch_shape)
+        # TODO: what to do about all the edge cases where subarrays calls
+        # resize()?
+        # should base_shape and dtype be part of storage?
+        self.storage.resize(size=np.prod(self._base_shape), dtype=dtype)
 
     def __getitem__(self: Self, indices: Location) -> Self:
         # new Array object initialized through a (shallow) copy. Attributes
@@ -324,7 +343,12 @@ class Array:
         )
 
         # write to underlying array at that location
-        self._base_array[destination] = value
+        base_array = np.ndarray(
+            self._base_shape,
+            dtype=self.dtype,
+            buffer=self.storage.buffer,
+        )
+        base_array[destination] = value
 
     @property
     def full(self: Self) -> Self:
@@ -421,7 +445,13 @@ class Array:
         if self._shape is None:
             self._resolve_indexing_history()
 
-        return self._base_array[tuple(self._current_location)]
+        base_array = np.ndarray(
+            self._base_shape,
+            dtype=self.dtype,
+            buffer=self.storage.buffer,
+        )
+
+        return base_array[tuple(self._current_location)]
 
     def __array__(self, dtype=None) -> np.ndarray:
         array = self.to_ndarray()
@@ -433,7 +463,7 @@ class Array:
     def __repr__(self) -> str:
         prefix = type(self).__name__ + "("
         suffix = (
-            f", storage={self.storage}"
+            f", storage={self.storage.kind}"
             f", dtype={self.dtype.name}"
             f", padding={self.padding}"
             ")"

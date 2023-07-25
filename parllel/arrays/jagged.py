@@ -12,11 +12,8 @@ from parllel.arrays.array import Array
 from parllel.arrays.indices import (Location, StandardIndex, add_locations,
                                     batch_dims_from_location, index_slice,
                                     init_location)
-from parllel.arrays.managedmemory import SharedMemoryArray
-from parllel.arrays.sharedmemory import InheritedMemoryArray
 
 # fmt: on
-
 Self = TypeVar("Self", bound="JaggedArray")
 
 
@@ -358,18 +355,6 @@ class JaggedArray(Array, kind="jagged"):
             array = array.astype(dtype, copy=False)
 
         return array
-
-
-class InheritedMemoryJaggedArray(
-    InheritedMemoryArray, JaggedArray, kind="jagged", storage="inherited"
-):
-    pass
-
-
-class SharedMemoryJaggedArray(
-    SharedMemoryArray, JaggedArray, kind="jagged", storage="shared"
-):
-    pass
 
 
 def slice_to_range(slice_: slice) -> range:
