@@ -110,7 +110,9 @@ class SharedMemory(Storage, kind="shared"):
 
     @property
     def buffer(self) -> memoryview:
-        return self._get_shmem().buf
+        # store shmem as an attribute, otherwise its __del__ method cleans it up
+        self._shmem = self._get_shmem()
+        return self._shmem.buf
 
     def resize(self, size: int, dtype: np.dtype) -> None:
         self.close(force=True)

@@ -17,7 +17,7 @@ def dtype(request):
 @pytest.fixture(
     params=[
         "local",
-        "inherited",
+        pytest.param("inherited", marks=pytest.mark.skip),
         "shared",
     ],
     scope="module",

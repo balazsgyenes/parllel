@@ -23,6 +23,7 @@ class TestArrayCreation:
 
     def test_calling_array(self, batch_shape, dtype, storage, padding):
         array = Array(batch_shape=batch_shape, dtype=dtype, storage=storage, padding=padding)
+        assert array.kind == "default"
         assert array.shape == batch_shape
         assert array.dtype == dtype
         assert array.storage == storage
