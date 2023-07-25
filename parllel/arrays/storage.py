@@ -3,7 +3,7 @@ from __future__ import annotations
 import ctypes
 import multiprocessing as mp
 import os
-from multiprocessing.shared_memory import SharedMemory as Shmem
+from multiprocessing.shared_memory import SharedMemory as MpSharedMem
 from weakref import finalize
 
 import numpy as np
@@ -16,10 +16,7 @@ class Storage:
     an ndarray.
     """
 
-    # TODO: add resize method
-
     _subclasses = {}
-    _size: int
 
     def __init_subclass__(
         cls,
@@ -40,13 +37,24 @@ class Storage:
             raise ValueError(f"No array subclass registered under {kind=}")
         return super().__new__(subcls)
 
+    def __init__(self, kind: str, size: int, dtype: np.dtype) -> None:
+        self._size = size
+        self._allocate(size=size, dtype=dtype)
+
     @property
     def size(self) -> int:
         return self._size
 
     @property
     def buffer(self) -> memoryview:
-        ...
+        raise NotImplementedError
+
+    def _allocate(self, size: int, dtype: np.dtype) -> None:
+        raise NotImplementedError
+
+    def resize(self, size: int, dtype: np.dtype) -> None:
+        self.close()
+        self._allocate(size=size, dtype=dtype)
 
     def close(self) -> None:
         ...
@@ -55,13 +63,8 @@ class Storage:
 class LocalMemory(Storage, kind="local"):
     kind = "local"
 
-    def __init__(self, kind: str, size: int, dtype: np.dtype) -> None:
-        self._size = size
+    def _allocate(self, size: int, dtype: np.dtype) -> None:
         self._memory = np.zeros((size,), dtype=dtype)
-
-    @property
-    def size(self) -> int:
-        return self._size
 
     @property
     def buffer(self) -> memoryview:
@@ -73,34 +76,41 @@ class SharedMemory(Storage, kind="shared"):
     time.
     """
 
-    # TODO: depending on how slow it is, maybe only store name of shared mem,
-    # and not a reference to it. this allows subprocesses to resize/reallocate
-    # shared mem, as long as the name is the same, and all processes remain
-    # synchronized
     kind = "shared"
 
     def __init__(self, kind: str, size: int, dtype: np.dtype) -> None:
-        self._size = size
-
-        nbytes = size * np.dtype(dtype).itemsize
+        super().__init__(kind=kind, size=size, dtype=dtype)
 
         # keep track of which process created this (presumably the main process)
         self._spawning_pid = os.getpid()
 
-        # SharedMemory is given a unique name that other processes can use to
-        # attach to it.
-        self._shmem = Shmem(create=True, size=nbytes)
-        logger.debug(
-            f"Process {self._spawning_pid} allocated {self._shmem.size} bytes of shared "
-            f"memory with name {self._shmem.name}"
-        )
-
         # create a finalizer to ensure that shared memory is cleaned up
         self._finalizer = finalize(self, self.close)
 
+    def _allocate(self, size: int, dtype: np.dtype, name: str | None = None) -> None:
+        nbytes = size * np.dtype(dtype).itemsize
+        shmem = MpSharedMem(create=True, name=name, size=nbytes)
+        # SharedMemory is given a unique name that other processes can use to
+        # attach to it.
+        self._name = shmem.name
+        logger.debug(
+            f"Process {os.getpid()} allocated {shmem.size} bytes of shared "
+            f"memory with name {shmem.name}"
+        )
+
+    def _get_shmem(self) -> MpSharedMem:
+        # this operation takes around 10us
+        # by doing this only on demand, we ensure that resizing operations
+        # take effect
+        return MpSharedMem(create=False, name=self._name)
+
     @property
     def buffer(self) -> memoryview:
-        return self._shmem.buf
+        return self._get_shmem().buf
+
+    def resize(self, size: int, dtype: np.dtype) -> None:
+        self.close(force=True)
+        self._allocate(size=size, dtype=dtype, name=self._name)
 
     def __setstate__(self, state: dict) -> None:
         # restore state dict entries
@@ -110,20 +120,20 @@ class SharedMemory(Storage, kind="shared"):
         # restore finalizer by recreating it
         self._finalizer = finalize(self, self.close)
 
-    def close(self) -> None:
+    def close(self, force: bool = False) -> None:
         # close must be called by each instance (i.e. each process) on cleanup
         # calling close on shared memory that has already been unlinked appears
         # not to throw an error
-        self._shmem.close()
+        shmem = self._get_shmem()
+        pid = os.getpid()
+        shmem.close()
         # these debug statements may not print if the finalizer is called during
         # process shutdown
-        logger.debug(f"Process {os.getpid()} closed shared memory {self._shmem.name}")
-        if os.getpid() == self._spawning_pid:
+        logger.debug(f"Process {pid} closed shared memory {self._name}")
+        if force or pid == self._spawning_pid:
             # unlink must be called once and only once to release shared memory
-            self._shmem.unlink()
-            logger.debug(
-                f"Process {os.getpid()} unlinked shared memory {self._shmem.name}"
-            )
+            shmem.unlink()
+            logger.debug(f"Process {pid} unlinked shared memory {self._name}")
 
 
 class InheritedMemory(Storage, kind="inherited"):
@@ -134,9 +144,7 @@ class InheritedMemory(Storage, kind="inherited"):
 
     kind = "inherited"
 
-    def __init__(self, kind: str, size: int, dtype: np.dtype) -> None:
-        self._size = size
-
+    def _allocate(self, size: int, dtype: np.dtype) -> None:
         # allocate array in OS shared memory
         nbytes = size * np.dtype(dtype).itemsize
         # mp.RawArray can be safely passed between processes on startup, even
