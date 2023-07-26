@@ -65,7 +65,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
         feature_shape=(obs_space.max_num_points,) + obs_space.shape,
         batch_shape=tuple(batch_spec),
         kind="jagged",
-        storage="managed" if parallel else "local",
+        storage="shared" if parallel else "local",
         padding=1,
     )
     sample_tree["observation"][0] = obs_space.sample()

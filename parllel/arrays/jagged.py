@@ -11,8 +11,8 @@ from parllel import ArrayDict
 from parllel.arrays.array import Array
 from parllel.arrays.indices import (Location, StandardIndex, add_locations,
                                     index_slice, init_location)
-from parllel.arrays.managedmemory import ManagedMemoryArray
-from parllel.arrays.sharedmemory import SharedMemoryArray
+from parllel.arrays.managedmemory import SharedMemoryArray
+from parllel.arrays.sharedmemory import InheritedMemoryArray
 
 # fmt: on
 
@@ -306,14 +306,14 @@ class JaggedArray(Array, kind="jagged"):
         )
 
 
-class SharedMemoryJaggedArray(
-    SharedMemoryArray, JaggedArray, kind="jagged", storage="shared"
+class InheritedMemoryJaggedArray(
+    InheritedMemoryArray, JaggedArray, kind="jagged", storage="inherited"
 ):
     pass
 
 
-class ManagedMemoryJaggedArray(
-    ManagedMemoryArray, JaggedArray, kind="jagged", storage="managed"
+class SharedMemoryJaggedArray(
+    SharedMemoryArray, JaggedArray, kind="jagged", storage="shared"
 ):
     pass
 

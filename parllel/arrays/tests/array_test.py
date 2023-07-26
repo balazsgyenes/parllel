@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 
 from parllel.arrays import Array
-from parllel.arrays.managedmemory import ManagedMemoryArray
-from parllel.arrays.sharedmemory import SharedMemoryArray
+from parllel.arrays.managedmemory import SharedMemoryArray
+from parllel.arrays.sharedmemory import InheritedMemoryArray
 
 # fmt: off
 @pytest.fixture(params=[
@@ -25,8 +25,8 @@ def dtype(request):
 
 @pytest.fixture(params=[
     "local",
+    "inherited",
     "shared",
-    "managed",
 ], scope="module")
 def storage(request):
     return request.param
@@ -82,10 +82,10 @@ class TestArrayCreation:
         assert array.padding == padding
 
     def test_calling_subclass(self, ArrayClass, shape, dtype, storage, padding):
-        if storage == "shared":
+        if storage == "inherited":
+            ArrayClass = InheritedMemoryArray
+        elif storage == "shared":
             ArrayClass = SharedMemoryArray
-        elif storage == "managed":
-            ArrayClass = ManagedMemoryArray
 
         array = ArrayClass(batch_shape=shape, dtype=dtype, padding=padding)
         assert array.shape == shape
@@ -105,8 +105,8 @@ class TestArrayCreation:
         assert array.shape == (10, 4)
         assert array.dtype == np.int32
 
-        array = template.new_array(storage="shared")
-        assert array.storage == "shared"
+        array = template.new_array(storage="inherited")
+        assert array.storage == "inherited"
         array.close()
 
         array = template.new_array(padding=1)
@@ -132,8 +132,8 @@ class TestArrayCreation:
         assert array.shape == (10, 4)
         assert array.dtype == np.int32
 
-        array = template.new_array(storage="shared")
-        assert array.storage == "shared"
+        array = template.new_array(storage="inherited")
+        assert array.storage == "inherited"
         array.close()
 
         array = template.new_array(padding=1)

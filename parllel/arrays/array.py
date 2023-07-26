@@ -51,7 +51,7 @@ class Array:
     ) -> Array:
         # fill in empty arguments with values from class used to instantiate
         # can instantiate a subclass directly by just not passing kind/storage
-        # e.g. SharedMemoryArray(shape=(4,4), dtype=np.float32)
+        # e.g. JaggedArray(shape=(4,4), dtype=np.float32)
         kind = kind if kind is not None else cls.kind
         storage = storage if storage is not None else cls.storage
 

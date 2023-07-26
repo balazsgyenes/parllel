@@ -46,7 +46,7 @@ def build_cages_and_sample_tree(
 ) -> tuple[list[Cage], ArrayDict[Array], Metadata]:
     if parallel:
         CageCls = ProcessCage
-        storage = "managed"
+        storage = "shared"
     else:
         CageCls = SerialCage
         storage = "local"
