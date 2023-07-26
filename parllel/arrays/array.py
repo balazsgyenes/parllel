@@ -69,19 +69,17 @@ class Array:
 
     def __init__(
         self,
-        feature_shape: tuple[int, ...],
+        batch_shape: tuple[int, ...],
         dtype: np.dtype,
         *,
-        batch_shape: tuple[int, ...] = (),
+        feature_shape: tuple[int, ...] = (),
         kind: str | None = None,  # consumed by __new__
         storage: str | None = None,  # consumed by __new__
         padding: int = 0,
         full_size: int | None = None,
     ) -> None:
-        shape = batch_shape + feature_shape
-
-        if not shape:
-            raise ValueError("Non-empty shape required.")
+        if not batch_shape:
+            raise ValueError("Non-empty batch_shape required.")
 
         dtype = np.dtype(dtype)
         if dtype == np.object_:
@@ -89,36 +87,33 @@ class Array:
 
         if padding < 0:
             raise ValueError("Padding must be non-negative.")
-        if padding > shape[0]:
+        if padding > batch_shape[0]:
             raise ValueError(
-                f"Padding ({padding}) cannot be greater than leading "
-                f"dimension {shape[0]}."
+                f"Padding ({padding}) cannot be greater than leading dimension {batch_shape[0]}."
             )
 
         if full_size is None:
-            full_size = shape[0]
-        if full_size < shape[0]:
+            full_size = batch_shape[0]
+        if full_size < batch_shape[0]:
             raise ValueError(
-                f"Full size ({full_size}) cannot be less than "
-                f"leading dimension {shape[0]}."
+                f"Full size ({full_size}) cannot be less than leading dimension {batch_shape[0]}."
             )
-        if full_size % shape[0] != 0:
+        if full_size % batch_shape[0] != 0:
             raise ValueError(
-                f"The leading dimension {shape[0]} must divide the full "
-                f"size ({full_size}) evenly."
+                f"Full size ({full_size}) must be evenly divided by leading dimension {batch_shape[0]}."
             )
 
         self.dtype = dtype
         self.padding = padding
         # size of leading dim of full array, without padding
         self.full_size = full_size
-        self._base_shape = (full_size + 2 * padding,) + shape[1:]
+        self._base_shape = (full_size + 2 * padding,) + batch_shape[1:] + feature_shape
         self._base_batch_dims = len(batch_shape)
 
         self._allocate(shape=self._base_shape, dtype=dtype, name="_base_array")
 
         self._current_location = init_location(self._base_shape)
-        init_slice = slice(padding, shape[0] + padding)
+        init_slice = slice(padding, batch_shape[0] + padding)
         self._unresolved_indices: list[Location] = [init_slice]
         self._resolve_indexing_history()
 
@@ -190,7 +185,7 @@ class Array:
         padding: int = 0,
         full_size: int | None = None,
     ) -> Array:
-        np_example = np.asanyarray(example)  # promote scalars to 0d arrays
+        np_example: np.ndarray = np.asanyarray(example)  # promote scalars to 0d arrays
         feature_shape = feature_shape if feature_shape is not None else np_example.shape
         if dtype is None:
             dtype = np_example.dtype
