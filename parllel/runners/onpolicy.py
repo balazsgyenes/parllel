@@ -1,30 +1,32 @@
 from tqdm import tqdm
 
+import parllel.logger as logger
 from parllel.agents import Agent
 from parllel.algorithm import Algorithm
-import parllel.logger as logger
-from parllel.samplers import Sampler, EvalSampler
+from parllel.samplers import EvalSampler, Sampler
 from parllel.types import BatchSpec
-from typing import Optional
 
 from .runner import Runner
 
 
 class OnPolicyRunner(Runner):
-    def __init__(self,
+    def __init__(
+        self,
         sampler: Sampler,
         agent: Agent,
         algorithm: Algorithm,
         batch_spec: BatchSpec,
         n_steps: int,
         log_interval_steps: int,
-        eval_sampler: Optional[EvalSampler] = None,
-        eval_interval_steps: Optional[int] = None,
+        eval_sampler: EvalSampler | None = None,
+        eval_interval_steps: int | None = None,
     ) -> None:
         super().__init__()
         if eval_sampler is not None:
             assert eval_interval_steps is not None
-            self.eval_interval_iters = max(1, int(eval_interval_steps // batch_spec.size))
+            self.eval_interval_iters = max(
+                1, int(eval_interval_steps // batch_spec.size)
+            )
 
         self.sampler = sampler
         self.eval_sampler = eval_sampler
@@ -48,7 +50,7 @@ class OnPolicyRunner(Runner):
                 self.log_progress(elapsed_steps, itr)
 
             if self.eval_sampler is not None and itr % self.eval_interval_iters == 0:
-                    self.evaluate_agent(elapsed_steps)
+                self.evaluate_agent(elapsed_steps)
 
             batch_samples, completed_trajs = self.sampler.collect_batch(
                 elapsed_steps,
