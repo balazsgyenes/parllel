@@ -110,12 +110,12 @@ class TorchAgent(Agent):
         # training (i.e. we only care when moving between sample and eval
         # modes)
         self.model.train()
-        self.distribution.train_mode()
+        self.distribution.train()
 
     def sample_mode(self, elapsed_steps: int) -> None:
         """Go into sampling mode."""
         self.model.eval()
-        self.distribution.train_mode()
+        self.distribution.train()
 
         # if coming from evaluation, restore states from sampling
         if self.recurrent and self.mode == "eval":
@@ -127,7 +127,7 @@ class TorchAgent(Agent):
     def eval_mode(self, elapsed_steps: int) -> None:
         """Go into evaluation mode.  Example use could be to adjust epsilon-greedy."""
         self.model.eval()
-        self.distribution.eval_mode()
+        self.distribution.eval()
 
         # if coming from sampling, store states and set new blank states
         if self.recurrent and self.mode == "sample":
