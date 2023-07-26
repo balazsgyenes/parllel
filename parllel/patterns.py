@@ -410,7 +410,6 @@ def build_eval_sampler(
         agent=agent,
         sample_tree=eval_sample_tree,
         obs_transform=step_transforms,
-        deterministic_actions=deterministic_actions,
     )
 
     return eval_sampler, eval_sample_tree
