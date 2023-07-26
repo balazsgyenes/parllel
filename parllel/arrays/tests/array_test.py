@@ -28,6 +28,7 @@ class TestArrayCreation:
         assert array.dtype == dtype
         assert array.storage == storage
         assert array.padding == padding
+        array.close()
 
     def test_new_array(self):
         template = Array(batch_shape=(10, 4), dtype=np.float32)
@@ -36,10 +37,12 @@ class TestArrayCreation:
         assert array.shape == (20, 4)
         assert array.dtype == np.float32
         assert array.full.shape == (20, 4)
+        array.close()
 
         array = template.new_array(dtype=np.int32)
         assert array.shape == (10, 4)
         assert array.dtype == np.int32
+        array.close()
 
         array = template.new_array(storage="shared")
         assert array.storage.kind == "shared"
@@ -47,10 +50,14 @@ class TestArrayCreation:
 
         array = template.new_array(padding=1)
         assert array.padding == 1
+        array.close()
 
         array = template.new_array(full_size=20)
         assert array.shape == (10, 4)
         assert array.full.shape == (20, 4)
+        array.close()
+
+        template.close()
 
     def test_new_array_windowed(self):
         template = Array(batch_shape=(10, 4), dtype=np.float32, full_size=20)
@@ -59,14 +66,17 @@ class TestArrayCreation:
         assert array.shape == (5, 4)
         assert array.dtype == np.float32
         assert array.full.shape == (5, 4)
+        array.close()
 
         array = template.new_array(batch_shape=(5, 4), inherit_full_size=True)
         assert array.shape == (5, 4)
         assert array.full.shape == (20, 4)
+        array.close()
 
         array = template.new_array(dtype=np.int32)
         assert array.shape == (10, 4)
         assert array.dtype == np.int32
+        array.close()
 
         array = template.new_array(storage="shared")
         assert array.storage.kind == "shared"
@@ -74,10 +84,14 @@ class TestArrayCreation:
 
         array = template.new_array(padding=1)
         assert array.padding == 1
+        array.close()
 
         array = template.new_array(full_size=40)
         assert array.shape == (10, 4)
         assert array.full.shape == (40, 4)
+        array.close()
+
+        template.close()
 
 
 class TestArray:
