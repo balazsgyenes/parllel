@@ -107,3 +107,9 @@ class Distribution(ABC):
         data marked as invalid.
         """
         return valid_mean(self.perplexity(dist_params), valid)
+
+    def eval_mode(self):
+        pass
+
+    def train_mode(self):
+        pass

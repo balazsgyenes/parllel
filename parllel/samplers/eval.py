@@ -40,8 +40,6 @@ class EvalSampler(Sampler):
         self.max_traj_length = max_traj_length
         self.min_trajectories = min_trajectories
         self.obs_transform = obs_transform
-        # TODO: This is probably bad.
-        self.agent.deterministic_eval = deterministic_actions
 
     def collect_batch(self, elapsed_steps: int) -> list[TrajInfo]:
         # get references to sample tree elements

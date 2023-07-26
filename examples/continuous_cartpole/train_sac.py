@@ -6,11 +6,13 @@ from pathlib import Path
 
 import hydra
 import torch
-import wandb
+from envs.continuous_cartpole import build_cartpole
 from gymnasium import spaces
+from models.sac_q_and_pi import PiMlpModel, QMlpModel
 from omegaconf import DictConfig, OmegaConf
 
 import parllel.logger as logger
+import wandb
 from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
 from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
@@ -22,13 +24,9 @@ from parllel.torch.algos.sac import SAC, build_replay_buffer_tree
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.types import BatchSpec
 
-from envs.continuous_cartpole import build_cartpole
-from models.sac_q_and_pi import PiMlpModel, QMlpModel
-
 
 @contextmanager
 def build(config: DictConfig) -> OffPolicyRunner:
-
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -65,14 +63,17 @@ def build(config: DictConfig) -> OffPolicyRunner:
         action_space=action_space,
         **config["q_model"],
     )
-    model = torch.nn.ModuleDict({
-        "pi": pi_model,
-        "q1": q1_model,
-        "q2": q2_model,
-    })
+    model = torch.nn.ModuleDict(
+        {
+            "pi": pi_model,
+            "q1": q1_model,
+            "q2": q2_model,
+        }
+    )
     distribution = SquashedGaussian(
         dim=action_space.shape[0],
         scale=action_space.high[0],
+        deterministic_eval_mode=config["distribution"]["deterministic_eval_mode"],
     )
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)
@@ -127,7 +128,7 @@ def build(config: DictConfig) -> OffPolicyRunner:
             **config.get("optimizer", {}),
         ),
     }
-    
+
     # create algorithm
     algorithm = SAC(
         batch_spec=batch_spec,
@@ -159,28 +160,27 @@ def build(config: DictConfig) -> OffPolicyRunner:
 
     try:
         yield runner
-    
+
     finally:
         eval_cages = eval_sampler.envs
         eval_sampler.close()
         for cage in eval_cages:
             cage.close()
         eval_sample_tree.close()
-    
+
         sampler.close()
         agent.close()
         for cage in cages:
             cage.close()
         sample_tree.close()
-    
+
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_sac")
 def main(config: DictConfig) -> None:
-
     mp.set_start_method("fork")
 
     run = wandb.init(
-        anonymous="must", # for this example, send to wandb dummy account
+        anonymous="must",  # for this example, send to wandb dummy account
         project="CartPole",
         tags=["continuous", "state-based", "sac", "feedforward"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
@@ -191,7 +191,9 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=Path(f"log_data/cartpole-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        log_dir=Path(
+            f"log_data/cartpole-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        ),
         tensorboard=True,
         output_files={
             "txt": "log.txt",

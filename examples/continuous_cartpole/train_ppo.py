@@ -5,17 +5,19 @@ from pathlib import Path
 
 import hydra
 import torch
-import wandb
+from envs.continuous_cartpole import build_cartpole
 from gymnasium import spaces
+from models.pg_model import GaussianCartPoleFfPgModel
 from omegaconf import DictConfig, OmegaConf
 
 import parllel.logger as logger
+import wandb
 from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_agent_info,
                               add_bootstrap_value, add_obs_normalization,
                               add_reward_clipping, add_reward_normalization,
-                              build_cages_and_sample_tree)
+                              build_cages_and_sample_tree, build_eval_sampler)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
 from parllel.samplers import BasicSampler
@@ -25,13 +27,9 @@ from parllel.torch.distributions import Gaussian
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
-from envs.continuous_cartpole import build_cartpole
-from models.pg_model import GaussianCartPoleFfPgModel
-
 
 @contextmanager
 def build(config: DictConfig) -> OnPolicyRunner:
-
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -57,7 +55,10 @@ def build(config: DictConfig) -> OnPolicyRunner:
         action_space=action_space,
         **config["model"],
     )
-    distribution = Gaussian(dim=action_space.shape[0])
+    distribution = Gaussian(
+        dim=action_space.shape[0],
+        deterministic_eval_mode=config["distribution"]["deterministic_eval_mode"],
+    )
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)
     device = torch.device(device)
@@ -135,7 +136,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
         lr=config["algo"]["learning_rate"],
         **config.get("optimizer", {}),
     )
-    
+
     # create algorithm
     algorithm = PPO(
         agent=agent,
@@ -144,14 +145,13 @@ def build(config: DictConfig) -> OnPolicyRunner:
         **config["algo"],
     )
 
-    eval_sampler, step_buffer = build_eval_sampler(
-        samples_buffer=batch_buffer,
+    eval_sampler, eval_sample_tree = build_eval_sampler(
+        sample_tree=sample_tree,
         agent=agent,
         CageCls=type(cages[0]),
         EnvClass=build_cartpole,
         env_kwargs=config["env"],
         TrajInfoClass=TrajInfo,
-        step_transforms=step_transforms,
         **config["eval_sampler"],
     )
 
@@ -167,7 +167,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
 
     try:
         yield runner
-    
+
     finally:
         sampler.close()
         agent.close()
@@ -178,11 +178,10 @@ def build(config: DictConfig) -> OnPolicyRunner:
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo")
 def main(config: DictConfig) -> None:
-
     mp.set_start_method("fork")
 
     run = wandb.init(
-        anonymous="must", # for this example, send to wandb dummy account
+        anonymous="must",  # for this example, send to wandb dummy account
         project="Continuous CartPole",
         tags=["continuous", "state-based", "ppo", "feedforward"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
@@ -193,7 +192,9 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=Path(f"log_data/continuous-cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        log_dir=Path(
+            f"log_data/continuous-cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        ),
         tensorboard=True,
         output_files={
             "txt": "log.txt",

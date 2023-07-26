@@ -16,16 +16,17 @@ algo:
   replay_ratio: 64
   target_update_tau: 0.01
 pi_model:
-    hidden_sizes: [64, 64]
-    hidden_nonlinearity: Tanh
+  hidden_sizes: [64, 64]
+  hidden_nonlinearity: Tanh
 q_model:
-    hidden_sizes: [64, 64]
-    hidden_nonlinearity: Tanh
+  hidden_sizes: [64, 64]
+  hidden_nonlinearity: Tanh
 eval_sampler:
-    max_traj_length: 2000
-    min_trajectories: 20
-    n_eval_envs: 8
-    deterministic_actions: False
+  max_traj_length: 2000
+  min_trajectories: 20
+  n_eval_envs: 8
+distribution:
+  deterministic_eval_mode: False
 runner:
   n_steps: 204800  # 100 iterations
   log_interval_steps: 10240  # log every 5 iterations

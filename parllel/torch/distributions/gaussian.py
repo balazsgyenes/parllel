@@ -37,10 +37,12 @@ class Gaussian(Distribution):
         noise_clip: SupportsFloat | None = None,
         min_log_std: SupportsFloat | None = MIN_LOG_STD,
         max_log_std: SupportsFloat | None = MAX_LOG_STD,
+        deterministic_eval_mode: bool = False,
     ):
         """Saves input arguments."""
         self._dim = dim
         self.device = None
+        self.deterministic_eval_mode = deterministic_eval_mode
         self.set_std(std)
         self.set_noise_clip(noise_clip)
         self.set_min_log_std(min_log_std)
@@ -205,6 +207,13 @@ class Gaussian(Distribution):
     def set_max_log_std(self, max_log_std: SupportsFloat | None) -> None:
         max_log_std = clean_optionalfloatlike(max_log_std, self.dim, self.device)
         self.max_log_std = max_log_std
+
+    def train_mode(self):
+        self.set_std(None)
+
+    def eval_mode(self):
+        if self.deterministic_eval_mode:
+            self.set_std(0.0)
 
 
 def clean_optionalfloatlike(
