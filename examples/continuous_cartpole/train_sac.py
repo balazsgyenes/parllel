@@ -73,7 +73,6 @@ def build(config: DictConfig) -> OffPolicyRunner:
     distribution = SquashedGaussian(
         dim=action_space.shape[0],
         scale=action_space.high[0],
-        deterministic_eval_mode=config["distribution"]["deterministic_eval_mode"],
     )
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)

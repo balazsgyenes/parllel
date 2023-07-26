@@ -25,5 +25,3 @@ eval_sampler:
   n_eval_envs: 4
   max_traj_length: 1000
   min_trajectories: 4
-distribution:
-  deterministic_eval_mode: False

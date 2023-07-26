@@ -108,8 +108,8 @@ class Distribution(ABC):
         """
         return valid_mean(self.perplexity(dist_params), valid)
 
-    def eval_mode(self):
+    def eval(self):
         pass
 
-    def train_mode(self):
+    def train(self):
         pass
