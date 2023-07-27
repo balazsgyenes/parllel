@@ -4,6 +4,7 @@ import torch
 from torch import Tensor
 from torch_geometric.nn import PointNetConv, fps, global_max_pool, radius
 
+import parllel.logger as logger
 from parllel import ArrayDict
 
 
@@ -20,7 +21,13 @@ class SAModule(torch.nn.Module):
         pos: Tensor,
         batch: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
+        if len(torch.unique(batch)) != batch.max() + 1:
+            logger.error(
+                "Program is about to crash in fps function due to empty pointcloud."
+            )
         idx = fps(pos, batch, ratio=self.ratio)
+        if len(torch.unique(batch)) != batch.max() + 1:
+            logger.error("If this has printed, the previous message was a lie.")
         row, col = radius(
             pos, pos[idx], self.r, batch, batch[idx], max_num_neighbors=64
         )

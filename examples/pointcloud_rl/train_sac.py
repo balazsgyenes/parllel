@@ -65,8 +65,6 @@ def build(config: DictConfig) -> OffPolicyRunner:
         padding=1,
         full_size=config["algo"]["replay_length"],
     )
-    sample_tree["observation"][0] = obs_space.sample()
-    example_obs_batch = sample_tree["observation"][0]
 
     # instantiate models
     pi_model = PointNetPiModel(
@@ -129,7 +127,7 @@ def build(config: DictConfig) -> OffPolicyRunner:
         size_T=config["algo"]["replay_length"],
         replay_batch_size=config["algo"]["batch_size"],
         newest_n_samples_invalid=0,
-        oldest_n_samples_invalid=1,
+        oldest_n_samples_invalid=20,  # TODO: temporary fix to prevent sampling from accessing overwritten point clouds
         batch_transform=batch_transform,
     )
 
@@ -211,9 +209,9 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        # log_dir=Path(
-        #     f"log_data/cartpole-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
-        # ),
+        log_dir=Path(
+            f"log_data/pointcloud-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        ),
         tensorboard=True,
         output_files={
             "txt": "log.txt",
@@ -221,7 +219,7 @@ def main(config: DictConfig) -> None:
         },
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         model_save_path="model.pt",
-        verbosity=Verbosity.DEBUG,
+        # verbosity=Verbosity.DEBUG,
     )
 
     with build(config) as runner:

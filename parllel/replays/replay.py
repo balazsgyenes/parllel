@@ -85,8 +85,9 @@ class ReplayBuffer(Generic[TreeType]):
         self._cursor += self.batch_spec.T
 
         if self._cursor >= self.size_T:
-            self._full = True
             self._cursor %= self.size_T
-            logger.debug(
-                f"{type(self).__name__}: Replay buffer is now full. cursor={self._cursor}."
-            )
+            if not self._full:
+                logger.debug(
+                    f"{type(self).__name__}: Replay buffer is now full. cursor={self._cursor}."
+                )
+            self._full = True

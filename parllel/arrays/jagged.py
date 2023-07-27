@@ -135,9 +135,9 @@ class JaggedArray(Array, kind="jagged"):
             raise NotImplementedError("Cannot write a JaggedArray into a JaggedArray.")
         elif np.isscalar(value) and value == 0:
             # TODO: test this method of element deletion
-            value_shape = (0,)  # delete by writing an element of 0 size
+            value_n_points = 0  # delete by writing an element of 0 size
         else:
-            value_shape = value.shape
+            value_n_points = value.shape[0]
         value = np.atleast_1d(value)  # promote scalars to 1D arrays
 
         # split into batch locations and feature locations, which are handled differently
@@ -157,7 +157,7 @@ class JaggedArray(Array, kind="jagged"):
             # get lengths of all graphs stored in this "element"
             ptrs = self._ptr[batch_loc]
 
-            if (end := ptrs[t_loc] + value_shape[0]) > self._flattened_size:
+            if (end := ptrs[t_loc] + value_n_points) > self._flattened_size:
                 if self.on_overflow == "resize":
                     # TODO: add a resize method and call it here
                     raise NotImplementedError
@@ -284,7 +284,7 @@ class JaggedArray(Array, kind="jagged"):
             current_ptrs.append(graph.shape[0])
 
         array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
-        current_ptrs = np.cumsum(current_ptrs)
+        current_ptrs = np.cumsum(current_ptrs, dtype=np.int64)
         current_ptrs = np.insert(current_ptrs, 0, 0)  # insert 0 at beginning of ptrs
         assert array.shape[0] == current_ptrs[-1]
 
