@@ -1,0 +1,27 @@
+defaults:
+  - sac@algo
+  - _self_
+
+parallel: False
+batch_T: 32
+batch_B: 16
+max_steps_decorrelate: 50
+env:
+  prob_done: 0.1
+device: "cpu"
+algo:
+  replay_length: 320  # 10 iterations
+  learning_starts: 2560  # 5 iterations
+  replay_ratio: 1
+  target_update_tau: 0.01
+pi_model:
+    hidden_sizes: [1024]
+q_model:
+    hidden_sizes: [1024]
+eval_sampler:
+    max_traj_length: 2000
+    min_trajectories: 20
+    n_eval_envs: 8
+runner:
+  n_steps: 204800  # 100 iterations
+  log_interval_steps: 10240  # log every 5 iterations

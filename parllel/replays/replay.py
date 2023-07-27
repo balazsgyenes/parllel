@@ -2,6 +2,7 @@ from typing import Callable, Generic, Iterator, Optional, TypeVar
 
 from numpy import random
 
+import parllel.logger as logger
 from parllel import ArrayDict, ArrayLike
 from parllel.types import BatchSpec
 
@@ -9,10 +10,11 @@ TreeType = TypeVar("TreeType", bound=ArrayDict[ArrayLike])
 
 
 class ReplayBuffer(Generic[TreeType]):
-    def __init__(self,
+    def __init__(
+        self,
         tree: ArrayDict,
         sampler_batch_spec: BatchSpec,
-        size_T: int, # TODO: infer from inputs
+        size_T: int,  # TODO: infer from inputs
         replay_batch_size: int,
         newest_n_samples_invalid: int = 0,
         oldest_n_samples_invalid: int = 0,
@@ -28,15 +30,15 @@ class ReplayBuffer(Generic[TreeType]):
         self.newest_n_samples_invalid = newest_n_samples_invalid
         self.oldest_n_samples_invalid = oldest_n_samples_invalid
 
-        self._cursor: int = 0 # index of next sample to write
-        self._full = False # has the entire buffer been written to at least once?
-        
+        self._cursor: int = 0  # index of next sample to write
+        self._full = False  # has the entire buffer been written to at least once?
+
         if batch_transform is None:
             batch_transform = lambda x: x
         self.batch_transform = batch_transform
 
         self.seed()
-    
+
     def seed(self, seed: Optional[int] = None) -> None:
         # TODO: replace with seeding module
         self._rng = random.default_rng(seed)
@@ -77,7 +79,7 @@ class ReplayBuffer(Generic[TreeType]):
 
     def __iter__(self) -> Iterator[TreeType]:
         yield from self.batches
-    
+
     def next_iteration(self) -> None:
         # move cursor forward
         self._cursor += self.batch_spec.T
@@ -85,3 +87,6 @@ class ReplayBuffer(Generic[TreeType]):
         if self._cursor >= self.size_T:
             self._full = True
             self._cursor %= self.size_T
+            logger.debug(
+                f"{type(self).__name__}: Replay buffer is now full. cursor={self._cursor}."
+            )

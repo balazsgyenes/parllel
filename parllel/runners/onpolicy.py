@@ -1,8 +1,8 @@
 from tqdm import tqdm
 
+import parllel.logger as logger
 from parllel.agents import Agent
 from parllel.algorithm import Algorithm
-import parllel.logger as logger
 from parllel.samplers import Sampler
 from parllel.types import BatchSpec
 
@@ -10,7 +10,8 @@ from .runner import Runner
 
 
 class OnPolicyRunner(Runner):
-    def __init__(self,
+    def __init__(
+        self,
         sampler: Sampler,
         agent: Agent,
         algorithm: Algorithm,
@@ -30,7 +31,7 @@ class OnPolicyRunner(Runner):
         self.log_interval_iters = max(1, int(log_interval_steps // batch_spec.size))
 
     def run(self) -> None:
-        logger.info("Starting training...")
+        logger.info(f"{type(self).__name__}: Starting training...")
 
         progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
@@ -60,6 +61,6 @@ class OnPolicyRunner(Runner):
 
         progress_bar.close()
         # TODO: replace with logger.finish method
-        logger.info("Finished training.")
+        logger.info(f"{type(self).__name__}: Finished training.")
         if logger.log_dir is not None:
-            logger.info(f"Log files saved to {logger.log_dir}")
+            logger.info(f"{type(self).__name__}: Log files saved to {logger.log_dir}")
