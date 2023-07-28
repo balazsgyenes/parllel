@@ -50,9 +50,10 @@ def full_size(request):
 @pytest.fixture
 def blank_array(ArrayClass, max_points, feature_shape, dtype, batch_shape, storage, padding, full_size):
     array = ArrayClass(
-        feature_shape=(max_points,) + feature_shape,
-        dtype=dtype,
         batch_shape=batch_shape,
+        dtype=dtype,
+        max_mean_num_elem=max_points,
+        feature_shape=feature_shape,
         storage=storage,
         padding=padding,
         full_size=full_size,
@@ -136,11 +137,12 @@ class TestJaggedArray:
         assert np.array_equal(np_batch, batch)
 
     def test_rotate(self, blank_array: JaggedArray, graph_generator):
-        batch_shape, shape = blank_array.shape[:2], blank_array.shape[2:]
+        batch_shape, feature_shape = blank_array.shape[:2], blank_array.shape[3:]
         array = JaggedArray(
-            feature_shape=shape,
-            dtype=blank_array.dtype,
             batch_shape=batch_shape,
+            dtype=blank_array.dtype,
+            max_mean_num_elem=blank_array.max_mean_num_elem,
+            feature_shape=feature_shape,
             padding=1,
         )
 

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 import numpy as np
 
@@ -10,7 +10,8 @@ import parllel.logger as logger
 from parllel import ArrayDict
 from parllel.arrays.array import Array
 from parllel.arrays.indices import (Location, StandardIndex, add_locations,
-                                    index_slice, init_location)
+                                    batch_dims_from_location, index_slice,
+                                    init_location)
 from parllel.arrays.managedmemory import SharedMemoryArray
 from parllel.arrays.sharedmemory import InheritedMemoryArray
 
@@ -31,23 +32,19 @@ class JaggedArray(Array, kind="jagged"):
 
     def __init__(
         self,
-        feature_shape: tuple[int, ...],
+        batch_shape: tuple[int, ...],
         dtype: np.dtype,
         *,
-        batch_shape: tuple[int, ...],
+        max_mean_num_elem: int,
+        feature_shape: tuple[int, ...] = (),
         kind: str | None = None,
         storage: str | None = None,
         padding: int = 0,
         full_size: int | None = None,
         on_overflow: Literal["drop", "resize", "wrap"] = "drop",
     ) -> None:
-        if not feature_shape:
-            raise ValueError("Non-empty feature shape required.")
-
-        if batch_shape == ():
-            batch_shape = (1,)
-
-        shape = batch_shape + feature_shape
+        if not batch_shape:
+            raise ValueError("Non-empty batch_shape required.")
 
         dtype = np.dtype(dtype)
         if dtype == np.object_:
@@ -55,23 +52,20 @@ class JaggedArray(Array, kind="jagged"):
 
         if padding < 0:
             raise ValueError("Padding must be non-negative.")
-        if padding > shape[0]:
+        if padding > batch_shape[0]:
             raise ValueError(
-                f"Padding ({padding}) cannot be greater than leading "
-                f"dimension {shape[0]}."
+                f"Padding ({padding}) cannot be greater than leading dimension {batch_shape[0]}."
             )
 
         if full_size is None:
-            full_size = shape[0]
-        if full_size < shape[0]:
+            full_size = batch_shape[0]
+        if full_size < batch_shape[0]:
             raise ValueError(
-                f"Full size ({full_size}) cannot be less than "
-                f"leading dimension {shape[0]}."
+                f"Full size ({full_size}) cannot be less than leading dimension {batch_shape[0]}."
             )
-        if full_size % shape[0] != 0:
+        if full_size % batch_shape[0] != 0:
             raise ValueError(
-                f"The leading dimension {shape[0]} must divide the full "
-                f"size ({full_size}) evenly."
+                f"Full size ({full_size}) must be evenly divided by leading dimension {batch_shape[0]}."
             )
 
         if on_overflow not in {"drop", "resize", "wrap"}:
@@ -82,15 +76,21 @@ class JaggedArray(Array, kind="jagged"):
         self.dtype = dtype
         self.padding = padding
         self.on_overflow = on_overflow
+        self.max_mean_num_elem = max_mean_num_elem
         # size of leading dim of full array, without padding
         self.full_size = full_size
         # shape that base array appears to be
-        self._base_shape = (full_size + 2 * padding,) + shape[1:]
+        self._base_shape = (
+            (full_size + 2 * padding,)
+            + batch_shape[1:]
+            + (max_mean_num_elem,)
+            + feature_shape
+        )
         self._base_batch_dims = len(batch_shape)
         # multiply the T dimension into the node dimension
-        self._flattened_size = self._base_shape[0] * feature_shape[0]
+        self._flattened_size = self._base_shape[0] * max_mean_num_elem
 
-        allocate_shape = batch_shape[1:] + (self._flattened_size,) + feature_shape[1:]
+        allocate_shape = batch_shape[1:] + (self._flattened_size,) + feature_shape
         self._allocate(shape=allocate_shape, dtype=self.dtype, name="_base_array")
 
         # add an extra element to node dimension so it's always possible to
@@ -99,11 +99,48 @@ class JaggedArray(Array, kind="jagged"):
         self._allocate(shape=ptr_shape, dtype=np.int64, name="_ptr")
 
         self._current_location = init_location(self._base_shape)
-        init_slice = slice(padding, shape[0] + padding)
+        init_slice = slice(padding, batch_shape[0] + padding)
         self._unresolved_indices: list[Location] = [init_slice]
         self._resolve_indexing_history()
 
         self._rotatable = True
+
+    def new_array(self, *args, **kwargs) -> Array:
+        """Creates an Array with the same shape and type as a given Array
+        (similar to torch's new_zeros function). By default, the full size of
+        the created Array is just the apparent size of the template. To set it
+        to another value, either pass it manually or set the
+        `inherit_full_size` flag to True to use the template's full size.
+        """
+        if "kind" not in kwargs or kwargs["kind"] == "jagged":
+            max_mean_num_elem: int | None = kwargs.get("max_mean_num_elem")
+            kwargs["max_mean_num_elem"] = (
+                max_mean_num_elem if max_mean_num_elem else self.max_mean_num_elem
+            )
+
+            feature_shape: tuple[int, ...] | None = kwargs.get("feature_shape")
+            if feature_shape is None:
+                # get number of visible dimensions that are not feature dimensions
+                n_batch_and_point_dims = batch_dims_from_location(
+                    self._current_location,
+                    self._base_batch_dims + 1,
+                )
+                feature_shape = self.shape[n_batch_and_point_dims:]
+            kwargs["feature_shape"] = feature_shape
+
+        return super().new_array(*args, **kwargs)
+
+    @classmethod
+    def from_numpy(cls, *args, example: Any, **kwargs) -> Array:
+        if "kind" not in kwargs or kwargs["kind"] == "jagged":
+            # promote scalars to 0d arrays
+            np_example: np.ndarray = np.asanyarray(example)
+            if len(np_example.shape) == 0:
+                raise ValueError(
+                    "Expected example of data with variable-sized leading dimension."
+                )
+            elem_example = np_example[0]
+        return super().from_numpy(*args, elem_example, *kwargs)
 
     def _resolve_indexing_history(self) -> None:
         super()._resolve_indexing_history()

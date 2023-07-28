@@ -121,14 +121,15 @@ class Array:
 
     def new_array(
         self,
-        feature_shape: tuple[int, ...] | None = None,
-        dtype: np.dtype | None = None,
         batch_shape: tuple[int, ...] | None = None,
+        dtype: np.dtype | None = None,
+        feature_shape: tuple[int, ...] | None = None,
         kind: str | None = None,
         storage: str | None = None,
         padding: int | None = None,
         full_size: int | None = None,
         inherit_full_size: bool = False,
+        **kwargs,
     ) -> Array:
         """Creates an Array with the same shape and type as a given Array
         (similar to torch's new_zeros function). By default, the full size of
@@ -170,20 +171,22 @@ class Array:
             storage=storage,
             padding=padding,
             full_size=full_size,
+            **kwargs,
         )
 
     @classmethod
     def from_numpy(
         cls,
         example: Any,
-        feature_shape: tuple[int, ...] | None = None,
+        batch_shape: tuple[int, ...],
         dtype: np.dtype | None = None,
+        feature_shape: tuple[int, ...] | None = None,
         force_32bit: Literal[True, "float", "int", False] = True,
-        batch_shape: tuple[int, ...] = (),
         kind: str | None = None,
         storage: str | None = None,
         padding: int = 0,
         full_size: int | None = None,
+        **kwargs,
     ) -> Array:
         np_example: np.ndarray = np.asanyarray(example)  # promote scalars to 0d arrays
         feature_shape = feature_shape if feature_shape is not None else np_example.shape
@@ -201,6 +204,7 @@ class Array:
             storage=storage,
             padding=padding,
             full_size=full_size,
+            **kwargs,
         )
 
     def _allocate(self, shape: tuple[int, ...], dtype: np.dtype, name: str) -> None:
