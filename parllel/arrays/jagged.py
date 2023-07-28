@@ -1,3 +1,4 @@
+# fmt: off
 from __future__ import annotations
 
 import itertools
@@ -8,10 +9,12 @@ import numpy as np
 import parllel.logger as logger
 from parllel import ArrayDict
 from parllel.arrays.array import Array
-from parllel.arrays.indices import (Location, add_locations, index_slice,
-                                    init_location)
+from parllel.arrays.indices import (Location, StandardIndex, add_locations,
+                                    index_slice, init_location)
 from parllel.arrays.managedmemory import ManagedMemoryArray
 from parllel.arrays.sharedmemory import SharedMemoryArray
+
+# fmt: on
 
 Self = TypeVar("Self", bound="JaggedArray")
 
@@ -132,9 +135,9 @@ class JaggedArray(Array, kind="jagged"):
             raise NotImplementedError("Cannot write a JaggedArray into a JaggedArray.")
         elif np.isscalar(value) and value == 0:
             # TODO: test this method of element deletion
-            value_shape = (0,)  # delete by writing an element of 0 size
+            value_n_points = 0  # delete by writing an element of 0 size
         else:
-            value_shape = value.shape
+            value_n_points = value.shape[0]
         value = np.atleast_1d(value)  # promote scalars to 1D arrays
 
         # split into batch locations and feature locations, which are handled differently
@@ -154,7 +157,7 @@ class JaggedArray(Array, kind="jagged"):
             # get lengths of all graphs stored in this "element"
             ptrs = self._ptr[batch_loc]
 
-            if (end := ptrs[t_loc] + value_shape[0]) > self._flattened_size:
+            if (end := ptrs[t_loc] + value_n_points) > self._flattened_size:
                 if self.on_overflow == "resize":
                     # TODO: add a resize method and call it here
                     raise NotImplementedError
@@ -192,38 +195,35 @@ class JaggedArray(Array, kind="jagged"):
         if not self._rotatable:
             raise ValueError("rotate() is only allowed on unindexed array.")
 
-        leading_loc = self._current_location[0]
-        start = leading_loc.start
-        stop = leading_loc.stop
+        leading_loc: slice = self._current_location[0]
+        start = leading_loc.start + self.shape[0]
+        stop = leading_loc.stop + self.shape[0]
 
-        start += self.shape[0]
-        if wrap_bounds := start >= self.full_size:
-            # wrap both start and stop simultaneously
-            start %= self.full_size
-            stop %= self.full_size
-        # mod and increment stop in opposite order
-        # because stop - start = self.shape[0], we can be sure that stop will
-        # be reduced by mod even before incrementing
-        stop += self.shape[0]
+        if start >= self.full_size:
+            # wrap around to beginning of array
+            start -= self.full_size
+            stop -= self.full_size
 
-        self._current_location[0] = slice(start, stop, 1)
+            if self.padding:
+                # copy values from end of base array to beginning
+                final_values = range(
+                    self.full_size - self.padding,
+                    self.full_size + self.padding,
+                )
+                next_previous_values = range(-self.padding, self.padding)
+                b_locs = [
+                    range(size) for size in self._base_shape[1 : self._base_batch_dims]
+                ]
+                full_array = self.full
+                for source, destination in zip(final_values, next_previous_values):
+                    for b_loc in itertools.product(*b_locs):
+                        full_array[(destination,) + b_loc] = np.asarray(
+                            full_array[(source,) + b_loc]
+                        )
 
-        if self.padding and wrap_bounds:
-            # copy values from end of base array to beginning
-            final_values = range(
-                self.full_size - self.padding,
-                self.full_size + self.padding,
-            )
-            next_previous_values = range(-self.padding, self.padding)
-            b_locs = [
-                range(size) for size in self._base_shape[1 : self._base_batch_dims]
-            ]
-            full_array = self.full
-            for source, destination in zip(final_values, next_previous_values):
-                for b_loc in itertools.product(*b_locs):
-                    full_array[(destination,) + b_loc] = np.asarray(
-                        full_array[(source,) + b_loc]
-                    )
+        # update current location with modified start/stop
+        new_slice: StandardIndex = slice(start, stop, 1)
+        self._current_location[0] = new_slice
 
     def __array__(self, dtype=None) -> np.ndarray:
         if self._shape is None:
@@ -284,7 +284,7 @@ class JaggedArray(Array, kind="jagged"):
             current_ptrs.append(graph.shape[0])
 
         array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
-        current_ptrs = np.cumsum(current_ptrs)
+        current_ptrs = np.cumsum(current_ptrs, dtype=np.int64)
         current_ptrs = np.insert(current_ptrs, 0, 0)  # insert 0 at beginning of ptrs
         assert array.shape[0] == current_ptrs[-1]
 

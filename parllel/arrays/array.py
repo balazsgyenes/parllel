@@ -1,3 +1,4 @@
+# fmt: off
 from __future__ import annotations
 
 from typing import Any, Literal, TypeVar
@@ -8,6 +9,8 @@ from parllel import ArrayTree
 from parllel.arrays.indices import (Index, Location, add_locations,
                                     batch_dims_from_location, index_slice,
                                     init_location, shape_from_location)
+
+# fmt: on
 
 Self = TypeVar("Self", bound="Array")
 
@@ -382,8 +385,9 @@ class Array:
                     self.full_size + self.padding,
                 )
                 next_previous_values = slice(-self.padding, self.padding)
-                self.full[next_previous_values] = self.full[final_values]
-        
+                full_array = self.full
+                full_array[next_previous_values] = full_array[final_values]
+
         # update current location with modified start/stop
         self._current_location[0] = slice(start, stop, 1)
 
