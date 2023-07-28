@@ -27,6 +27,7 @@ from parllel.types import BatchSpec
 
 # isort: split
 from envs.dummy import DummyEnv
+from models.modules import PointNetEncoder
 from models.pointnet_q_and_pi import PointNetPiModel, PointNetQModel
 from pointcloud import PointCloudSpace
 
@@ -68,25 +69,30 @@ def build(config: DictConfig) -> OffPolicyRunner:
 
     # instantiate models
     pi_model = PointNetPiModel(
-        obs_space=obs_space,
+        encoding_size=config["encoder"]["encoding_size"],
         action_space=action_space,
         **config["pi_model"],
     )
     q1_model = PointNetQModel(
-        obs_space=obs_space,
+        encoding_size=config["encoder"]["encoding_size"],
         action_space=action_space,
         **config["q_model"],
     )
     q2_model = PointNetQModel(
-        obs_space=obs_space,
+        encoding_size=config["encoder"]["encoding_size"],
         action_space=action_space,
         **config["q_model"],
+    )
+    encoder = PointNetEncoder(
+        obs_space=obs_space,
+        **config["encoder"],
     )
     model = torch.nn.ModuleDict(
         {
             "pi": pi_model,
             "q1": q1_model,
             "q2": q2_model,
+            "encoder": encoder,
         }
     )
     distribution = SquashedGaussian(

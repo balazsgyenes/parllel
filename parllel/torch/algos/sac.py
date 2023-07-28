@@ -101,19 +101,24 @@ class SAC(Algorithm):
 
         Input samples have leading batch dimension [B,..] (but not time).
         """
+        # encode once, allowing the agent to reuse its encodings for q and
+        # pi predictions.
+        # we then later detach the encoding from its computational graph
+        # during q prediction, since we only want to optimize the encoder
+        # using the gradients from the policy network.
+        observation = self.agent.encode(samples["observation"])
+
         # compute target Q according to formula
         # r + gamma * (1 - d) * (min Q_targ(s', a') - alpha * log pi(s', a'))
         # where a' ~ pi(.|s')
         with torch.no_grad():
-            next_action, next_log_prob = self.agent.pi(samples["next_observation"])
-            target_q1, target_q2 = self.agent.target_q(
-                samples["next_observation"],
-                next_action,
-            )
+            next_observation = self.agent.encode(samples["next_observation"])
+            next_action, next_log_prob = self.agent.pi(next_observation)
+            target_q1, target_q2 = self.agent.target_q(next_observation, next_action)
         min_target_q = torch.min(target_q1, target_q2)
         next_q = min_target_q - self._alpha * next_log_prob
-        y = samples["reward"] + self.discount * ~samples["done"] * next_q
-        q1, q2 = self.agent.q(samples["observation"], samples["action"])
+        y = samples["reward"] + self.discount * ~samples["terminated"] * next_q
+        q1, q2 = self.agent.q(observation.detach(), samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
 
         # update Q model parameters according to Q loss
@@ -139,8 +144,8 @@ class SAC(Algorithm):
         # train policy model by maximizing the predicted Q value
         # maximize (min Q(s, a) - alpha * log pi(a, s))
         # where a ~ pi(.|s)
-        new_action, log_prob = self.agent.pi(samples["observation"])
-        q1, q2 = self.agent.q(samples["observation"], new_action)
+        new_action, log_prob = self.agent.pi(observation)
+        q1, q2 = self.agent.q(observation.detach(), new_action)
         min_q = torch.min(q1, q2)
         pi_losses = self._alpha * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
@@ -167,7 +172,7 @@ def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array
             "observation": sample_buffer["observation"].full,
             "action": sample_buffer["action"].full,
             "reward": sample_buffer["reward"].full,
-            "done": sample_buffer["done"].full,
+            "terminated": sample_buffer["terminated"].full,
             "next_observation": sample_buffer["observation"].full.next,
         }
     )
