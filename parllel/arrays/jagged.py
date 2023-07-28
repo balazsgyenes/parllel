@@ -262,7 +262,7 @@ class JaggedArray(Array, kind="jagged"):
         new_slice: StandardIndex = slice(start, stop, 1)
         self._current_location[0] = new_slice
 
-    def __array__(self, dtype=None) -> np.ndarray:
+    def to_list(self) -> list:
         if self._shape is None:
             self._resolve_indexing_history()
 
@@ -320,15 +320,18 @@ class JaggedArray(Array, kind="jagged"):
             graphs.append(graph)
             current_ptrs.append(graph.shape[0])
 
-        array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
         current_ptrs = np.cumsum(current_ptrs, dtype=np.int64)
         current_ptrs = np.insert(current_ptrs, 0, 0)  # insert 0 at beginning of ptrs
-        assert array.shape[0] == current_ptrs[-1]
+        self._current_ptrs = current_ptrs  # save for consumption by to_ndarray
+        return graphs
 
+    def __array__(self, dtype=None) -> np.ndarray:
+        graphs = self.to_list()
+        array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
+        assert array.shape[0] == self._current_ptrs[-1]
         if dtype is not None:
             array = array.astype(dtype, copy=False)
 
-        self._current_ptrs = current_ptrs  # save for consumption by to_ndarray
         return array
 
     def to_ndarray(self) -> ArrayDict[np.ndarray]:
