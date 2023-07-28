@@ -104,6 +104,21 @@ class SAC(Algorithm):
         # compute target Q according to formula
         # r + gamma * (1 - d) * (min Q_targ(s', a') - alpha * log pi(s', a'))
         # where a' ~ pi(.|s')
+        if hasattr(self.agent, "encode"):
+            # encode once, allowing the agent to reuse its encodings for q and
+            # pi predictions.
+            # WARNING: the agent will also need to detach the encoding in
+            # either the q or the pi prediction, otherwise autograd will
+            # complain about the computation graph being freed.
+            samples["observation"] = self.agent.encode(
+                obs := samples.pop("observation")
+            )
+            samples["raw_observation"] = obs
+            samples["next_observation"] = self.agent.encode(
+                obs := samples.pop("next_observation")
+            )
+            samples["raw_next_observation"] = obs
+
         with torch.no_grad():
             next_action, next_log_prob = self.agent.pi(samples["next_observation"])
             target_q1, target_q2 = self.agent.target_q(

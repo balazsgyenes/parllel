@@ -20,13 +20,14 @@ from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import OffPolicyRunner
 from parllel.samplers import BasicSampler
-from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.algos.sac import SAC, build_replay_buffer_tree
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.types import BatchSpec
 
 # isort: split
+from agents.pc_sac_agent import PointCloudSacAgent
 from envs.dummy import DummyEnv
+from models.modules import PointNetEncoder
 from models.pointnet_q_and_pi import PointNetPiModel, PointNetQModel
 from pointcloud import PointCloudSpace
 
@@ -68,25 +69,30 @@ def build(config: DictConfig) -> OffPolicyRunner:
 
     # instantiate models
     pi_model = PointNetPiModel(
-        obs_space=obs_space,
+        encoding_size=config["encoder"]["encoding_size"],
         action_space=action_space,
         **config["pi_model"],
     )
     q1_model = PointNetQModel(
-        obs_space=obs_space,
+        encoding_size=config["encoder"]["encoding_size"],
         action_space=action_space,
         **config["q_model"],
     )
     q2_model = PointNetQModel(
-        obs_space=obs_space,
+        encoding_size=config["encoder"]["encoding_size"],
         action_space=action_space,
         **config["q_model"],
+    )
+    encoder = PointNetEncoder(
+        obs_space=obs_space,
+        **config["encoder"],
     )
     model = torch.nn.ModuleDict(
         {
             "pi": pi_model,
             "q1": q1_model,
             "q2": q2_model,
+            "encoder": encoder,
         }
     )
     distribution = SquashedGaussian(
@@ -98,7 +104,7 @@ def build(config: DictConfig) -> OffPolicyRunner:
     device = torch.device(device)
 
     # instantiate agent
-    agent = SacAgent(
+    agent = PointCloudSacAgent(
         model=model,
         distribution=distribution,
         device=device,
