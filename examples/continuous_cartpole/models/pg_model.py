@@ -9,7 +9,6 @@ from torch import Tensor
 
 from parllel.torch.agents.gaussian import DistParams, ModelOutputs
 from parllel.torch.models import MlpModel
-from parllel.torch.utils import infer_leading_dims, restore_leading_dims
 
 
 class GaussianCartPoleFfPgModel(nn.Module):
@@ -24,15 +23,17 @@ class GaussianCartPoleFfPgModel(nn.Module):
     ) -> None:
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
-        obs_shape = obs_space.shape[0]
+        assert len(obs_space.shape) == 1
+        obs_size = obs_space.shape[0]
 
         assert isinstance(action_space, spaces.Box)
+        assert len(action_space.shape) == 1
         action_size = action_space.shape[0]
 
         hidden_nonlinearity = getattr(nn, hidden_nonlinearity)
 
         mu_mlp = MlpModel(
-            input_size=obs_shape,
+            input_size=obs_size,
             hidden_sizes=hidden_sizes,
             output_size=action_size,
             hidden_nonlinearity=hidden_nonlinearity,
@@ -44,7 +45,7 @@ class GaussianCartPoleFfPgModel(nn.Module):
             self.mu = mu_mlp
 
         self.value = MlpModel(
-            input_size=obs_shape,
+            input_size=obs_size,
             hidden_sizes=hidden_sizes,
             output_size=1,
             hidden_nonlinearity=hidden_nonlinearity,
@@ -52,16 +53,12 @@ class GaussianCartPoleFfPgModel(nn.Module):
         self.log_std = nn.Parameter(torch.full((action_size,), init_log_std))
 
     def forward(self, observation: Tensor) -> ModelOutputs:
-        lead_dim, T, B, _ = infer_leading_dims(observation, 1)
+        assert len(observation.shape) == 2
 
-        obs_flat = observation.view(T * B, -1)
-        mu = self.mu(obs_flat)
-        value = self.value(obs_flat).squeeze(-1)
-        log_std = self.log_std.repeat(T * B, 1)
-
-        mu, value, log_std = restore_leading_dims((mu, value, log_std), lead_dim, T, B)
-
+        mean = self.mu(observation)
+        value = self.value(observation).squeeze(-1)
+        log_std = self.log_std.repeat(mean.shape[0], 1)
         return ModelOutputs(
-            dist_params=DistParams(mean=mu, log_std=log_std),
+            dist_params=DistParams(mean=mean, log_std=log_std),
             value=value,
         )

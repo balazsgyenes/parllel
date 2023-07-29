@@ -1,3 +1,4 @@
+# fmt: off
 import itertools
 import multiprocessing as mp
 from contextlib import contextmanager
@@ -32,6 +33,7 @@ from models.pointnet_q_and_pi import PointNetPiModel, PointNetQModel
 from pointcloud import PointCloudSpace
 
 
+# fmt: on
 @contextmanager
 def build(config: DictConfig) -> OffPolicyRunner:
     parallel = config["parallel"]

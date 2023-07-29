@@ -1,14 +1,17 @@
+# fmt: off
 import multiprocessing as mp
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
+# isort: off
 import hydra
 import torch
 import wandb
 from gymnasium import spaces
 from omegaconf import DictConfig, OmegaConf
 
+# isort: on
 import parllel.logger as logger
 from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
@@ -25,13 +28,14 @@ from parllel.torch.distributions import Categorical
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
+# isort: split
 from envs.cartpole import build_cartpole
 from models.model import CartPoleFfPgModel
 
 
+# fmt: on
 @contextmanager
 def build(config: DictConfig) -> OnPolicyRunner:
-
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -135,7 +139,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
         lr=config["algo"]["learning_rate"],
         **config.get("optimizer", {}),
     )
-    
+
     # create algorithm
     algorithm = PPO(
         agent=agent,
@@ -155,7 +159,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
 
     try:
         yield runner
-    
+
     finally:
         sampler.close()
         agent.close()
@@ -166,11 +170,10 @@ def build(config: DictConfig) -> OnPolicyRunner:
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo")
 def main(config: DictConfig) -> None:
-
     mp.set_start_method("fork")
 
     run = wandb.init(
-        anonymous="must", # for this example, send to wandb dummy account
+        anonymous="must",  # for this example, send to wandb dummy account
         project="CartPole",
         tags=["discrete", "state-based", "ppo", "feedforward"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
@@ -181,7 +184,9 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=Path(f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        log_dir=Path(
+            f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        ),
         tensorboard=True,
         output_files={
             "txt": "log.txt",

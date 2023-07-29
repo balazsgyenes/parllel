@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Sequence, Union
 
 import torch
-import torch.nn.functional as F
 from gymnasium import spaces
 from torch import Tensor, nn
 
@@ -25,6 +24,7 @@ class CartPoleLstmPgModel(nn.Module):
     ) -> None:
         super().__init__()
         assert isinstance(obs_space, spaces.Box)
+        assert len(obs_space.shape) == 1
         obs_shape = obs_space.shape[0]
 
         assert isinstance(action_space, spaces.Discrete)
@@ -44,11 +44,10 @@ class CartPoleLstmPgModel(nn.Module):
             hidden_size=lstm_size,
         )
 
-        output_size = n_actions + 1
         self.head = MlpModel(
             input_size=lstm_size,
             hidden_sizes=post_lstm_hidden_sizes,
-            output_size=output_size,
+            output_size=n_actions + 1,
             hidden_nonlinearity=hidden_nonlinearity,
         )
 
@@ -79,10 +78,10 @@ class CartPoleLstmPgModel(nn.Module):
         output = self.head(lstm_out.view(T * B, -1))
 
         # form output values
-        probs = F.softmax(output[..., :-1], dim=-1)
+        probs = output[..., :-1].softmax(dim=-1)
         value = output[..., -1]
 
-        # Restore leading dimensions: [T,B], [B], or [], as input.
+        # Restore leading dimensions: [T,B], [B], as input.
         probs, value = restore_leading_dims((probs, value), lead_dim, T, B)
         # Model should always leave B-dimension in rnn state: [N,B,H]
         next_rnn_state = ArrayDict({"h": hn, "c": cn})
