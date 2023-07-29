@@ -51,7 +51,7 @@ class Array:
     ) -> Array:
         # fill in empty arguments with values from class used to instantiate
         # can instantiate a subclass directly by just not passing kind/storage
-        # e.g. SharedMemoryArray(shape=(4,4), dtype=np.float32)
+        # e.g. JaggedArray(shape=(4,4), dtype=np.float32)
         kind = kind if kind is not None else cls.kind
         storage = storage if storage is not None else cls.storage
 
@@ -69,19 +69,17 @@ class Array:
 
     def __init__(
         self,
-        feature_shape: tuple[int, ...],
+        batch_shape: tuple[int, ...],
         dtype: np.dtype,
         *,
-        batch_shape: tuple[int, ...] = (),
+        feature_shape: tuple[int, ...] = (),
         kind: str | None = None,  # consumed by __new__
         storage: str | None = None,  # consumed by __new__
         padding: int = 0,
         full_size: int | None = None,
     ) -> None:
-        shape = batch_shape + feature_shape
-
-        if not shape:
-            raise ValueError("Non-empty shape required.")
+        if not batch_shape:
+            raise ValueError("Non-empty batch_shape required.")
 
         dtype = np.dtype(dtype)
         if dtype == np.object_:
@@ -89,36 +87,33 @@ class Array:
 
         if padding < 0:
             raise ValueError("Padding must be non-negative.")
-        if padding > shape[0]:
+        if padding > batch_shape[0]:
             raise ValueError(
-                f"Padding ({padding}) cannot be greater than leading "
-                f"dimension {shape[0]}."
+                f"Padding ({padding}) cannot be greater than leading dimension {batch_shape[0]}."
             )
 
         if full_size is None:
-            full_size = shape[0]
-        if full_size < shape[0]:
+            full_size = batch_shape[0]
+        if full_size < batch_shape[0]:
             raise ValueError(
-                f"Full size ({full_size}) cannot be less than "
-                f"leading dimension {shape[0]}."
+                f"Full size ({full_size}) cannot be less than leading dimension {batch_shape[0]}."
             )
-        if full_size % shape[0] != 0:
+        if full_size % batch_shape[0] != 0:
             raise ValueError(
-                f"The leading dimension {shape[0]} must divide the full "
-                f"size ({full_size}) evenly."
+                f"Full size ({full_size}) must be evenly divided by leading dimension {batch_shape[0]}."
             )
 
         self.dtype = dtype
         self.padding = padding
         # size of leading dim of full array, without padding
         self.full_size = full_size
-        self._base_shape = (full_size + 2 * padding,) + shape[1:]
+        self._base_shape = (full_size + 2 * padding,) + batch_shape[1:] + feature_shape
         self._base_batch_dims = len(batch_shape)
 
         self._allocate(shape=self._base_shape, dtype=dtype, name="_base_array")
 
         self._current_location = init_location(self._base_shape)
-        init_slice = slice(padding, shape[0] + padding)
+        init_slice = slice(padding, batch_shape[0] + padding)
         self._unresolved_indices: list[Location] = [init_slice]
         self._resolve_indexing_history()
 
@@ -126,14 +121,15 @@ class Array:
 
     def new_array(
         self,
-        feature_shape: tuple[int, ...] | None = None,
-        dtype: np.dtype | None = None,
         batch_shape: tuple[int, ...] | None = None,
+        dtype: np.dtype | None = None,
+        feature_shape: tuple[int, ...] | None = None,
         kind: str | None = None,
         storage: str | None = None,
         padding: int | None = None,
         full_size: int | None = None,
         inherit_full_size: bool = False,
+        **kwargs,
     ) -> Array:
         """Creates an Array with the same shape and type as a given Array
         (similar to torch's new_zeros function). By default, the full size of
@@ -175,22 +171,24 @@ class Array:
             storage=storage,
             padding=padding,
             full_size=full_size,
+            **kwargs,
         )
 
     @classmethod
     def from_numpy(
         cls,
         example: Any,
-        feature_shape: tuple[int, ...] | None = None,
+        batch_shape: tuple[int, ...],
         dtype: np.dtype | None = None,
+        feature_shape: tuple[int, ...] | None = None,
         force_32bit: Literal[True, "float", "int", False] = True,
-        batch_shape: tuple[int, ...] = (),
         kind: str | None = None,
         storage: str | None = None,
         padding: int = 0,
         full_size: int | None = None,
+        **kwargs,
     ) -> Array:
-        np_example = np.asanyarray(example)  # promote scalars to 0d arrays
+        np_example: np.ndarray = np.asanyarray(example)  # promote scalars to 0d arrays
         feature_shape = feature_shape if feature_shape is not None else np_example.shape
         if dtype is None:
             dtype = np_example.dtype
@@ -206,6 +204,7 @@ class Array:
             storage=storage,
             padding=padding,
             full_size=full_size,
+            **kwargs,
         )
 
     def _allocate(self, shape: tuple[int, ...], dtype: np.dtype, name: str) -> None:

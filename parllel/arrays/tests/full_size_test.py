@@ -13,7 +13,7 @@ def full_size(request):
 class TestFullSize:
     def test_nonmultiple_fullsize(self, ArrayClass, shape, dtype, storage):
         with pytest.raises(ValueError):
-            _ = ArrayClass(feature_shape=shape, dtype=dtype, storage=storage, full_size=15)
+            _ = ArrayClass(batch_shape=shape, dtype=dtype, storage=storage, full_size=15)
 
     def test_rotate(self, array, np_array, padding):
         array.rotate()

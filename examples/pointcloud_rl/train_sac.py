@@ -1,3 +1,4 @@
+# fmt: off
 import itertools
 import multiprocessing as mp
 from contextlib import contextmanager
@@ -32,6 +33,7 @@ from models.pointnet_q_and_pi import PointNetPiModel, PointNetQModel
 from pointcloud import PointCloudSpace
 
 
+# fmt: on
 @contextmanager
 def build(config: DictConfig) -> OffPolicyRunner:
     parallel = config["parallel"]
@@ -59,8 +61,9 @@ def build(config: DictConfig) -> OffPolicyRunner:
     sample_tree["observation"] = dict_map(
         Array.from_numpy,
         metadata.example_obs,
-        feature_shape=(obs_space.max_num_points,) + obs_space.shape,
         batch_shape=tuple(batch_spec),
+        max_mean_num_elem=obs_space.max_num_points,
+        feature_shape=obs_space.shape,
         kind="jagged",
         storage="managed" if parallel else "local",
         padding=1,
@@ -215,9 +218,9 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=Path(
-            f"log_data/pointcloud-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
-        ),
+        # log_dir=Path(
+        #     f"log_data/pointcloud-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        # ),
         tensorboard=True,
         output_files={
             "txt": "log.txt",

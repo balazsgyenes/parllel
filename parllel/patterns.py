@@ -46,7 +46,7 @@ def build_cages_and_sample_tree(
 ) -> tuple[list[Cage], ArrayDict[Array], Metadata]:
     if parallel:
         CageCls = ProcessCage
-        storage = "managed"
+        storage = "shared"
     else:
         CageCls = SerialCage
         storage = "local"
@@ -95,8 +95,8 @@ def build_cages_and_sample_tree(
             Array.from_numpy,
             reward,
             batch_shape=tuple(batch_spec),
-            feature_shape=(),
             dtype=np.float32,
+            feature_shape=(),
             storage=storage,
             full_size=full_size,
         )
@@ -105,8 +105,8 @@ def build_cages_and_sample_tree(
         sample_tree["terminated"] = Array.from_numpy(
             terminated,
             batch_shape=tuple(batch_spec),
-            feature_shape=(),
             dtype=bool,
+            feature_shape=(),
             storage=storage,
             full_size=full_size,  # used for SAC replay buffer
         )
@@ -115,8 +115,8 @@ def build_cages_and_sample_tree(
         sample_tree["truncated"] = Array.from_numpy(
             truncated,
             batch_shape=tuple(batch_spec),
-            feature_shape=(),
             dtype=bool,
+            feature_shape=(),
             storage=storage,
         )
 
@@ -127,8 +127,8 @@ def build_cages_and_sample_tree(
         sample_tree["done"] = Array.from_numpy(
             terminated,
             batch_shape=tuple(batch_spec),
-            feature_shape=(),
             dtype=bool,
+            feature_shape=(),
             storage=storage,
             padding=1,
         )

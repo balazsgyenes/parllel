@@ -62,10 +62,11 @@ def build(config: DictConfig) -> OnPolicyRunner:
     sample_tree["observation"] = dict_map(
         Array.from_numpy,
         metadata.example_obs,
-        feature_shape=(obs_space.max_num_points,) + obs_space.shape,
         batch_shape=tuple(batch_spec),
+        max_mean_num_elem=obs_space.max_num_points,
+        feature_shape=obs_space.shape,
         kind="jagged",
-        storage="managed" if parallel else "local",
+        storage="shared" if parallel else "local",
         padding=1,
     )
     sample_tree["observation"][0] = obs_space.sample()

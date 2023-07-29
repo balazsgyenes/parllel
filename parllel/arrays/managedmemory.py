@@ -10,12 +10,12 @@ import parllel.logger as logger
 from .array import Array
 
 
-class ManagedMemoryArray(Array, storage="managed"):
+class SharedMemoryArray(Array, storage="shared"):
     """An array in OS shared memory that can be shared between processes at any
     time.
     """
 
-    storage = "managed"
+    storage = "shared"
 
     def _allocate(self, shape: tuple[int, ...], dtype: np.dtype, name: str) -> None:
         # allocate array in OS shared memory

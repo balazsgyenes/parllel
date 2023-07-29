@@ -1,14 +1,17 @@
+# fmt: off
 import multiprocessing as mp
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
+# isort: off
 import hydra
 import torch
 import wandb
 from gymnasium import spaces
 from omegaconf import DictConfig, OmegaConf
 
+# isort: on
 import parllel.logger as logger
 from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
@@ -26,14 +29,16 @@ from parllel.torch.distributions import Categorical
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
+# isort: split
 from envs.cartpole import build_cartpole
 from models.lstm_model import CartPoleLstmPgModel
+
 # from hera_gym.wrappers import add_human_render_wrapper, add_subprocess_wrapper
 
 
+# fmt: on
 @contextmanager
 def build(config: DictConfig) -> OnPolicyRunner:
-
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -83,14 +88,14 @@ def build(config: DictConfig) -> OnPolicyRunner:
     # add agent info, which stores value predictions
     sample_tree = add_agent_info(sample_tree, agent, metadata.example_obs_batch)
 
-    # for recurrent problems, we need to save the initial state at the 
+    # for recurrent problems, we need to save the initial state at the
     # beginning of the batch
     sample_tree = add_initial_rnn_state(sample_tree, agent)
 
     # for advantage estimation, we need to estimate the value of the last
     # state in the batch
     sample_tree = add_bootstrap_value(sample_tree)
-    
+
     # for recurrent problems, compute mask that zeroes out samples after
     # environments are done before they can be reset
     sample_tree = add_valid(sample_tree)
@@ -155,7 +160,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
         lr=config["algo"]["learning_rate"],
         **config.get("optimizer", {}),
     )
-    
+
     # create algorithm
     algorithm = PPO(
         agent=agent,
@@ -175,22 +180,21 @@ def build(config: DictConfig) -> OnPolicyRunner:
 
     try:
         yield runner
-    
+
     finally:
         sampler.close()
         agent.close()
         for cage in cages:
             cage.close()
         sample_tree.close()
-    
+
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo_recurrent")
 def main(config: DictConfig) -> None:
-
     mp.set_start_method("fork")
 
     run = wandb.init(
-        anonymous="must", # for this example, send to wandb dummy account
+        anonymous="must",  # for this example, send to wandb dummy account
         project="CartPole",
         tags=["discrete", "state-based", "ppo", "recurrent"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
@@ -201,7 +205,9 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=Path(f"log_data/cartpole-ppo-recurrent/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"),
+        log_dir=Path(
+            f"log_data/cartpole-ppo-recurrent/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        ),
         tensorboard=True,
         output_files={
             "txt": "log.txt",
