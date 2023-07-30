@@ -30,6 +30,30 @@ def dict_all(tree: ArrayTree, predicate: Callable[[ArrayLike], bool]) -> bool:
     return predicate(tree)
 
 
+def transpose_dict(d: dict[str, dict[str, Any]]):
+    """Accepts a dictionary of dictionaries and returns a transposed dictionary,
+    where the top-level keys have been swapped with the nested keys. All nested
+    dictionaries are required to have the same keys.
+    e.g.
+    transpose_dict(
+    {
+        "agent1": {"value": 1, "dist_params": 2},
+        "agent2": {"value": 3, "dist_params": 4},
+    }
+    )
+    ->
+    {
+        "value": {"agent1": 1, "agent2": 3},
+        "dist_params": {"agent1": 2, "agent2": 4},
+    }
+    """
+    subkeys = tuple(d.values())[0].keys()
+    return {
+        inner_key: {outer_key: subdict[inner_key] for outer_key, subdict in d.items()}
+        for inner_key in subkeys
+    }
+
+
 def assert_dict_equal(ref, test, /, name=""):
     if isinstance(ref, Mapping): # non-leaf node
         for key, ref_value in ref.items():
