@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import multiprocessing as mp
 import os
+from contextlib import contextmanager
 from multiprocessing.shared_memory import SharedMemory as MpSharedMem
 from typing import Literal
 from weakref import finalize
@@ -170,3 +171,44 @@ class InheritedMemory(Storage, kind="inherited"):
             count=len(self._raw_array),
         )
         return array.data
+
+
+class ReadersWriterLock:
+    def __init__(self) -> None:
+        self._readers_ctr = mp.RawValue("i")
+        self._readers_ctr_lock = mp.Lock()
+        self._writer_lock = mp.Lock()
+
+    def reader_acquire(self) -> None:
+        with self._readers_ctr_lock:
+            self._readers_ctr += 1
+            if self._readers_ctr == 1:
+                self._writer_lock.acquire()
+
+    def reader_release(self) -> None:
+        with self._readers_ctr_lock:
+            self._readers_ctr -= 1
+            if self._readers_ctr == 0:
+                self._writer_lock.release()
+
+    def writer_acquire(self) -> None:
+        self._writer_lock.acquire()
+
+    def writer_release(self) -> None:
+        self._writer_lock.release()
+
+    @contextmanager
+    def reader_lock(self):
+        try:
+            self.reader_acquire()
+            yield
+        finally:
+            self.reader_release()
+
+    @contextmanager
+    def writer_lock(self):
+        try:
+            self.writer_acquire()
+            yield
+        finally:
+            self.writer_release()
