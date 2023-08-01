@@ -12,7 +12,6 @@ from parllel.arrays.array import Array
 from parllel.arrays.indices import (Location, StandardIndex, add_locations,
                                     batch_dims_from_location, index_slice,
                                     init_location)
-from parllel.arrays.jagged_list import JaggedArrayList
 from parllel.arrays.managedmemory import SharedMemoryArray
 from parllel.arrays.sharedmemory import InheritedMemoryArray
 
@@ -106,6 +105,10 @@ class JaggedArray(Array, kind="jagged"):
 
         self._rotatable = True
 
+    def __getnewargs_ex__(self):
+        return (), {"batch_shape": self.batch_shape, "full_size": self.full_size}
+
+
     def new_array(self, *args, **kwargs) -> Array:
         """Creates an Array with the same shape and type as a given Array
         (similar to torch's new_zeros function). By default, the full size of
@@ -136,6 +139,7 @@ class JaggedArray(Array, kind="jagged"):
         if full_size is None or full_size == batch_shape[0]:
             return cls
         else:
+            from parllel.arrays.jagged_list import JaggedArrayList
             return JaggedArrayList
 
     @classmethod

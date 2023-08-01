@@ -16,41 +16,40 @@ class JaggedArrayList(Array, kind="jagged_list"):
 
     def __init__(
         self,
-        feature_shape: tuple[int, ...],
+        batch_shape: tuple[int, ...],
         dtype: np.dtype,
         *,
-        batch_shape: tuple[int, ...],
+        max_mean_num_elem: int,
+        feature_shape: tuple[int, ...] = (),
         kind: str | None = None,
         storage: str | None = None,
         padding: int = 0,
-        full_size: int,
+        full_size: int | None = None,
         on_overflow: Literal["drop", "resize", "wrap"] = "drop",
-    ):
-        dtype = np.dtype(dtype)
-        shape = batch_shape + feature_shape
+    ) -> None:
+        if not batch_shape:
+            raise ValueError("Non-empty batch_shape required.")
 
+        dtype = np.dtype(dtype)
         if dtype == np.object_:
             raise ValueError("Data type should not be object.")
 
         if padding < 0:
             raise ValueError("Padding must be non-negative.")
-        if padding > shape[0]:
+        if padding > batch_shape[0]:
             raise ValueError(
-                f"Padding ({padding}) cannot be greater than leading "
-                f"dimension {shape[0]}."
+                f"Padding ({padding}) cannot be greater than leading dimension {batch_shape[0]}."
             )
 
         if full_size is None:
-            full_size = shape[0]
-        if full_size < shape[0]:
+            full_size = batch_shape[0]
+        if full_size < batch_shape[0]:
             raise ValueError(
-                f"Full size ({full_size}) cannot be less than "
-                f"leading dimension {shape[0]}."
+                f"Full size ({full_size}) cannot be less than leading dimension {batch_shape[0]}."
             )
-        if full_size % shape[0] != 0:
+        if full_size % batch_shape[0] != 0:
             raise ValueError(
-                f"The leading dimension {shape[0]} must divide the full "
-                f"size ({full_size}) evenly."
+                f"Full size ({full_size}) must be evenly divided by leading dimension {batch_shape[0]}."
             )
 
         if on_overflow not in {"drop", "resize", "wrap"}:
@@ -60,21 +59,23 @@ class JaggedArrayList(Array, kind="jagged_list"):
 
         self.block_size = batch_shape[0]
 
-        if dtype == np.object_:
-            raise ValueError("Data type should not be object.")
-
         self.dtype = dtype
         self.padding = padding
         self.on_overflow = on_overflow
         self.full_size = full_size
 
         # shape that base array appears to be
-        self._base_shape = (full_size + 2 * padding,) + shape[1:]
+        self._base_shape = (
+            (full_size + 2 * padding,)
+            + batch_shape[1:]
+            + (max_mean_num_elem,)
+            + feature_shape
+        )
         self._base_batch_dims = len(batch_shape)
 
         self._current_location = init_location(self._base_shape)
         # start with first array
-        init_slice = slice(padding, shape[0] + padding)
+        init_slice = slice(padding, batch_shape[0] + padding)
         self._unresolved_indices: list[Location] = [init_slice]
         self._resolve_indexing_history()
 
@@ -84,9 +85,10 @@ class JaggedArrayList(Array, kind="jagged_list"):
 
         self.jagged_arrays = [
             JaggedArray(
-                feature_shape=feature_shape,
-                dtype=dtype,
                 batch_shape=batch_shape,
+                dtype=dtype,
+                max_mean_num_elem=max_mean_num_elem,
+                feature_shape=feature_shape,
                 kind="jagged",
                 storage=storage,
                 padding=padding,
