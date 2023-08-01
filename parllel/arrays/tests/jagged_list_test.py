@@ -101,7 +101,8 @@ class TestJaggedArray:
 
         assert np.array_equal(blank_array[0, 3], graph1)
         assert np.array_equal(blank_array[1, 3], graph2)
-        assert np.array_equal(blank_array[0:2, 3], np.concatenate((graph1, graph2)))
+        indices = np.array([0, 1])
+        assert np.array_equal(blank_array[indices, 3], np.concatenate((graph1, graph2)))
 
     def test_write_parallel_graphs(self, blank_array, graph_generator):
         graph1 = graph_generator()
@@ -145,10 +146,16 @@ class TestJaggedArray:
             padding=1,
         )
 
-        graphs = [graph_generator() for _ in range(2)]
+        graphs = [graph_generator() for _ in range(3)]
 
         array[array.last, 0] = graphs[0]
         array[array.last + 1, 0] = graphs[1]
+
+        array[np.array([0, 1, 2]), 0] = graphs[0]
+        # array[array.last + 2 ,0] = graphs[2]
+
+        # np.asarray(array[array.last + 1, 0])
+        # np.asarray(array[array.last + 2, 0])
 
         array.rotate()
 

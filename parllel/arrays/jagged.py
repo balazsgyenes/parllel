@@ -183,6 +183,9 @@ class JaggedArray(Array, kind="jagged"):
             destination[self._base_batch_dims :],
         )
 
+        print("HOLA")
+        pass
+
         # loop over all batch locations by taking the product of slices
         batch_locs = (
             (loc,) if isinstance(loc, int) else slice_to_range(loc)
@@ -286,7 +289,7 @@ class JaggedArray(Array, kind="jagged"):
             # TODO: also iterate over product of this zip any slices present
             batch_locs = zip(
                 *(
-                    iter(loc) if isinstance(loc, np.ndarray) else (loc,)
+                    iter(loc) if isinstance(loc, np.ndarray) else itertools.repeat(loc)
                     for loc in batch_locs
                 )
             )

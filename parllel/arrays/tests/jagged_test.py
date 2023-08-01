@@ -43,7 +43,7 @@ def storage(request):
 def padding(request):
     return request.param
 
-@pytest.fixture(params=[None], ids=["default_size"], scope="module")
+@pytest.fixture(params=[640], ids=["default_size"], scope="module")
 def full_size(request):
     return request.param
 
@@ -150,6 +150,7 @@ class TestJaggedArray:
 
         array[array.last, 0] = graphs[0]
         array[array.last + 1, 0] = graphs[1]
+        array[np.array([1, 2, 3]), np.array([1, 2, 3])] = graphs[0]
 
         array.rotate()
 
