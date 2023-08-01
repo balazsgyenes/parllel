@@ -12,6 +12,7 @@ from parllel.arrays.array import Array
 from parllel.arrays.indices import (Location, StandardIndex, add_locations,
                                     batch_dims_from_location, index_slice,
                                     init_location)
+from parllel.arrays.jagged_list import JaggedArrayList
 from parllel.arrays.managedmemory import SharedMemoryArray
 from parllel.arrays.sharedmemory import InheritedMemoryArray
 
@@ -131,6 +132,13 @@ class JaggedArray(Array, kind="jagged"):
         return super().new_array(*args, **kwargs)
 
     @classmethod
+    def get_array_class(cls, full_size, batch_shape, **kwargs):
+        if full_size is None or full_size == batch_shape[0]:
+            return cls
+        else:
+            return JaggedArrayList
+
+    @classmethod
     def from_numpy(cls, *args, example: Any, **kwargs) -> Array:
         if "kind" not in kwargs or kwargs["kind"] == "jagged":
             # promote scalars to 0d arrays
@@ -182,9 +190,6 @@ class JaggedArray(Array, kind="jagged"):
             destination[: self._base_batch_dims],
             destination[self._base_batch_dims :],
         )
-
-        print("HOLA")
-        pass
 
         # loop over all batch locations by taking the product of slices
         batch_locs = (
