@@ -65,6 +65,8 @@ class Array:
             raise ValueError(
                 f"No array subclass registered under {kind=} and {storage=}"
             )
+        if hasattr(subcls, "get_array_class"):
+            subcls = subcls.get_array_class(**kwargs)
         return super().__new__(subcls)
 
     def __init__(
