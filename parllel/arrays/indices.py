@@ -94,17 +94,20 @@ def add_locations(
     If location contains slices, they must be in standard form (see
     `clean_slice`).
     """
-    if any(isinstance(location, np.ndarray) for location in location):
-        raise IndexError(
-            "Cannot processing further indexing operations after advanced indexing."
-        )
-
     location = list(location)  # create a copy to prevent modifying inputs
 
     if isinstance(new_location, tuple):
         new_location = list(new_location)
     else:
         new_location = [new_location]
+
+    if len(new_location) == 1 and new_location[0] is Ellipsis:
+        return location
+
+    if any(isinstance(loc, np.ndarray) for loc in location):
+        raise IndexError(
+            "Cannot processing further indexing operations after advanced indexing."
+        )
 
     # check if Ellipsis occurs in new_location
     ellipses = [
@@ -116,15 +119,13 @@ def add_locations(
         # pad new_location with slice(None) elements until length equals the
         # apparent number of dimensions
         i = ellipses[0]
-        apparent_n_dim = len(
-            [location for location in location if isinstance(location, slice)]
-        )
+        apparent_n_dim = len([loc for loc in location if isinstance(loc, slice)])
         new_location[i : i + 1] = [slice(None)] * (
             apparent_n_dim - len(new_location) + 1
         )
 
     if not new_location:
-        # e.g. if new_location was [...] or [()]
+        # e.g. if new_location was [()]
         return location
 
     i = 0
@@ -348,7 +349,6 @@ def shape_from_location(location: StandardLocation, base_shape: Shape) -> Shape:
 
 
 def batch_dims_from_location(location: StandardLocation, n_batch_dims: int) -> int:
-
     array_indexing = False
     current_batch_dims = n_batch_dims
 
@@ -359,5 +359,5 @@ def batch_dims_from_location(location: StandardLocation, n_batch_dims: int) -> i
             if array_indexing:
                 current_batch_dims -= 1
             array_indexing = True
-    
+
     return current_batch_dims

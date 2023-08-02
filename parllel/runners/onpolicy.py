@@ -1,4 +1,4 @@
-from __future__ import annotations 
+from __future__ import annotations
 
 from tqdm import tqdm
 
@@ -40,7 +40,7 @@ class OnPolicyRunner(Runner):
         self.log_interval_iters = max(1, int(log_interval_steps // batch_spec.size))
 
     def run(self) -> None:
-        logger.info("Starting training...")
+        logger.info(f"{type(self).__name__}: Starting training...")
 
         progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
@@ -74,11 +74,11 @@ class OnPolicyRunner(Runner):
 
         progress_bar.close()
         # TODO: replace with logger.finish method
-        logger.info("Finished training.")
+        logger.info(f"{type(self).__name__}: Finished training.")
         if logger.log_dir is not None:
-            logger.info(f"Log files saved to {logger.log_dir}")
+            logger.info(f"{type(self).__name__}: Log files saved to {logger.log_dir}")
 
     def evaluate_agent(self, elapsed_steps: int) -> None:
-        logger.debug("Evaluating agent.")
+        logger.debug(f"{type(self).__name__}: Evaluating agent.")
         eval_trajs = self.eval_sampler.collect_batch(elapsed_steps)
         self.record_eval_trajectories(eval_trajs)

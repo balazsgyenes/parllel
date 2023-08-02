@@ -1,17 +1,18 @@
+# fmt: off
 import multiprocessing as mp
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
+# isort: off
 import hydra
 import torch
-from envs.continuous_cartpole import build_cartpole
+import wandb
 from gymnasium import spaces
-from models.pg_model import GaussianCartPoleFfPgModel
 from omegaconf import DictConfig, OmegaConf
 
+# isort: on
 import parllel.logger as logger
-import wandb
 from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_agent_info,
@@ -27,7 +28,12 @@ from parllel.torch.distributions import Gaussian
 from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
+# isort: split
+from envs.continuous_cartpole import build_cartpole
+from models.pg_model import GaussianCartPoleFfPgModel
 
+
+# fmt: on
 @contextmanager
 def build(config: DictConfig) -> OnPolicyRunner:
     parallel = config["parallel"]

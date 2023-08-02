@@ -1,3 +1,4 @@
+# fmt: off
 from __future__ import annotations
 
 import copy
@@ -8,12 +9,13 @@ from torch import Tensor
 
 import parllel.logger as logger
 from parllel import Array, ArrayDict, ArrayTree, Index, dict_map
-from parllel.torch.distributions.squashed_gaussian import SquashedGaussian, DistParams
+from parllel.torch.distributions.squashed_gaussian import (DistParams,
+                                                           SquashedGaussian)
 from parllel.torch.utils import update_state_dict
 
 from .agent import TorchAgent
 
-
+# fmt: on
 PiModelOutputs = DistParams
 
 
@@ -48,6 +50,11 @@ class SacAgent(TorchAgent):
 
         self.recurrent = False
 
+    def encode(self, observation: ArrayTree[Tensor]) -> ArrayTree[Tensor]:
+        if "encoder" in self.model:
+            observation = self.model["encoder"](observation)
+        return observation
+
     @torch.no_grad()
     def step(
         self,
@@ -58,7 +65,8 @@ class SacAgent(TorchAgent):
         observation = observation.to_ndarray()
         observation = dict_map(torch.from_numpy, observation)
         observation = observation.to(device=self.device)
-        dist_params: PiModelOutputs = self.model["pi"](observation)
+        encoding = self.encode(observation)
+        dist_params: PiModelOutputs = self.model["pi"](encoding)
         action = self.distribution.sample(dist_params)
         return action.cpu(), ArrayDict()
 

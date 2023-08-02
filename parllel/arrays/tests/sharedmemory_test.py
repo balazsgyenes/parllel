@@ -28,8 +28,8 @@ def dtype(request):
     return request.param
 
 @pytest.fixture(params=[
+    "inherited",
     "shared",
-    "managed",
 ], scope="module")
 def storage(request):
     return request.param
@@ -47,7 +47,7 @@ def get_array_shape(pipe, array):
     pipe.send(array.shape)
 
 
-class TestSharedMemoryArray:
+class TestInheritedMemoryArray:
     def test_setitem_single(self, array, np_array, mp_ctx):
         location = (0, 1, 2)
         value = -7

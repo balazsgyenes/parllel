@@ -27,7 +27,7 @@ def dtype(request):
     return request.param
 
 @pytest.fixture(params=[
-    "managed",
+    "shared",
     ], scope="module")
 def storage(request):
     return request.param
@@ -51,7 +51,7 @@ def get_piped_array_shape(pipe):
     pipe.send(subarray.shape)
 
 
-class TestManagedMemoryArray:
+class TestSharedMemoryArray:
     def test_setitem_single(self, array, np_array, mp_ctx):
         location = (0, 1, 2)
         value = -7
