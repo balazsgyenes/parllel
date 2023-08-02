@@ -37,6 +37,7 @@ class Gaussian(Distribution):
         noise_clip: SupportsFloat | None = None,
         min_log_std: SupportsFloat | None = MIN_LOG_STD,
         max_log_std: SupportsFloat | None = MAX_LOG_STD,
+        deterministic_eval_mode: bool = False,
     ):
         """Saves input arguments."""
         self._dim = dim
@@ -45,6 +46,7 @@ class Gaussian(Distribution):
         self.set_noise_clip(noise_clip)
         self.set_min_log_std(min_log_std)
         self.set_max_log_std(max_log_std)
+        self.deterministic_eval_mode = deterministic_eval_mode
 
     def to_device(self, device: torch.device) -> None:
         self.device = device
@@ -64,21 +66,25 @@ class Gaussian(Distribution):
         ``dist_params.log_std``.
         """
         mean = dist_params["mean"]
-        if self.std is None:
-            log_std = dist_params["log_std"]
-            if self.min_log_std is not None or self.max_log_std is not None:
-                log_std = torch.clamp(
-                    log_std, min=self.min_log_std, max=self.max_log_std
-                )
-            std = torch.exp(log_std)
+        if self.deterministic_eval_mode and self.mode == "eval":
+            noise = torch.zeros_like(mean)
         else:
-            std = self.std
-        # For reparameterization trick: mean + std * N(0, 1)
-        # (Also this gets noise on same device as mean.)
-        noise = std * torch.normal(0, torch.ones_like(mean))
-        # noise = torch.normal(mean=0, std=std)
-        if self.noise_clip is not None:
-            noise = torch.clamp(noise, -self.noise_clip, self.noise_clip)
+            if self.std is None:
+                log_std = dist_params["log_std"]
+                if self.min_log_std is not None or self.max_log_std is not None:
+                    log_std = torch.clamp(
+                        log_std, min=self.min_log_std, max=self.max_log_std
+                    )
+                std = torch.exp(log_std)
+            else:
+                std = self.std
+            # For reparameterization trick: mean + std * N(0, 1)
+            # (Also this gets noise on same device as mean.)
+            noise = std * torch.normal(0, torch.ones_like(mean))
+            # noise = torch.normal(mean=0, std=std)
+            if self.noise_clip is not None:
+                noise = torch.clamp(noise, -self.noise_clip, self.noise_clip)
+
         sample = mean + noise
         # Other way to do reparameterization trick:
         # dist = torch.distributions.Normal(mean, std)

@@ -21,6 +21,8 @@ pi_model:
 q_model:
   hidden_sizes: [64, 64]
   hidden_nonlinearity: Tanh
+distribution:
+  deterministic_eval_mode: True
 eval_sampler:
   max_traj_length: 2000
   min_trajectories: 20
@@ -28,4 +30,3 @@ eval_sampler:
 runner:
   n_steps: 204800  # 100 iterations
   log_interval_steps: 10240  # log every 5 iterations
-  eval_interval_steps: 10240

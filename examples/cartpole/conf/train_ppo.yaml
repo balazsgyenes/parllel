@@ -18,8 +18,3 @@ model:
 runner:
   n_steps: 102400  # 50 iterations
   log_interval_steps: 10240  # log every 5 iterations
-  eval_interval_steps: 10240
-eval_sampler:
-  n_eval_envs: 4
-  max_traj_length: 1000
-  min_trajectories: 4

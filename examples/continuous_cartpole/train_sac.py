@@ -79,6 +79,7 @@ def build(config: DictConfig) -> OffPolicyRunner:
     distribution = SquashedGaussian(
         dim=action_space.shape[0],
         scale=action_space.high[0],
+        **config["distribution"],
     )
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)

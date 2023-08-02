@@ -18,7 +18,7 @@ from parllel.logger import Verbosity
 from parllel.patterns import (add_advantage_estimation, add_agent_info,
                               add_bootstrap_value, add_obs_normalization,
                               add_reward_clipping, add_reward_normalization,
-                              build_cages_and_sample_tree, build_eval_sampler)
+                              build_cages_and_sample_tree)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import OnPolicyRunner
 from parllel.samplers import BasicSampler
@@ -61,9 +61,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
         action_space=action_space,
         **config["model"],
     )
-    distribution = Gaussian(
-        dim=action_space.shape[0],
-    )
+    distribution = Gaussian(dim=action_space.shape[0])
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)
     device = torch.device(device)
@@ -150,23 +148,12 @@ def build(config: DictConfig) -> OnPolicyRunner:
         **config["algo"],
     )
 
-    eval_sampler, eval_sample_tree = build_eval_sampler(
-        sample_tree=sample_tree,
-        agent=agent,
-        CageCls=type(cages[0]),
-        EnvClass=build_cartpole,
-        env_kwargs=config["env"],
-        TrajInfoClass=TrajInfo,
-        **config["eval_sampler"],
-    )
-
     # create runner
     runner = OnPolicyRunner(
         sampler=sampler,
         agent=agent,
         algorithm=algorithm,
         batch_spec=batch_spec,
-        eval_sampler=eval_sampler,
         **config["runner"],
     )
 

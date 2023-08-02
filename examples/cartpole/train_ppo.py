@@ -148,24 +148,12 @@ def build(config: DictConfig) -> OnPolicyRunner:
         **config["algo"],
     )
 
-    eval_sampler, step_buffer = build_eval_sampler(
-        samples_buffer=batch_buffer,
-        agent=agent,
-        CageCls=type(cages[0]),
-        EnvClass=build_cartpole,
-        env_kwargs=config["env"],
-        TrajInfoClass=TrajInfo,
-        step_transforms=step_transforms,
-        **config["eval_sampler"],
-    )
-
     # create runner
     runner = OnPolicyRunner(
         sampler=sampler,
         agent=agent,
         algorithm=algorithm,
         batch_spec=batch_spec,
-        eval_sampler=eval_sampler,
         **config["runner"],
     )
 
