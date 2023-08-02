@@ -25,8 +25,8 @@ distribution:
   deterministic_eval_mode: True
 eval_sampler:
   max_traj_length: 2000
-  min_trajectories: 20
-  n_eval_envs: 8
+  max_trajectories: 40
+  n_eval_envs: 16
 runner:
   n_steps: 204800  # 100 iterations
   log_interval_steps: 10240  # log every 5 iterations

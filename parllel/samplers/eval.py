@@ -17,7 +17,7 @@ class EvalSampler(Sampler):
     def __init__(
         self,
         max_traj_length: int,
-        min_trajectories: int,
+        max_trajectories: int,
         envs: Sequence[Cage],
         agent: Agent,
         sample_tree: ArrayDict[Array],
@@ -38,7 +38,7 @@ class EvalSampler(Sampler):
         )
 
         self.max_traj_length = max_traj_length
-        self.min_trajectories = min_trajectories
+        self.max_trajectories = max_trajectories
         self.obs_transform = obs_transform
 
     def collect_batch(self, elapsed_steps: int) -> list[TrajInfo]:
@@ -94,7 +94,7 @@ class EvalSampler(Sampler):
             # environment has already been reset inside cage
             if np.any(done):
                 n_completed_trajs += np.sum(done)
-                if n_completed_trajs >= self.min_trajectories:
+                if n_completed_trajs >= self.max_trajectories:
                     break
                 self.agent.reset_one(np.asarray(done))
 
