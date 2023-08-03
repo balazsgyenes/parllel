@@ -33,7 +33,7 @@ class Gaussian(Distribution):
     def __init__(
         self,
         dim: int,
-        std: SupportsFloat | None = None,
+        fixed_std: SupportsFloat | None = None,
         noise_clip: SupportsFloat | None = None,
         min_log_std: SupportsFloat | None = MIN_LOG_STD,
         max_log_std: SupportsFloat | None = MAX_LOG_STD,
@@ -42,7 +42,7 @@ class Gaussian(Distribution):
         """Saves input arguments."""
         self._dim = dim
         self.device = None
-        self.set_std(std)
+        self.set_fixed_std(fixed_std)
         self.set_noise_clip(noise_clip)
         self.set_min_log_std(min_log_std)
         self.set_max_log_std(max_log_std)
@@ -50,7 +50,7 @@ class Gaussian(Distribution):
 
     def to_device(self, device: torch.device) -> None:
         self.device = device
-        self.set_std(self.std)
+        self.set_fixed_std(self.fixed_std)
         self.set_noise_clip(self.noise_clip)
         self.set_min_log_std(self.min_log_std)
         self.set_max_log_std(self.max_log_std)
@@ -60,16 +60,14 @@ class Gaussian(Distribution):
         return self._dim
 
     def sample(self, dist_params: DistParams) -> Tensor:
-        """
-        Generate random samples using ``torch.normal``, from
-        ``dist_params.mean``. Uses ``self.std`` unless it is ``None``, then uses
-        ``dist_params.log_std``.
+        """Generate differentiable random samples. Uses `self.fixed_std`
+        unless it is `None`, then uses `dist_params["log_std"]`.
         """
         mean = dist_params["mean"]
         if self.deterministic_eval_mode and self.mode == "eval":
             noise = torch.zeros_like(mean)
         else:
-            if self.std is None:
+            if self.fixed_std is None:
                 log_std = dist_params["log_std"]
                 if self.min_log_std is not None or self.max_log_std is not None:
                     log_std = torch.clamp(
@@ -77,7 +75,7 @@ class Gaussian(Distribution):
                     )
                 std = torch.exp(log_std)
             else:
-                std = self.std
+                std = self.fixed_std
             # For reparameterization trick: mean + std * N(0, 1)
             # (Also this gets noise on same device as mean.)
             noise = std * torch.normal(0, torch.ones_like(mean))
@@ -96,7 +94,7 @@ class Gaussian(Distribution):
         new_mean = new_dist_params["mean"]
         # Formula: {[(m1 - m2)^2 + (s1^2 - s2^2)] / (2*s2^2)} + ln(s1/s2)
         num = (old_mean - new_mean) ** 2
-        if self.std is None:
+        if self.fixed_std is None:
             old_log_std = old_dist_params["log_std"]
             new_log_std = new_dist_params["log_std"]
             if self.min_log_std is not None or self.max_log_std is not None:
@@ -112,16 +110,16 @@ class Gaussian(Distribution):
             den = 2 * new_std**2 + EPS
             vals = num / den + new_log_std - old_log_std
         else:
-            den = 2 * self.std**2 + EPS
+            den = 2 * self.fixed_std**2 + EPS
             vals = num / den
         return torch.sum(vals, dim=-1)
 
     def log_likelihood(self, x: Tensor, /, dist_params: DistParams) -> Tensor:
-        """Uses ``self.std`` unless that is None, then uses log_std from
-        dist_params.
+        """Uses `self.fixed_std` unless it is `None`, then uses
+        `dist_params["log_std"]`.
         """
         mean = dist_params["mean"]
-        if self.std is None:
+        if self.fixed_std is None:
             log_std = dist_params["log_std"]
             if self.min_log_std is not None or self.max_log_std is not None:
                 log_std = torch.clamp(
@@ -129,7 +127,7 @@ class Gaussian(Distribution):
                 )
             std = torch.exp(log_std)
         else:
-            std, log_std = self.std, torch.log(self.std)
+            std, log_std = self.fixed_std, torch.log(self.fixed_std)
         z = (x - mean) / (std + EPS)
         logli = -(
             torch.sum(log_std + 0.5 * z**2, dim=-1)
@@ -144,7 +142,7 @@ class Gaussian(Distribution):
         old_dist_params: DistParams,
         new_dist_params: DistParams,
     ) -> Tensor:
-        if self.std is None:
+        if self.fixed_std is None:
             # L_n/L_o = s_o/s_n * exp(-1/2 * (z_n^2 - z_o^2))
             # where z = (x - mu) / s
             old_log_std = old_dist_params["log_std"]
@@ -170,15 +168,15 @@ class Gaussian(Distribution):
             old_X = x - old_dist_params["mean"]
             new_X = x - new_dist_params["mean"]
 
-            ratios = torch.exp(-(new_X**2 - old_X**2) / 2 / self.std**2)
+            ratios = torch.exp(-(new_X**2 - old_X**2) / 2 / self.fixed_std**2)
 
         return torch.sum(ratios, dim=-1)
 
     def entropy(self, dist_params: DistParams) -> Tensor:
-        """Uses ``self.std`` unless that is None, then will get log_std from
-        dist_params.
+        """Uses `self.fixed_std` unless it is `None`, then uses
+        `dist_params["log_std"]`.
         """
-        if self.std is None:
+        if self.fixed_std is None:
             log_std = dist_params["log_std"]
             if self.min_log_std is not None or self.max_log_std is not None:
                 log_std = torch.clamp(
@@ -186,8 +184,8 @@ class Gaussian(Distribution):
                 )
         else:
             # shape = dist_params["mean"].shape[:-1]
-            # log_std = torch.log(self.std).repeat(*shape, 1)
-            log_std = torch.log(self.std)  # Shape broadcast in following formula.
+            # log_std = torch.log(self.fixed_std).repeat(*shape, 1)
+            log_std = torch.log(self.fixed_std)  # Shape broadcast in following formula.
         return torch.sum(log_std + np.log(np.sqrt(2 * np.pi * np.e)), dim=-1)
 
     def set_noise_clip(self, noise_clip: SupportsFloat | None) -> None:
@@ -195,14 +193,14 @@ class Gaussian(Distribution):
         noise_clip = clean_optionalfloatlike(noise_clip, self.dim, self.device)
         self.noise_clip = noise_clip
 
-    def set_std(self, std: SupportsFloat | None) -> None:
+    def set_fixed_std(self, std: SupportsFloat | None) -> None:
         """
         Input value, which can be same shape as action space, or else broadcastable
         up to that shape, or ``None`` to turn OFF and use ``dist_params["log_std"]`` in
         other methods.
         """
         std = clean_optionalfloatlike(std, self.dim, self.device)
-        self.std = std
+        self.fixed_std = std
 
     def set_min_log_std(self, min_log_std: SupportsFloat | None) -> None:
         min_log_std = clean_optionalfloatlike(min_log_std, self.dim, self.device)

@@ -218,9 +218,9 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        # log_dir=Path(
-        #     f"log_data/pointcloud-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
-        # ),
+        log_dir=Path(
+            f"log_data/pointcloud-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        ),
         tensorboard=True,
         output_files={
             "txt": "log.txt",
