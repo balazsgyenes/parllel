@@ -2,8 +2,6 @@ import time
 from abc import ABC
 from typing import Any, Sequence
 
-import numpy as np
-
 import parllel.logger as logger
 from parllel.agents import Agent
 from parllel.cages import TrajInfo, zip_trajectories
@@ -50,12 +48,11 @@ class Runner(ABC):
         for key, *values in zip_trajectories(*trajectories):
             if key[0] == "_":
                 continue  # do not log these "private" variables
-            values = np.array(values)
             logger.record_mean(prefix + "/" + key, values)
 
-    def record_algo_info(self, info: dict[str, Any]) -> None:
+    def record_algo_info(self, info: dict[str, Any], prefix: str = "algo") -> None:
         for key, value in info.items():
             if isinstance(value, list):
-                logger.record_mean("algo/" + key, value)
+                logger.record_mean(prefix + "/" + key, value)
             else:
-                logger.record("algo/" + key, value)
+                logger.record(prefix + "/" + key, value)

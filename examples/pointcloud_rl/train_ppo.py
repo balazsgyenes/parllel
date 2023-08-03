@@ -21,7 +21,7 @@ from parllel.patterns import (add_advantage_estimation, add_agent_info,
                               add_reward_normalization,
                               build_cages_and_sample_tree)
 from parllel.replays import BatchedDataLoader
-from parllel.runners import OnPolicyRunner
+from parllel.runners import RLRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO, build_loss_sample_tree
@@ -37,7 +37,7 @@ from pointcloud import PointCloudSpace
 
 # fmt: on
 @contextmanager
-def build(config: DictConfig) -> OnPolicyRunner:
+def build(config: DictConfig) -> RLRunner:
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -163,7 +163,7 @@ def build(config: DictConfig) -> OnPolicyRunner:
     )
 
     # create runner
-    runner = OnPolicyRunner(
+    runner = RLRunner(
         sampler=sampler,
         agent=agent,
         algorithm=algorithm,
