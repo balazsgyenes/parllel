@@ -166,19 +166,49 @@ def compose_indices(
     index must be a slice in standard form (see `clean_slice`).
     """
     if index == slice(None):
-        if isinstance(new_index, slice):
+        # new_index overrides index, but must be cleaned/verified first
+        if isinstance(new_index, int):
+            if size is not None:
+                lower_bound = -size if neg_from_end else 0
+                if not (lower_bound <= new_index < size):
+                    raise IndexError(
+                        f"Index {new_index} is out of bounds for axis with size {size}."
+                    )
+            elif not neg_from_end and not (0 <= new_index):
+                raise IndexError(
+                    f"Negative index {new_index} not allowed when {neg_from_end=}"
+                )
+        elif isinstance(new_index, slice):
             # slices must be converted to standard form
-            return clean_slice(new_index, size)
-        if __debug__:
-            # in this case, we leave negative indices as they are
-            verify_scalar(new_index, size, allow_negative=neg_from_end)
+            new_index = clean_slice(new_index, size)
+        elif isinstance(new_index, np.ndarray):
+            if size is not None:
+                lower_bound = -size if neg_from_end else 0
+                if not np.all((lower_bound <= new_index) & (new_index < size)):
+                    out_of_bounds = new_index[
+                        (lower_bound > new_index) | (new_index >= size)
+                    ]
+                    raise IndexError(
+                        f"Index {out_of_bounds} is out of bounds for axis with size {size}."
+                    )
+            elif neg_from_end and not np.all(0 <= new_index):
+                out_of_bounds = new_index[0 > new_index]
+                raise IndexError(
+                    f"Negative index {out_of_bounds} not allowed when {neg_from_end=}"
+                )
+        else:
+            raise TypeError(
+                f"Cannot index slice with {type(new_index).__name__} object"
+            )
         return new_index
 
     elif isinstance(new_index, int):
         new_index = compose_slice_with_int(index, new_index, size, neg_from_end)
-        if __debug__:
-            # new_index should never be negative after composition
-            verify_scalar(new_index, size, allow_negative=False)
+        # new_index should never be negative after composition
+        if size is not None and new_index >= size:
+            raise IndexError(
+                f"Index {new_index} is out of bounds for axis with size {size}."
+            )
         return new_index
 
     elif isinstance(new_index, slice):
@@ -190,9 +220,12 @@ def compose_indices(
 
     if isinstance(new_index, np.ndarray):
         new_index = compose_slice_with_np(index, new_index, size, neg_from_end)
-        if __debug__:
-            # new_index should never be negative after composition
-            verify_scalar(new_index, size, allow_negative=False)
+        # new_index should never be negative after composition
+        if size is not None and np.any(new_index >= size):
+            out_of_bounds = new_index[new_index >= size]
+            raise IndexError(
+                f"Index {out_of_bounds} is out of bounds for axis with size {size}."
+            )
         return new_index
 
     else:
@@ -252,42 +285,6 @@ def compose_slice_with_np(
         new_index = slice_.start + index * slice_.step
 
     return new_index
-
-
-def verify_scalar(
-    index: int | np.ndarray,
-    size: Size,
-    allow_negative: bool = True,
-) -> None:
-    if isinstance(index, int):
-        if size is not None:
-            lower_bound = -size if allow_negative else 0
-            if not (lower_bound <= index < size):
-                raise IndexError(
-                    f"Index {index} is out of bounds for axis with size {size}."
-                )
-        elif not allow_negative and not (0 <= index):
-            raise IndexError(
-                f"Negative index {index} not allowed when {allow_negative=}"
-            )
-
-    elif isinstance(index, np.ndarray):
-        if size is not None:
-            lower_bound = -size if allow_negative else 0
-
-            if not np.all((lower_bound <= index) & (index < size)):
-                out_of_bounds = index[(lower_bound > index) | (index >= size)]
-                raise IndexError(
-                    f"Index {out_of_bounds} is out of bounds for axis with size {size}."
-                )
-        elif allow_negative and not np.all(0 <= index):
-            out_of_bounds = index[0 > index]
-            raise IndexError(
-                f"Negative index {out_of_bounds} not allowed when {allow_negative=}"
-            )
-
-    else:
-        raise TypeError(f"Unexpected type: {index}")
 
 
 def compose_slices(
