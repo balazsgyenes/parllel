@@ -2,7 +2,7 @@ defaults:
   - sac@algo
   - _self_
 
-parallel: False
+parallel: True
 batch_T: 128
 batch_B: 16
 max_steps_decorrelate: 50
@@ -16,15 +16,18 @@ algo:
   replay_ratio: 64
   target_update_tau: 0.01
 pi_model:
-    hidden_sizes: [64, 64]
-    hidden_nonlinearity: Tanh
+  hidden_sizes: [64, 64]
+  hidden_nonlinearity: Tanh
 q_model:
-    hidden_sizes: [64, 64]
-    hidden_nonlinearity: Tanh
+  hidden_sizes: [64, 64]
+  hidden_nonlinearity: Tanh
+distribution:
+  deterministic_eval_mode: True
 eval_sampler:
-    max_traj_length: 2000
-    min_trajectories: 20
-    n_eval_envs: 8
+  max_traj_length: 2000
+  max_trajectories: 40
+  n_eval_envs: 16
 runner:
   n_steps: 204800  # 100 iterations
   log_interval_steps: 10240  # log every 5 iterations
+  eval_interval_steps: 10240  # evaluate every 5 iterations

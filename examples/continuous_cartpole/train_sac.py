@@ -18,7 +18,7 @@ from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
 from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
 from parllel.replays.replay import ReplayBuffer
-from parllel.runners import OffPolicyRunner
+from parllel.runners import RLRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.algos.sac import SAC, build_replay_buffer_tree
@@ -32,7 +32,7 @@ from models.sac_q_and_pi import PiMlpModel, QMlpModel
 
 # fmt: on
 @contextmanager
-def build(config: DictConfig) -> OffPolicyRunner:
+def build(config: DictConfig) -> RLRunner:
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -79,6 +79,7 @@ def build(config: DictConfig) -> OffPolicyRunner:
     distribution = SquashedGaussian(
         dim=action_space.shape[0],
         scale=action_space.high[0],
+        **config["distribution"],
     )
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)
@@ -154,7 +155,7 @@ def build(config: DictConfig) -> OffPolicyRunner:
     )
 
     # create runner
-    runner = OffPolicyRunner(
+    runner = RLRunner(
         sampler=sampler,
         agent=agent,
         algorithm=algorithm,

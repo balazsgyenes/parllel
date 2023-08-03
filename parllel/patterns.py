@@ -373,7 +373,7 @@ def build_eval_sampler(
     TrajInfoClass: Callable,
     n_eval_envs: int,
     max_traj_length: int,
-    min_trajectories: int,
+    max_trajectories: int,
     step_transforms: list[StepTransform] | None = None,
 ) -> tuple[EvalSampler, ArrayDict[Array]]:
     # allocate a sample tree with space for a single time step
@@ -407,7 +407,7 @@ def build_eval_sampler(
 
     eval_sampler = EvalSampler(
         max_traj_length=max_traj_length,
-        min_trajectories=min_trajectories,
+        max_trajectories=max_trajectories,
         envs=eval_envs,
         agent=agent,
         sample_tree=eval_sample_tree,

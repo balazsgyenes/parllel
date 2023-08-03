@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import astuple, dataclass, field, fields
 from functools import partial
-from typing import Any, ClassVar, Iterator
+from typing import ClassVar, Iterator
 
 from .collections import ActionType, DoneType, EnvInfoType, ObsType, RewardType
 
@@ -62,7 +62,7 @@ class MultiAgentTrajInfo(TrajInfo):
         self._current_discount *= self._discount
 
 
-def zip_trajectories(*trajs: tuple[TrajInfo]) -> Iterator[tuple[Any, ...]]:
+def zip_trajectories(*trajs: TrajInfo) -> Iterator[tuple]:
     """A generator that yields key, value1, value2, value3, ... for all
     dataclass objects passed as arguments. All objects must be instances of
     the same dataclass.

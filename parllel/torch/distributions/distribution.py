@@ -20,6 +20,12 @@ class Distribution(ABC):
     def to_device(self, device: torch.device) -> None:
         pass
 
+    def eval(self):
+        self.mode = "eval"
+
+    def train(self):
+        self.mode = "train"
+
     @property
     def dim(self) -> int:
         raise NotImplementedError

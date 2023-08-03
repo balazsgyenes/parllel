@@ -1,7 +1,7 @@
 log_dir: ???
 discount: 1.0
 max_steps: null
-min_trajectories: 20
+max_trajectories: 20
 env:
     headless: False
     subprocess: False

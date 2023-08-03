@@ -114,22 +114,17 @@ class SacAgent(TorchAgent):
 
     def train_mode(self, elapsed_steps: int) -> None:
         super().train_mode(elapsed_steps)
-        self.model["q1"].train()
-        self.model["q2"].train()
+        self.distribution.set_fixed_std(None)
 
     def sample_mode(self, elapsed_steps: int) -> None:
         super().sample_mode(elapsed_steps)
-        self.model["q1"].eval()
-        self.model["q2"].eval()
-        if elapsed_steps == 0:
+        if elapsed_steps == 0 and self.learning_starts > 0:
             logger.debug(
-                f"Agent at {elapsed_steps} steps, sample std: {self.pretrain_std}"
+                f"For the first {self.learning_starts} steps, agent will use a fixed std of {self.pretrain_std} for exploration."
             )
         std = None if elapsed_steps >= self.learning_starts else self.pretrain_std
-        self.distribution.set_std(std)  # If None: std from policy dist_params.
+        self.distribution.set_fixed_std(std)  # If None: std from policy dist_params.
 
     def eval_mode(self, elapsed_steps: int) -> None:
         super().eval_mode(elapsed_steps)
-        self.model["q1"].eval()
-        self.model["q2"].eval()
-        self.distribution.set_std(0.0)  # Deterministic (dist_params std ignored).
+        self.distribution.set_fixed_std(None)
