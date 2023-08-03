@@ -136,8 +136,10 @@ class Array:
         self._allocate(shape=self._base_shape, dtype=dtype, name="_base_array")
 
         self._current_location = init_location(self._base_shape)
-        init_slice = slice(padding, batch_shape[0] + padding)
-        self._unresolved_indices: list[Location] = [init_slice]
+        self._unresolved_indices: list[Location] = []
+        if self.padding:
+            init_slice = slice(padding, batch_shape[0] + padding)
+            self._unresolved_indices.append(init_slice)
         self._resolve_indexing_history()
 
         self._rotatable = True

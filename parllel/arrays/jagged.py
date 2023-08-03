@@ -98,10 +98,7 @@ class JaggedArray(Array, kind="jagged"):
         self.full_size = full_size
         # shape that base array appears to be
         self._base_shape = (
-            (full_size + 2 * padding,)
-            + batch_shape[1:]
-            + (max_mean_num_elem,)
-            + feature_shape
+            (full_size + 2 * padding,) + batch_shape[1:] + (None,) + feature_shape
         )
         self._base_batch_dims = len(batch_shape)
         # multiply the T dimension into the node dimension
@@ -116,8 +113,10 @@ class JaggedArray(Array, kind="jagged"):
         self._allocate(shape=ptr_shape, dtype=np.int64, name="_ptr")
 
         self._current_location = init_location(self._base_shape)
-        init_slice = slice(padding, batch_shape[0] + padding)
-        self._unresolved_indices: list[Location] = [init_slice]
+        self._unresolved_indices: list[Location] = []
+        if self.padding:
+            init_slice = slice(padding, batch_shape[0] + padding)
+            self._unresolved_indices.append(init_slice)
         self._resolve_indexing_history()
 
         self._rotatable = True
@@ -204,8 +203,8 @@ class JaggedArray(Array, kind="jagged"):
 
         # loop over all batch locations by taking the product of slices
         batch_locs = (
-            (loc,) if isinstance(loc, int) else slice_to_range(loc)
-            for loc in batch_locs
+            (loc,) if isinstance(loc, int) else slice_to_range(loc, size)
+            for loc, size in zip(batch_locs, self._base_shape[: self._base_batch_dims])
         )
         for loc in itertools.product(*batch_locs):
             t_loc, batch_loc = loc[0], loc[1:]
@@ -316,8 +315,10 @@ class JaggedArray(Array, kind="jagged"):
             # these are contiguous array regions
             batch_locs = itertools.product(
                 *(
-                    (loc,) if isinstance(loc, int) else slice_to_range(loc)
-                    for loc in batch_locs
+                    (loc,) if isinstance(loc, int) else slice_to_range(loc, size)
+                    for loc, size in zip(
+                        batch_locs, self._base_shape[: self._base_batch_dims]
+                    )
                 )
             )
 
@@ -374,7 +375,7 @@ class SharedMemoryJaggedArray(
     pass
 
 
-def slice_to_range(slice_: slice) -> range:
-    start, stop, step = slice_.start, slice_.stop, slice_.step
+def slice_to_range(slice_: slice, size: int) -> range:
+    start, stop, step = slice_.indices(size)
     stop = -1 if stop is None else stop
     return range(start, stop, step)

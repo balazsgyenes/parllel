@@ -357,7 +357,7 @@ def clean_slice(slice_: slice, size: Size) -> slice:
         start, stop, step = slice_.indices(size)
         stop = None if stop < 0 else stop
     else:
-        # we might leave start as None
+        # best effort to get values that are not None
         start: Optional[int] = slice_.start
         stop: Optional[int] = slice_.stop
         step: Optional[int] = slice_.step
@@ -400,8 +400,20 @@ def shape_from_location(location: StandardLocation, base_shape: Shape) -> Shape:
 
     shape = []
     for index, base_size in visible_dims:
-        start, stop, step = index.indices(base_size)
-        size = max(0, math.ceil((stop - start) / step))
+        if base_size is not None:
+            start, stop, step = index.indices(base_size)
+            size = max(0, math.ceil((stop - start) / step))
+        else:
+            # best effort to try to calculate size, otherwise just None
+            start, stop, step = index.start, index.step, index.step
+            step = step if step is not None else 1
+            start = 0 if start is None and step > 0 else start
+            stop = -1 if stop is None and step < 0 else stop
+            try:
+                size = max(0, math.ceil((stop - start) / step))
+            except TypeError:
+                size = None
+
         shape.append(size)
 
     if arrays:
