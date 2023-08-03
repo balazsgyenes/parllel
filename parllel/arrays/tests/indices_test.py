@@ -1,3 +1,4 @@
+# fmt: off
 import math
 from itertools import islice
 from typing import Sequence
@@ -6,12 +7,14 @@ import numpy as np
 import numpy.random as random
 import pytest
 
-from parllel.arrays.indices import (Index, Location, add_locations,
-                                    batch_dims_from_location, clean_slice,
-                                    compute_indices, index_slice,
-                                    index_slice_with_int, init_location,
-                                    predict_copy_on_index, shape_from_location)
+from parllel.arrays.indices import (Index, Location, batch_dims_from_location,
+                                    clean_slice, compose_indices,
+                                    compose_locations, compose_slice_with_int,
+                                    compose_slices, compute_indices,
+                                    init_location, predict_copy_on_index,
+                                    shape_from_location)
 
+# fmt: on
 PROB_SLICE = 0.5
 PROB_INDEX_NEGATIVE = 0.5
 PROB_STEP_NEGATIVE = 0.5
@@ -160,7 +163,7 @@ class TestAddIndices:
         for _ in range(1000):
             loc1 = random_location(rng, np_array.shape, max_step, prob_step_negative, prob_start_stop_negative)
             subarray = np_array[loc1]
-            loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
+            loc1_cleaned = compose_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
 
             assert np.array_equal(subarray, np_array[tuple(loc1_cleaned)])
 
@@ -169,7 +172,7 @@ class TestAddIndices:
             
             loc2 = random_location(rng, subarray.shape, max_step, prob_step_negative, prob_start_stop_negative)
             subsubarray = subarray[loc2]
-            joined_loc = add_locations(loc1_cleaned, loc2, np_array.shape)
+            joined_loc = compose_locations(loc1_cleaned, loc2, np_array.shape)
             
             assert np.array_equal(subsubarray, np_array[tuple(joined_loc)])
 
@@ -231,12 +234,12 @@ class TestAddIndices:
         loc2: Location,
     ):
         subarray = np_array[loc1]
-        loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
+        loc1_cleaned = compose_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
 
         assert np.array_equal(subarray, np_array[tuple(loc1_cleaned)])
 
         subsubarray = subarray[loc2]
-        joined_loc = add_locations(loc1_cleaned, loc2, np_array.shape)
+        joined_loc = compose_locations(loc1_cleaned, loc2, np_array.shape)
 
         assert np.array_equal(subsubarray, np_array[tuple(joined_loc)])
 
@@ -279,7 +282,7 @@ class TestAddIndices:
 
         for indices in index_history:
             subarray = subarray[indices]
-            joined_loc = add_locations(joined_loc, indices, np_array.shape)
+            joined_loc = compose_locations(joined_loc, indices, np_array.shape)
 
         assert np.array_equal(subarray, np_array[tuple(joined_loc)])
 
@@ -299,7 +302,7 @@ class TestAddIndices:
 
             slice2 = random_slice(rng, subvector.shape[0], max_step, prob_step_negative, prob_start_stop_negative)
             subsubvector = subvector[slice2]
-            joined_slice = index_slice(slice1_cleaned, slice2, vector.shape[0])
+            joined_slice = compose_slices(slice1_cleaned, slice2, vector.shape[0])
 
             assert np.array_equal(subsubvector, vector[joined_slice])
 
@@ -327,7 +330,7 @@ class TestAddIndices:
         assert np.array_equal(subvector, vector[slice1_cleaned])
 
         subsubvector = subvector[slice2]
-        joined_slice = index_slice(slice1_cleaned, slice2, vector.shape[0])
+        joined_slice = compose_slices(slice1_cleaned, slice2, vector.shape[0])
 
         assert np.array_equal(subsubvector, vector[joined_slice])
 
@@ -336,14 +339,14 @@ class TestAddIndices:
     ):
         loc1 = np.array([3, -9, -6, 12, -8, 1, 7, 3, 10, 19, 1, 0, -3, -7, 8, -4, 7, 19, 3, -1])
         subarray = np_array[loc1]
-        loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
+        loc1_cleaned = compose_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
 
         assert np.array_equal(subarray, np_array[tuple(loc1_cleaned)])
 
         loc2 = (slice(None), np.array([18, -3, 16, -6, -3, 3, 18, -5, -1, 1, 1, 5, 18, 0, -4, 12, 13, 1, 1, -6]))
 
         with pytest.raises(IndexError):
-            _ = add_locations(loc1_cleaned, loc2, np_array.shape)
+            _ = compose_locations(loc1_cleaned, loc2, np_array.shape)
 
     def test_index_scalar(self,
         np_array,
@@ -353,26 +356,26 @@ class TestAddIndices:
 
         loc = tuple(random_int(rng, size) for size in np_array.shape)
         element = np_array[loc]
-        joined_location = add_locations(joined_location, loc, np_array.shape)
+        joined_location = compose_locations(joined_location, loc, np_array.shape)
 
         assert np.array_equal(element, np_array[tuple(joined_location)])
         assert element.shape == ()
 
         loc = (Ellipsis,)
-        joined_location = add_locations(joined_location, loc, np_array.shape)
+        joined_location = compose_locations(joined_location, loc, np_array.shape)
 
         assert np.array_equal(element, np_array[tuple(joined_location)])
         assert element.shape == ()
 
         loc = ()  # empty tuple
-        joined_location = add_locations(joined_location, loc, np_array.shape)
+        joined_location = compose_locations(joined_location, loc, np_array.shape)
 
         assert np.array_equal(element, np_array[tuple(joined_location)])
         assert element.shape == ()
 
         loc = slice(None)
         with pytest.raises(IndexError):
-            _ = add_locations(joined_location, loc, np_array.shape)
+            _ = compose_locations(joined_location, loc, np_array.shape)
 
     def test_index_slice(self,
         vector: np.ndarray,
@@ -390,7 +393,7 @@ class TestAddIndices:
 
             index2 = random_int(rng, subvector.shape[0])
             element = subvector[index2]
-            global_index = index_slice_with_int(slice1_cleaned, index2, vector.shape[0])
+            global_index = compose_slice_with_int(slice1_cleaned, index2, vector.shape[0])
 
             assert np.array_equal(element, vector[global_index])
 
@@ -414,7 +417,7 @@ class TestAddIndices:
 
         for indices in index_history:
             subvector = subvector[indices]
-            joined_loc = index_slice(joined_loc, indices, vector.shape[0])
+            joined_loc = compose_indices(joined_loc, indices, vector.shape[0])
 
         assert np.array_equal(subvector, vector[joined_loc])
 
@@ -424,7 +427,7 @@ class TestAddIndices:
     ])
     def test_out_of_bounds_integer(self, shape, loc):
         with pytest.raises(IndexError):
-            _ = add_locations(init_location(shape), loc, shape)
+            _ = compose_locations(init_location(shape), loc, shape)
 
     @pytest.mark.parametrize("loc", [
         pytest.param(
@@ -438,7 +441,7 @@ class TestAddIndices:
     ])
     def test_too_many_indices(self, shape, loc):
         with pytest.raises(IndexError):
-            _ = add_locations(init_location(shape), loc, shape)
+            _ = compose_locations(init_location(shape), loc, shape)
 
 
 class TestComputeIndices:
@@ -489,10 +492,10 @@ class TestShapeFromLocation:
         for _ in range(1000):
             loc1 = random_location(rng, np_array.shape, max_step, prob_step_negative, prob_start_stop_negative)
             subarray = np_array[loc1]
-            loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
+            loc1_cleaned = compose_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
 
             if not (subarray.shape == shape_from_location(loc1_cleaned, np_array.shape)):
-                _ = add_locations(init_location(np_array.shape), loc1, np_array.shape)
+                _ = compose_locations(init_location(np_array.shape), loc1, np_array.shape)
 
             assert subarray.shape == shape_from_location(loc1_cleaned, np_array.shape)
 
@@ -501,10 +504,10 @@ class TestShapeFromLocation:
             
             loc2 = random_location(rng, subarray.shape, max_step, prob_step_negative, prob_start_stop_negative)
             subsubarray = subarray[loc2]
-            joined_loc = add_locations(loc1_cleaned, loc2, np_array.shape)
+            joined_loc = compose_locations(loc1_cleaned, loc2, np_array.shape)
             
             if not (subsubarray.shape == shape_from_location(joined_loc, np_array.shape)):
-                _ = add_locations(loc1_cleaned, loc2, np_array.shape)
+                _ = compose_locations(loc1_cleaned, loc2, np_array.shape)
 
             assert subsubarray.shape == shape_from_location(joined_loc, np_array.shape)
 
@@ -571,12 +574,12 @@ class TestShapeFromLocation:
         loc2: Location,
     ):
         subarray = np_array[loc1]
-        loc1_cleaned = add_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
+        loc1_cleaned = compose_locations(init_location(np_array.shape), loc1, np_array.shape)  # clean location
 
         assert subarray.shape == shape_from_location(loc1_cleaned, np_array.shape)
 
         subsubarray = subarray[loc2]
-        joined_loc = add_locations(loc1_cleaned, loc2, np_array.shape)
+        joined_loc = compose_locations(loc1_cleaned, loc2, np_array.shape)
 
         assert subsubarray.shape == shape_from_location(joined_loc, np_array.shape)
 
@@ -600,7 +603,7 @@ class TestShapeFromLocation:
     ])
     def test_shape_from_location_named_cases(self, np_array, location):
         subarray = np_array[location]
-        loc_cleaned = add_locations(init_location(np_array.shape), location, np_array.shape)  # clean location
+        loc_cleaned = compose_locations(init_location(np_array.shape), location, np_array.shape)  # clean location
         assert subarray.shape == shape_from_location(loc_cleaned, np_array.shape)
 
     @pytest.mark.parametrize("n_batch_dims,current_batch_dims", [

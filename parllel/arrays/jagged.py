@@ -9,9 +9,9 @@ import numpy as np
 import parllel.logger as logger
 from parllel import ArrayDict
 from parllel.arrays.array import Array
-from parllel.arrays.indices import (Location, StandardIndex, add_locations,
-                                    batch_dims_from_location, index_slice,
-                                    init_location)
+from parllel.arrays.indices import (Location, StandardIndex,
+                                    batch_dims_from_location, compose_indices,
+                                    compose_locations, init_location)
 from parllel.arrays.managedmemory import SharedMemoryArray
 from parllel.arrays.sharedmemory import InheritedMemoryArray
 
@@ -175,7 +175,7 @@ class JaggedArray(Array, kind="jagged"):
         if self._shape is None:
             self._resolve_indexing_history()
 
-        destination = add_locations(
+        destination = compose_locations(
             self._current_location,
             indices,
             self._base_shape,
@@ -245,7 +245,7 @@ class JaggedArray(Array, kind="jagged"):
             n_slice = slice(start, end, 1)  # standard slice must have integer step
             # use neg_from_end=True here to ensure that slice doesn't get
             # extended beyond the size of the point cloud
-            n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
+            n_loc = compose_indices(n_slice, feature_locs[0], self._flattened_size)
             real_loc = batch_loc + (n_loc,) + feature_locs[1:]
 
             # write to underlying array at that location
@@ -338,7 +338,9 @@ class JaggedArray(Array, kind="jagged"):
             n_slice = slice(start, end, 1)
             # use neg_from_end=True here to ensure that slice doesn't get
             # extended beyond the size of the point cloud
-            n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
+            n_loc = compose_indices(
+                n_slice, feature_locs[0], self._flattened_size, neg_from_end=False
+            )
             real_loc = b_loc + (n_loc,) + feature_locs[1:]
             graph = self._base_array[real_loc]
             graphs.append(graph)

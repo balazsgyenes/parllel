@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from typing import Optional, TypeVar, Union
 
@@ -77,7 +79,7 @@ def predict_copy_on_index(shape: Shape, new_location: Location) -> bool:
     )
 
 
-def add_locations(
+def compose_locations(
     location: StandardLocation,
     new_location: Location,
     base_shape: Shape,
@@ -97,13 +99,13 @@ def add_locations(
     """
     location = list(location)  # create a copy to prevent modifying inputs
 
-    if isinstance(new_location, tuple):
-        new_location = list(new_location)
-    else:
-        new_location = [new_location]
-
-    if len(new_location) == 1 and new_location[0] is Ellipsis:
+    if new_location is Ellipsis:
         return location
+
+    if isinstance(new_location, tuple):
+        new_locs = list(new_location)
+    else:
+        new_locs = [new_location]
 
     if any(isinstance(loc, np.ndarray) for loc in location):
         raise IndexError(
@@ -111,22 +113,18 @@ def add_locations(
         )
 
     # check if Ellipsis occurs in new_location
-    ellipses = [
-        dim for dim, new_index in enumerate(new_location) if new_index is Ellipsis
-    ]
+    ellipses = [dim for dim, new_index in enumerate(new_locs) if new_index is Ellipsis]
     if ellipses:
         if len(ellipses) > 1:
             raise IndexError("An index can only have a single ellipsis ('...').")
-        # pad new_location with slice(None) elements until length equals the
+        # pad new_locs with slice(None) elements until length equals the
         # apparent number of dimensions
         i = ellipses[0]
         apparent_n_dim = len([loc for loc in location if isinstance(loc, slice)])
-        new_location[i : i + 1] = [slice(None)] * (
-            apparent_n_dim - len(new_location) + 1
-        )
+        new_locs[i : i + 1] = [slice(None)] * (apparent_n_dim - len(new_locs) + 1)
 
-    if not new_location:
-        # e.g. if new_location was [()]
+    if not new_locs:
+        # e.g. if new_location was () or (Ellipsis,)
         return location
 
     i = 0
@@ -136,17 +134,17 @@ def add_locations(
             # cannot be indexed further
             continue
 
-        location[dim] = index_slice(index, new_location[i], size, neg_from_end)
+        location[dim] = compose_indices(index, new_locs[i], size, neg_from_end)
 
         i += 1  # consider next new_index on next loop iteration
-        if i == len(new_location):
-            # new_location exhausted
+        if i == len(new_locs):
+            # new_locs exhausted
             break
     else:
-        # if new_location has not been exhausted, too many indices
+        # if new_locs has not been exhausted, too many indices
         raise IndexError(
             f"Too many indices for array: array is {len(base_shape)}-dimensional, "
-            f"but {len(new_location)} were indexed."
+            f"but {len(new_locs)} were indexed."
         )
 
     return location
@@ -155,7 +153,7 @@ def add_locations(
 IndexType = TypeVar("IndexType", int, slice, np.ndarray)
 
 
-def index_slice(
+def compose_indices(
     index: slice,
     new_index: IndexType,
     size: Size,
@@ -168,85 +166,40 @@ def index_slice(
     index must be a slice in standard form (see `clean_slice`).
     """
     if index == slice(None):
-        return clean_slice(new_index, size)
-
-    if isinstance(new_index, np.ndarray):
-        new_index = index_slice_with_np(index, new_index, size, neg_from_end)
-        if size is not None and not np.all((0 <= new_index) & (new_index < size)):
-            out_of_bounds = new_index[~(0 <= new_index)]
-            if out_of_bounds.shape[0] == 0:
-                out_of_bounds = new_index[~(new_index < size)]
-            raise IndexError(
-                f"Index {out_of_bounds[0]} is out of bounds for axis with size "
-                f"{size}."
-            )
+        if isinstance(new_index, slice):
+            # slices must be converted to standard form
+            return clean_slice(new_index, size)
+        if __debug__:
+            # in this case, we leave negative indices as they are
+            verify_scalar(new_index, size, allow_negative=neg_from_end)
         return new_index
 
     elif isinstance(new_index, int):
-        new_index = index_slice_with_int(index, new_index, size, neg_from_end)
-        if size is not None and not (0 <= new_index < size):
-            raise IndexError(
-                f"Index {new_index} is out of bounds for axis with size {size}."
-            )
-        return new_index  # new_index should never be negative after cleaning
+        new_index = compose_slice_with_int(index, new_index, size, neg_from_end)
+        if __debug__:
+            # new_index should never be negative after composition
+            verify_scalar(new_index, size, allow_negative=False)
+        return new_index
 
     elif isinstance(new_index, slice):
         if new_index == slice(None):
             # no op if indexed with the trivial slice
             return index
-
         else:
-            # convert to numerical form for computation
-            # size = max(index.start, index.stop)
-            start, stop, step = index.indices(size)
+            return compose_slices(index, new_index, size, neg_from_end)
 
-            new_step = new_index.step if new_index.step is not None else 1
-
-            if (new_start := new_index.start) is not None:
-                # translate new_index.start into "world coordinates"
-                new_start = index_slice_with_int(index, new_start, size, neg_from_end)
-                # lower bound at 0, preventing out-of-bounds slices from turning
-                # into in-bounds slices
-                new_start = max(0, new_start)
-            elif new_step > 0:
-                new_start = start
-            else:
-                # compute true end point of slice, taking into account that step
-                # might not evenly divide the length of the array
-                new_start = start + step * math.ceil((stop - start) / step) - step
-
-            if (new_stop := new_index.stop) is not None:
-                # translate new_stop into "world coordinates"
-                new_stop = index_slice_with_int(index, new_stop, size, neg_from_end)
-                if neg_from_end:
-                    # find the stop that results in the shorter sequence
-                    new_stop = min(stop, new_stop) if step > 0 else max(stop, new_stop)
-                # lower bound at 0 only if positive step. negative stops for
-                # negative steps are converted into Nones later
-                new_stop = max(0, new_stop) if step > 0 else new_stop
-            elif new_step > 0:
-                new_stop = stop
-            else:
-                new_stop = start
-                # extend new_stop one step away from body of range
-                new_stop += step * np.sign(new_step)
-
-            # update step by multiplying new step onto it
-            new_step = step * new_step
-
-            # set to None instead of -1
-            # this might happen if the stop was specified as an integer, but lands
-            # before the beginning of the array, or if the stop was None and the
-            # start/stop of index was -1 (i.e. None with negative step)
-            new_stop = None if new_stop < 0 else new_stop
-
-            return slice(new_start, new_stop, new_step)
+    if isinstance(new_index, np.ndarray):
+        new_index = compose_slice_with_np(index, new_index, size, neg_from_end)
+        if __debug__:
+            # new_index should never be negative after composition
+            verify_scalar(new_index, size, allow_negative=False)
+        return new_index
 
     else:
         raise TypeError(f"Cannot index slice with {type(new_index).__name__} object")
 
 
-def index_slice_with_int(
+def compose_slice_with_int(
     slice_: slice,
     index: int,
     size: Size,
@@ -272,7 +225,7 @@ def index_slice_with_int(
     return zero + index * step
 
 
-def index_slice_with_np(
+def compose_slice_with_np(
     slice_: slice,
     index: np.ndarray,
     size: Size,
@@ -301,6 +254,98 @@ def index_slice_with_np(
     return new_index
 
 
+def verify_scalar(
+    index: int | np.ndarray,
+    size: Size,
+    allow_negative: bool = True,
+) -> None:
+    if isinstance(index, int):
+        if size is not None:
+            lower_bound = -size if allow_negative else 0
+            if not (lower_bound <= index < size):
+                raise IndexError(
+                    f"Index {index} is out of bounds for axis with size {size}."
+                )
+        elif not allow_negative and not (0 <= index):
+            raise IndexError(
+                f"Negative index {index} not allowed when {allow_negative=}"
+            )
+
+    elif isinstance(index, np.ndarray):
+        if size is not None:
+            lower_bound = -size if allow_negative else 0
+
+            if not np.all((lower_bound <= index) & (index < size)):
+                out_of_bounds = index[(lower_bound > index) | (index >= size)]
+                raise IndexError(
+                    f"Index {out_of_bounds} is out of bounds for axis with size {size}."
+                )
+        elif allow_negative and not np.all(0 <= index):
+            out_of_bounds = index[0 > index]
+            raise IndexError(
+                f"Negative index {out_of_bounds} not allowed when {allow_negative=}"
+            )
+
+    else:
+        raise TypeError(f"Unexpected type: {index}")
+
+
+def compose_slices(
+    slice_: slice,
+    new_slice: slice,
+    size: Size,
+    neg_from_end: bool = True,
+) -> slice:
+    if size is None:
+        raise NotImplementedError
+
+    # convert to numerical form for computation
+    start, stop, step = slice_.indices(size)
+
+    new_step = new_slice.step if new_slice.step is not None else 1
+
+    if (new_start := new_slice.start) is not None:
+        # translate new_start into "world coordinates"
+        new_start = compose_slice_with_int(slice_, new_start, size, neg_from_end)
+        # lower bound at 0, preventing out-of-bounds slices from turning
+        # into in-bounds slices
+        new_start = max(0, new_start)
+    elif new_step > 0:
+        new_start = start
+    else:
+        # compute true end point of slice, taking into account that step
+        # might not evenly divide the length of the array
+        new_start = start + step * math.ceil((stop - start) / step) - step
+
+    if (new_stop := new_slice.stop) is not None:
+        # translate new_stop into "world coordinates"
+        new_stop = compose_slice_with_int(slice_, new_stop, size, neg_from_end)
+        if neg_from_end:
+            # find the stop that results in the shorter sequence
+            # if neg_from_end == False, ignore the end of the current slice
+            new_stop = min(stop, new_stop) if step > 0 else max(stop, new_stop)
+        # lower bound at 0 only if positive step. negative stops for
+        # negative steps are converted into Nones later
+        new_stop = max(0, new_stop) if step > 0 else new_stop
+    elif new_step > 0:
+        new_stop = stop
+    else:
+        new_stop = start
+        # extend new_stop one step away from body of range
+        new_stop += step * np.sign(new_step)
+
+    # update step by multiplying new step onto it
+    new_step = step * new_step
+
+    # set stop to None instead of -1
+    # this might happen if the stop was specified as an integer, but lands
+    # before the beginning of the array, or if the stop was None and the
+    # start/stop of slice_ was -1 (i.e. None with negative step)
+    new_stop = None if new_stop < 0 else new_stop
+
+    return slice(new_start, new_stop, new_step)
+
+
 def clean_slice(slice_: slice, size: Size) -> slice:
     """Return a slice in standard form, with:
         - start, a positive integer
@@ -315,20 +360,18 @@ def clean_slice(slice_: slice, size: Size) -> slice:
         start, stop, step = slice_.indices(size)
         stop = None if stop < 0 else stop
     else:
-        start: Optional[int]
-        stop: Optional[int]
-        step: Optional[int]
-        start, stop, step = slice_.start, slice_.stop, slice_.step
+        # we might leave start as None
+        start: Optional[int] = slice_.start
+        stop: Optional[int] = slice_.stop
+        step: Optional[int] = slice_.step
         step = step if step is not None else 1
-        if step < 0:
-            raise ValueError("Cannot reverse dimension with undefined size.")
-        start = start if start is not None else 0
+        start = 0 if start is None and step > 0 else start
     return slice(start, stop, step)
 
 
 def init_location(base_shape: Shape) -> StandardLocation:
     # slices in standard form, with step != None
-    return [slice(0, size, 1) for size in base_shape]
+    return [slice(None) for _ in base_shape]
 
 
 def shape_from_location(location: StandardLocation, base_shape: Shape) -> Shape:

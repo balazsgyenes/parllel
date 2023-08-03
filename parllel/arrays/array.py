@@ -6,8 +6,8 @@ from typing import Any, Literal, TypeVar
 import numpy as np
 
 from parllel import ArrayTree
-from parllel.arrays.indices import (Index, Location, add_locations,
-                                    batch_dims_from_location, index_slice,
+from parllel.arrays.indices import (Index, Location, batch_dims_from_location,
+                                    compose_locations, compose_slices,
                                     init_location, shape_from_location)
 
 # fmt: on
@@ -295,7 +295,7 @@ class Array:
 
     def _resolve_indexing_history(self) -> None:
         for location in self._unresolved_indices:
-            self._current_location = add_locations(
+            self._current_location = compose_locations(
                 self._current_location,
                 location,
                 self._base_shape,
@@ -315,7 +315,7 @@ class Array:
             self._resolve_indexing_history()
 
         destination = tuple(
-            add_locations(
+            compose_locations(
                 self._current_location,
                 indices,
                 self._base_shape,
@@ -365,7 +365,7 @@ class Array:
         leading_loc = offsetted._current_location[0]
         if isinstance(leading_loc, slice):
             offset_slice = slice(offset, offsetted.shape[0] + offset)
-            offsetted._current_location[0] = index_slice(
+            offsetted._current_location[0] = compose_slices(
                 leading_loc,
                 offset_slice,
                 offsetted._base_shape[0],
