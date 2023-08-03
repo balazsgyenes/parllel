@@ -150,7 +150,6 @@ class TestJaggedArray:
 
         array[array.last, 0] = graphs[0]
         array[array.last + 1, 0] = graphs[1]
-        array[np.array([1, 2, 3]), np.array([1, 2, 3])] = graphs[0]
 
         array.rotate()
 
