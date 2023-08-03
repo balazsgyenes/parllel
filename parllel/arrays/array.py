@@ -65,7 +65,11 @@ class Array:
             raise ValueError(
                 f"No array subclass registered under {kind=} and {storage=}"
             )
-        if hasattr(subcls, "get_array_class"):
+        if (
+            hasattr(subcls, "get_array_class")
+            and "full_size" in kwargs
+            and "batch_shape" in kwargs
+        ):
             subcls = subcls.get_array_class(**kwargs)
         return super().__new__(subcls)
 
@@ -79,6 +83,7 @@ class Array:
         storage: str | None = None,  # consumed by __new__
         padding: int = 0,
         full_size: int | None = None,
+        **kwargs,
     ) -> None:
         if not batch_shape:
             raise ValueError("Non-empty batch_shape required.")
@@ -149,6 +154,8 @@ class Array:
         kind = kind if kind is not None else self.kind
         storage = storage if storage is not None else self.storage
         padding = padding if padding is not None else self.padding
+        # if hasattr(self, "max_mean_num_elem"):
+        #     kwargs["max_mean_num_elem"] = self.max_mean_num_elem
         full_size = (
             full_size
             if full_size is not None

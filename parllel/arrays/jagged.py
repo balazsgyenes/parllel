@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar, Tuple
 
 import numpy as np
 
@@ -274,7 +274,7 @@ class JaggedArray(Array, kind="jagged"):
         new_slice: StandardIndex = slice(start, stop, 1)
         self._current_location[0] = new_slice
 
-    def to_list(self) -> list:
+    def to_list(self) -> Tuple[list, list]:
         if self._shape is None:
             self._resolve_indexing_history()
 
@@ -334,11 +334,12 @@ class JaggedArray(Array, kind="jagged"):
 
         current_ptrs = np.cumsum(current_ptrs, dtype=np.int64)
         current_ptrs = np.insert(current_ptrs, 0, 0)  # insert 0 at beginning of ptrs
-        self._current_ptrs = current_ptrs  # save for consumption by to_ndarray
-        return graphs
+        if len(graphs) == 0 and len(current_ptrs) > 1:
+            print("WRONG")
+        return graphs, current_ptrs
 
     def __array__(self, dtype=None) -> np.ndarray:
-        graphs = self.to_list()
+        graphs, self._current_ptrs = self.to_list()
         array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
         assert array.shape[0] == self._current_ptrs[-1]
         if dtype is not None:
