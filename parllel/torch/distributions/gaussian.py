@@ -65,7 +65,7 @@ class Gaussian(Distribution):
         """
         mean = dist_params["mean"]
         if self.deterministic_eval_mode and self.mode == "eval":
-            noise = torch.zeros_like(mean)
+            sample = mean
         else:
             if self.fixed_std is None:
                 log_std = dist_params["log_std"]
@@ -83,10 +83,10 @@ class Gaussian(Distribution):
             if self.noise_clip is not None:
                 noise = torch.clamp(noise, -self.noise_clip, self.noise_clip)
 
-        sample = mean + noise
-        # Other way to do reparameterization trick:
-        # dist = torch.distributions.Normal(mean, std)
-        # sample = dist.rsample()
+            sample = mean + noise
+            # Other way to do reparameterization trick:
+            # dist = torch.distributions.Normal(mean, std)
+            # sample = dist.rsample()
         return sample
 
     def kl(self, old_dist_params: DistParams, new_dist_params: DistParams) -> Tensor:
