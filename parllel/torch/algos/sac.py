@@ -107,8 +107,6 @@ class SAC(Algorithm):
         # during q prediction, since we only want to optimize the encoder
         # using the gradients from the policy network.
         observation = self.agent.encode(samples["observation"])
-        if observation.shape[0] != 16:
-            print(f"HOLA, {observation.shape}")
 
         # compute target Q according to formula
         # r + gamma * (1 - d) * (min Q_targ(s', a') - alpha * log pi(s', a'))

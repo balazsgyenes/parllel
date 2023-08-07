@@ -65,7 +65,7 @@ def build(config: DictConfig) -> RLRunner:
         max_mean_num_elem=obs_space.max_num_points,
         feature_shape=obs_space.shape,
         kind="jagged",
-        storage="managed" if parallel else "local",
+        storage="shared" if parallel else "local",
         padding=1,
         full_size=config["algo"]["replay_length"],
     )
@@ -136,7 +136,7 @@ def build(config: DictConfig) -> RLRunner:
         size_T=config["algo"]["replay_length"],
         replay_batch_size=config["algo"]["batch_size"],
         newest_n_samples_invalid=0,
-        oldest_n_samples_invalid=20,  # TODO: temporary fix to prevent sampling from accessing overwritten point clouds
+        oldest_n_samples_invalid=1,  # TODO: temporary fix to prevent sampling from accessing overwritten point clouds
         batch_transform=batch_transform,
     )
 
@@ -213,6 +213,7 @@ def main(config: DictConfig) -> None:
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch
+        mode="disabled",
     )
 
     logger.init(

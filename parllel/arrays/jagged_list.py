@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import numpy as np
@@ -10,6 +11,8 @@ from parllel.arrays.indices import (Location, StandardIndex, add_locations,
                                     batch_dims_from_location, init_location)
 from parllel.arrays.jagged import JaggedArray
 
+class CurrentIndex: # we can't add attributes to objects created via object()
+    pass
 
 class JaggedArrayList(JaggedArray, kind="jagged_list"):
     kind = "jagged_list"
@@ -88,6 +91,7 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
             + feature_shape
         )
         self._base_batch_dims = len(batch_shape)
+        self._init_batch_shape = batch_shape # we currently need this becaus __getnewargs_ex__ returns an empty tuple otherwise
 
         self._current_location = init_location(self._base_shape)
         # start with first array
@@ -97,34 +101,43 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
         self._rotatable = True
 
         self._current_array_iter = itertools.cycle(range(len(self.jagged_arrays)))
+        self._current_array = CurrentIndex()
         self._current_array_idx = next(self._current_array_iter)
         self._resolve_indexing_history()
         self.access_padding = False
 
-    def new_array(self, *args, **kwargs) -> Array:
-        """Creates an Array with the same shape and type as a given Array
-        (similar to torch's new_zeros function). By default, the full size of
-        the created Array is just the apparent size of the template. To set it
-        to another value, either pass it manually or set the
-        `inherit_full_size` flag to True to use the template's full size.
-        """
-        if "kind" not in kwargs or kwargs["kind"] == "jagged":
-            max_mean_num_elem: int | None = kwargs.get("max_mean_num_elem")
-            kwargs["max_mean_num_elem"] = (
-                max_mean_num_elem if max_mean_num_elem else self.max_mean_num_elem
-            )
+    @property
+    def _current_array_idx(self) -> int:
+        return self._current_array.index
 
-            feature_shape: tuple[int, ...] | None = kwargs.get("feature_shape")
-            if feature_shape is None:
-                # get number of visible dimensions that are not feature dimensions
-                n_batch_and_point_dims = batch_dims_from_location(
-                    self._current_location,
-                    self._base_batch_dims + 1,
-                )
-                feature_shape = self.shape[n_batch_and_point_dims:]
-            kwargs["feature_shape"] = feature_shape
+    @_current_array_idx.setter
+    def _current_array_idx(self, value: int):
+        self._current_array.index = value
 
-        return super().new_array(*args, **kwargs)
+    # def new_array(self, *args, **kwargs) -> Array:
+    #     """Creates an Array with the same shape and type as a given Array
+    #     (similar to torch's new_zeros function). By default, the full size of
+    #     the created Array is just the apparent size of the template. To set it
+    #     to another value, either pass it manually or set the
+    #     `inherit_full_size` flag to True to use the template's full size.
+    #     """
+    #     if "kind" not in kwargs or kwargs["kind"] == "jagged":
+    #         max_mean_num_elem: int | None = kwargs.get("max_mean_num_elem")
+    #         kwargs["max_mean_num_elem"] = (
+    #             max_mean_num_elem if max_mean_num_elem else self.max_mean_num_elem
+    #         )
+
+    #         feature_shape: tuple[int, ...] | None = kwargs.get("feature_shape")
+    #         if feature_shape is None:
+    #             # get number of visible dimensions that are not feature dimensions
+    #             n_batch_and_point_dims = batch_dims_from_location(
+    #                 self._current_location,
+    #                 self._base_batch_dims + 1,
+    #             )
+    #             feature_shape = self.shape[n_batch_and_point_dims:]
+    #         kwargs["feature_shape"] = feature_shape
+
+    #     return super(JaggedArray, self).new_array(*args, **kwargs)
 
     def reset(self):
         super().reset()
@@ -192,9 +205,14 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
             array_idx, entry_idx = divmod(
                 self._current_location[0] - self.padding, self.block_size
             )
+
+            if array_idx == self._current_array_idx + 1 and entry_idx < self.padding:
+                array_idx = self._current_array_idx
+                entry_idx = self.block_size + entry_idx
+
             if array_idx >= len(self.jagged_arrays):
                 array_idx = len(self.jagged_arrays) - 1
-                entry_idx = self.block_size - entry_idx
+                entry_idx = self.block_size + entry_idx
 
             current_location = tuple([entry_idx] + self._current_location[1:])
             graphs, current_ptrs = self.jagged_arrays[array_idx][current_location].to_list()  # type: ignore
@@ -204,15 +222,23 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
             array_idx, entry_idx = np.divmod(
                 self._current_location[0] - self.padding, self.block_size
             )
+            if np.any(
+                mask := (
+                    np.logical_and(
+                        array_idx == self._current_array_idx + 1,
+                        entry_idx < self.padding,
+                    )
+                )
+            ):
+                array_idx[mask] = self._current_array_idx
+                entry_idx[mask] = self.block_size - entry_idx[mask]
+
             if np.any(mask := (array_idx >= len(self.jagged_arrays))):
                 array_idx[mask] = len(self.jagged_arrays) - 1
                 entry_idx[mask] = self.block_size - entry_idx[mask]
 
             graphs = []
-            current_ptrs = []
-            repeat = []
-            offset = []
-            num_nodeses = []
+            num_nodes = []
             current_location = [entry_idx] + self._current_location[1:]
             for i, array in enumerate(self.jagged_arrays):
                 mask = array_idx == i
@@ -225,16 +251,12 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
                 # current_location = tuple([entry_idx[array_idx == i]] + self._current_location[1:])
                 graph, ptr = array[new_current_location].to_list()
                 if len(ptr) > 1:
-                    current_ptrs.append(ptr[1:])  # we don't need the first pointer to 0
-                    repeat.append(len(ptr) - 1)
-                    offset.append(ptr[-1])
-                    num_nodes = ptr[1:] - ptr[:-1]
-                    num_nodeses.append(num_nodes)
+                    num_nodes.append(ptr[1:] - ptr[:-1])
                     graphs.extend(graph)
 
-            num_nodeses = np.concatenate(num_nodeses)
-            num_nodeses = np.cumsum(num_nodeses)
-            num_nodeses = np.insert(num_nodeses, 0, 0)
+            current_ptrs = np.concatenate(num_nodes)
+            current_ptrs = np.cumsum(current_ptrs)
+            current_ptrs = np.insert(current_ptrs, 0, 0)
         else:
             raise NotImplementedError
 
@@ -279,13 +301,3 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
         new_slice: StandardIndex = slice(start, stop, 1)
         self._current_location[0] = new_slice
 
-    def to_ndarray(self) -> ArrayDict[np.ndarray]:
-        # TODO: hard-coded that JaggedArray is point/node positions
-        # what about point/node features?
-        data = self.__array__()
-        return ArrayDict(
-            {
-                "pos": data,
-                "ptr": self._current_ptrs,  # updated during execution of __array__
-            }
-        )

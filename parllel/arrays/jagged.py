@@ -72,6 +72,7 @@ class JaggedArray(Array, kind="jagged"):
             raise ValueError(f"Unknown on_overflow option {on_overflow}")
         elif on_overflow in {"resize", "wrap"}:
             raise NotImplementedError(f"{on_overflow=}")
+        self._init_batch_shape = batch_shape # we currently need this becaus __getnewargs_ex__ returns an empty tuple if we return self.batch_shape
 
         self.dtype = dtype
         self.padding = padding
@@ -106,7 +107,7 @@ class JaggedArray(Array, kind="jagged"):
         self._rotatable = True
 
     def __getnewargs_ex__(self):
-        return (), {"batch_shape": self.batch_shape, "full_size": self.full_size}
+        return (), {"batch_shape": self._init_batch_shape, "full_size": self.full_size}
 
 
     def new_array(self, *args, **kwargs) -> Array:
@@ -334,8 +335,6 @@ class JaggedArray(Array, kind="jagged"):
 
         current_ptrs = np.cumsum(current_ptrs, dtype=np.int64)
         current_ptrs = np.insert(current_ptrs, 0, 0)  # insert 0 at beginning of ptrs
-        if len(graphs) == 0 and len(current_ptrs) > 1:
-            print("WRONG")
         return graphs, current_ptrs
 
     def __array__(self, dtype=None) -> np.ndarray:
