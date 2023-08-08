@@ -2,7 +2,7 @@ defaults:
   - sac@algo
   - _self_
 
-parallel: False
+parallel: True
 batch_T: 32
 batch_B: 16
 max_steps_decorrelate: 50

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import Any, Literal, TypeVar, Tuple
+from typing import Any, Literal, TypeVar
 
 import numpy as np
 
@@ -29,6 +29,26 @@ class JaggedArray(Array, kind="jagged"):
     kind = "jagged"
     _base_array: np.ndarray
     _ptr: np.ndarray
+
+    def __new__(
+        cls,
+        *args,
+        batch_shape: tuple[int, ...] | None = None,
+        full_size: int | None = None,
+        **kwargs,
+    ) -> Array:
+        # TODO: still specialize storage type if called like JaggedArray(storage="shared")
+
+        if full_size is None or full_size == batch_shape[0]:
+            # batch_shape is only None if calling JaggedArray[List].__new__(type(self))
+            # explicitly: must return the same type as cls in order for getitem to work
+            #
+            # cannot call super().__new__ without creating an infinite loop
+            return object.__new__(cls)
+        else:
+            from parllel.arrays.jagged_list import JaggedArrayList
+
+            return object.__new__(JaggedArrayList)
 
     def __init__(
         self,
@@ -72,7 +92,6 @@ class JaggedArray(Array, kind="jagged"):
             raise ValueError(f"Unknown on_overflow option {on_overflow}")
         elif on_overflow in {"resize", "wrap"}:
             raise NotImplementedError(f"{on_overflow=}")
-        self._init_batch_shape = batch_shape # we currently need this becaus __getnewargs_ex__ returns an empty tuple if we return self.batch_shape
 
         self.dtype = dtype
         self.padding = padding
@@ -106,10 +125,6 @@ class JaggedArray(Array, kind="jagged"):
 
         self._rotatable = True
 
-    def __getnewargs_ex__(self):
-        return (), {"batch_shape": self._init_batch_shape, "full_size": self.full_size}
-
-
     def new_array(self, *args, **kwargs) -> Array:
         """Creates an Array with the same shape and type as a given Array
         (similar to torch's new_zeros function). By default, the full size of
@@ -133,15 +148,9 @@ class JaggedArray(Array, kind="jagged"):
                 feature_shape = self.shape[n_batch_and_point_dims:]
             kwargs["feature_shape"] = feature_shape
 
+            on_overflow: str | None = kwargs.get("on_overflow")
+            kwargs["on_overflow"] = on_overflow if on_overflow else self.on_overflow
         return super().new_array(*args, **kwargs)
-
-    @classmethod
-    def get_array_class(cls, full_size, batch_shape, **kwargs):
-        if full_size is None or full_size == batch_shape[0]:
-            return cls
-        else:
-            from parllel.arrays.jagged_list import JaggedArrayList
-            return JaggedArrayList
 
     @classmethod
     def from_numpy(cls, *args, example: Any, **kwargs) -> Array:
@@ -275,7 +284,7 @@ class JaggedArray(Array, kind="jagged"):
         new_slice: StandardIndex = slice(start, stop, 1)
         self._current_location[0] = new_slice
 
-    def to_list(self) -> Tuple[list, list]:
+    def to_list(self) -> tuple[list[np.ndarray], list[int]]:
         if self._shape is None:
             self._resolve_indexing_history()
 
@@ -291,8 +300,8 @@ class JaggedArray(Array, kind="jagged"):
             )
 
         # create a list of graphs to be concatenated into one large "batch"
-        graphs = []
-        current_ptrs = []
+        graphs: list[np.ndarray] = []
+        num_elements: list[int] = []
 
         if any(isinstance(loc, np.ndarray) for loc in batch_locs):
             # advanced indexing: zip arrays and iterate over them together
@@ -331,31 +340,27 @@ class JaggedArray(Array, kind="jagged"):
             real_loc = b_loc + (n_loc,) + feature_locs[1:]
             graph = self._base_array[real_loc]
             graphs.append(graph)
-            current_ptrs.append(graph.shape[0])
+            num_elements.append(graph.shape[0])
 
-        current_ptrs = np.cumsum(current_ptrs, dtype=np.int64)
-        current_ptrs = np.insert(current_ptrs, 0, 0)  # insert 0 at beginning of ptrs
-        return graphs, current_ptrs
+        return graphs, num_elements
+
+    def to_ndarray(self) -> ArrayDict[np.ndarray]:
+        graphs, num_elements = self.to_list()
+        array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
+        ptr = np.cumsum(num_elements, dtype=np.int64)
+        ptr = np.insert(ptr, 0, 0)  # insert 0 at beginning of ptr
+        assert array.shape[0] == ptr[-1]
+        # TODO: hard-coded that JaggedArray is point/node positions
+        # what about point/node features?
+        return ArrayDict({"pos": array, "ptr": ptr})
 
     def __array__(self, dtype=None) -> np.ndarray:
-        graphs, self._current_ptrs = self.to_list()
+        graphs, _ = self.to_list()
         array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
-        assert array.shape[0] == self._current_ptrs[-1]
         if dtype is not None:
             array = array.astype(dtype, copy=False)
 
         return array
-
-    def to_ndarray(self) -> ArrayDict[np.ndarray]:
-        # TODO: hard-coded that JaggedArray is point/node positions
-        # what about point/node features?
-        data = self.__array__()
-        return ArrayDict(
-            {
-                "pos": data,
-                "ptr": self._current_ptrs,  # updated during execution of __array__
-            }
-        )
 
 
 class InheritedMemoryJaggedArray(

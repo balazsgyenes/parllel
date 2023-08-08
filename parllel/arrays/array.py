@@ -38,6 +38,11 @@ class Array:
         **kwargs,
     ) -> None:
         super().__init_subclass__(**kwargs)
+        if kind is None and storage is None:
+            # subclasses can bypass registration machinery by not specifying
+            # either kind or storage
+            # for example, JaggedArrayList is not a registered subclass
+            return
         kind = kind if kind is not None else "default"
         storage = storage if storage is not None else "local"
         cls._subclasses[(kind, storage)] = cls
@@ -57,7 +62,7 @@ class Array:
 
         if kind == "default" and storage == "local":
             # instantiating "Array" with default arguments
-            return super().__new__(cls)
+            return object.__new__(cls)
         # otherwise look up name in dictionary of registered subclasses
         try:
             subcls = cls._subclasses[(kind, storage)]
@@ -65,13 +70,10 @@ class Array:
             raise ValueError(
                 f"No array subclass registered under {kind=} and {storage=}"
             )
-        if (
-            hasattr(subcls, "get_array_class")
-            and "full_size" in kwargs
-            and "batch_shape" in kwargs
-        ):
-            subcls = subcls.get_array_class(**kwargs)
-        return super().__new__(subcls)
+        if subcls.__new__ is Array.__new__:
+            return object.__new__(subcls)
+        else:
+            return subcls.__new__(subcls, *args, kind=kind, storage=storage, **kwargs)
 
     def __init__(
         self,
@@ -83,7 +85,6 @@ class Array:
         storage: str | None = None,  # consumed by __new__
         padding: int = 0,
         full_size: int | None = None,
-        **kwargs,
     ) -> None:
         if not batch_shape:
             raise ValueError("Non-empty batch_shape required.")
@@ -130,6 +131,7 @@ class Array:
         self,
         batch_shape: tuple[int, ...] | None = None,
         dtype: np.dtype | None = None,
+        *,
         feature_shape: tuple[int, ...] | None = None,
         kind: str | None = None,
         storage: str | None = None,
@@ -154,8 +156,6 @@ class Array:
         kind = kind if kind is not None else self.kind
         storage = storage if storage is not None else self.storage
         padding = padding if padding is not None else self.padding
-        # if hasattr(self, "max_mean_num_elem"):
-        #     kwargs["max_mean_num_elem"] = self.max_mean_num_elem
         full_size = (
             full_size
             if full_size is not None
@@ -172,7 +172,9 @@ class Array:
                 else None
             )
         )
-        return type(self)(
+        # TODO: maybe switch to type(self) once subclass resolution works
+        # on all subclasses
+        return Array(
             feature_shape=feature_shape,
             dtype=dtype,
             batch_shape=batch_shape,

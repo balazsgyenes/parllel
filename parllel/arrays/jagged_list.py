@@ -1,22 +1,23 @@
+# fmt: off
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 
-from parllel import Array, ArrayDict
+from parllel.arrays.array import Array
 from parllel.arrays.indices import (Location, StandardIndex, add_locations,
-                                    batch_dims_from_location, init_location)
+                                    init_location)
 from parllel.arrays.jagged import JaggedArray
 
-class CurrentIndex: # we can't add attributes to objects created via object()
+
+# fmt: on
+class CurrentIndex:  # we can't add attributes to objects created via object()
     pass
 
-class JaggedArrayList(JaggedArray, kind="jagged_list"):
-    kind = "jagged_list"
 
+class JaggedArrayList(JaggedArray):  # do not register subclass
     def __init__(
         self,
         batch_shape: tuple[int, ...],
@@ -33,10 +34,6 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
         if not batch_shape:
             raise ValueError("Non-empty batch_shape required.")
 
-        dtype = np.dtype(dtype)
-        if dtype == np.object_:
-            raise ValueError("Data type should not be object.")
-
         if padding < 0:
             raise ValueError("Padding must be non-negative.")
         if padding > batch_shape[0]:
@@ -44,33 +41,20 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
                 f"Padding ({padding}) cannot be greater than leading dimension {batch_shape[0]}."
             )
 
-        if full_size is None:
-            full_size = batch_shape[0]
-        if full_size < batch_shape[0]:
-            raise ValueError(
-                f"Full size ({full_size}) cannot be less than leading dimension {batch_shape[0]}."
-            )
+        assert full_size is not None and full_size > batch_shape[0]
         if full_size % batch_shape[0] != 0:
             raise ValueError(
                 f"Full size ({full_size}) must be evenly divided by leading dimension {batch_shape[0]}."
             )
 
-        if on_overflow not in {"drop", "resize", "wrap"}:
-            raise ValueError(f"Unknown on_overflow option {on_overflow}")
-        elif on_overflow in {"resize", "wrap"}:
-            raise NotImplementedError(f"{on_overflow=}")
-
         self.block_size = batch_shape[0]
-        self.max_mean_num_elem = max_mean_num_elem
 
-        self.dtype = dtype
         self.padding = padding
-        self.on_overflow = on_overflow
         self.full_size = full_size
         num_arrays = full_size // batch_shape[0]
 
-        self.jagged_arrays = [
-            JaggedArray(
+        self.jagged_arrays: list[JaggedArray] = [
+            Array(
                 batch_shape=batch_shape,
                 dtype=dtype,
                 max_mean_num_elem=max_mean_num_elem,
@@ -91,7 +75,6 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
             + feature_shape
         )
         self._base_batch_dims = len(batch_shape)
-        self._init_batch_shape = batch_shape # we currently need this becaus __getnewargs_ex__ returns an empty tuple otherwise
 
         self._current_location = init_location(self._base_shape)
         # start with first array
@@ -104,7 +87,22 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
         self._current_array = CurrentIndex()
         self._current_array_idx = next(self._current_array_iter)
         self._resolve_indexing_history()
-        self.access_padding = False
+
+    @property
+    def dtype(self) -> np.dtype:
+        return self.jagged_arrays[0].dtype
+
+    @property
+    def max_mean_num_elem(self) -> int:
+        return self.jagged_arrays[0].max_mean_num_elem
+
+    @property
+    def storage(self) -> str:
+        return self.jagged_arrays[0].storage
+
+    @property
+    def on_overflow(self) -> str:
+        return self.jagged_arrays[0].on_overflow
 
     @property
     def _current_array_idx(self) -> int:
@@ -113,31 +111,6 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
     @_current_array_idx.setter
     def _current_array_idx(self, value: int):
         self._current_array.index = value
-
-    # def new_array(self, *args, **kwargs) -> Array:
-    #     """Creates an Array with the same shape and type as a given Array
-    #     (similar to torch's new_zeros function). By default, the full size of
-    #     the created Array is just the apparent size of the template. To set it
-    #     to another value, either pass it manually or set the
-    #     `inherit_full_size` flag to True to use the template's full size.
-    #     """
-    #     if "kind" not in kwargs or kwargs["kind"] == "jagged":
-    #         max_mean_num_elem: int | None = kwargs.get("max_mean_num_elem")
-    #         kwargs["max_mean_num_elem"] = (
-    #             max_mean_num_elem if max_mean_num_elem else self.max_mean_num_elem
-    #         )
-
-    #         feature_shape: tuple[int, ...] | None = kwargs.get("feature_shape")
-    #         if feature_shape is None:
-    #             # get number of visible dimensions that are not feature dimensions
-    #             n_batch_and_point_dims = batch_dims_from_location(
-    #                 self._current_location,
-    #                 self._base_batch_dims + 1,
-    #             )
-    #             feature_shape = self.shape[n_batch_and_point_dims:]
-    #         kwargs["feature_shape"] = feature_shape
-
-    #     return super(JaggedArray, self).new_array(*args, **kwargs)
 
     def reset(self):
         super().reset()
@@ -173,7 +146,7 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
                 raise ValueError(
                     "Setting values outside of the active JaggedArray is currently not supported."
                 )
-            new_destination = (entry_idx, *destination[1:])
+            new_destination = (entry_idx,) + destination[1:]
             self.jagged_arrays[array_idx][new_destination] = value
 
         elif isinstance(destination[0], np.ndarray):
@@ -192,11 +165,6 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
             #     self.jagged_arrays[array_idx + 1][(-1, b)] = value
         else:
             raise NotImplementedError
-
-    # def __getitem__(self, indices: Location):
-    #     if self._shape is None:
-    #         self._resolve_indexing_history()
-    #     return self.jagged_arrays[self._current_array_idx][indices]
 
     def __array__(self, dtype=None) -> np.ndarray:
         if self._shape is None:
@@ -271,8 +239,8 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
             raise ValueError("rotate() is only allowed on unindexed array.")
 
         leading_loc: slice = self._current_location[0]
-        start = leading_loc.start + self.block_size
-        stop = leading_loc.stop + self.block_size
+        start = leading_loc.start + self.shape[0]
+        stop = leading_loc.stop + self.shape[0]
         next_array_idx = next(self._current_array_iter)
 
         if start >= self.full_size:
@@ -280,15 +248,19 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
             start -= self.full_size
             stop -= self.full_size
 
+        # update current location with modified start/stop
+        new_slice: StandardIndex = slice(start, stop, 1)
+        self._current_location[0] = new_slice
+
         if self.padding:
             final_values = range(
-                self.block_size - self.padding, self.block_size + self.padding
+                self.shape[0] - self.padding,
+                self.shape[0] + self.padding,
             )
             next_previous_values = range(-self.padding, self.padding)
             b_locs = [
                 range(size) for size in self._base_shape[1 : self._base_batch_dims]
             ]
-            self.access_padding = True
             for source, destination in zip(final_values, next_previous_values):
                 for b_loc in itertools.product(*b_locs):
                     self.jagged_arrays[next_array_idx][
@@ -296,8 +268,9 @@ class JaggedArrayList(JaggedArray, kind="jagged_list"):
                     ] = np.asarray(
                         self.jagged_arrays[self._current_array_idx][(source,) + b_loc]
                     )
-        self.access_padding = False
-        self._current_array_idx = next_array_idx
-        new_slice: StandardIndex = slice(start, stop, 1)
-        self._current_location[0] = new_slice
 
+        self._current_array_idx = next_array_idx
+
+    def close(self):
+        for array in self.jagged_arrays:
+            array.close()

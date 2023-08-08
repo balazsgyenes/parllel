@@ -136,7 +136,7 @@ def build(config: DictConfig) -> RLRunner:
         size_T=config["algo"]["replay_length"],
         replay_batch_size=config["algo"]["batch_size"],
         newest_n_samples_invalid=0,
-        oldest_n_samples_invalid=1,  # TODO: temporary fix to prevent sampling from accessing overwritten point clouds
+        oldest_n_samples_invalid=1,
         batch_transform=batch_transform,
     )
 
