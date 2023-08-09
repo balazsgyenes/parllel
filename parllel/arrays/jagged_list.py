@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import Literal
+from typing import Literal, TypeVar
 
 import numpy as np
 
@@ -132,78 +132,56 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
             )
         )
 
-        if isinstance(destination[0], int):
-            t = destination[0]
-            array_idx, entry_idx = divmod(t - self.padding, self.block_size)
+        t_index = destination[0]
+        if isinstance(t_index, slice):
+            raise NotImplementedError
 
-            if array_idx == self._current_array_idx + 1 and entry_idx < self.padding:
-                array_idx = self._current_array_idx
-                entry_idx = self.block_size + entry_idx
-
-            if array_idx != self._current_array_idx:
-                raise ValueError(
-                    "Setting values outside of the active JaggedArray is currently not supported."
-                )
-            new_destination = (entry_idx,) + destination[1:]
+        array_idx, entry_idx = divmod_with_padding(
+            index=t_index - self.padding,
+            block_size=self.block_size,
+            active_block=self._current_array_idx,
+            n_blocks=len(self.jagged_arrays),
+            padding=self.padding,
+        )
+        new_destination = (entry_idx,) + destination[1:]
+        if isinstance(t_index, int):
             self.jagged_arrays[array_idx][new_destination] = value
 
-        elif isinstance(destination[0], np.ndarray):
-            raise NotImplementedError
-            t = destination[0]
-            array_idx, entry_idx = np.divmod(
-                t - self.padding, self.block_size + self.padding
-            )
-            if np.any(array_idx != self._current_array_idx):
-                raise ValueError(
-                    "Setting values outside of the active JaggedArray is currently not supported."
+        elif isinstance(t_index, np.ndarray):
+            for i, array in enumerate(self.jagged_arrays):
+                mask = array_idx == i
+                new_current_location = tuple(
+                    loc[mask] if isinstance(loc, np.ndarray) else loc
+                    for loc in new_destination
                 )
-            new_indices = (entry_idx, *destination[1:])
-            self.jagged_arrays[self._current_array_idx][new_indices] = value
-            # if entry_idx == self.last + 1:
-            #     self.jagged_arrays[array_idx + 1][(-1, b)] = value
+                new_value = value[mask] if isinstance(value, np.ndarray) else value
+                array[new_current_location] = new_value
         else:
-            raise NotImplementedError
+            raise ValueError(f"Unknown index type {type(t_index).__name__}")
 
     def to_list(self) -> tuple[list[np.ndarray], list[int]]:
         if self._shape is None:
             self._resolve_indexing_history()
 
-        if isinstance(self._current_location[0], int):
-            array_idx, entry_idx = divmod(
-                self._current_location[0] - self.padding, self.block_size
-            )
+        t_index = self._current_location[0]
+        if isinstance(t_index, slice):
+            raise NotImplementedError
 
-            if array_idx == self._current_array_idx + 1 and entry_idx < self.padding:
-                array_idx = self._current_array_idx
-                entry_idx = self.block_size + entry_idx
+        array_idx, entry_idx = divmod_with_padding(
+            index=t_index - self.padding,
+            block_size=self.block_size,
+            active_block=self._current_array_idx,
+            n_blocks=len(self.jagged_arrays),
+            padding=self.padding,
+        )
+        current_location = (entry_idx,) + tuple(self._current_location[1:])
 
-            if array_idx >= len(self.jagged_arrays):
-                array_idx = len(self.jagged_arrays) - 1
-                entry_idx = self.block_size + entry_idx
-
-            current_location = tuple([entry_idx] + self._current_location[1:])
+        if isinstance(t_index, int):
             return self.jagged_arrays[array_idx][current_location].to_list()  # type: ignore
 
-        elif isinstance(self._current_location[0], np.ndarray):
-            array_idx, entry_idx = np.divmod(
-                self._current_location[0] - self.padding, self.block_size
-            )
-            if np.any(
-                mask := (
-                    (array_idx == self._current_array_idx + 1)
-                    & (entry_idx < self.padding)
-                )
-            ):
-                array_idx[mask] = self._current_array_idx
-                entry_idx[mask] = self.block_size + entry_idx[mask]
-
-            if np.any(mask := (array_idx >= len(self.jagged_arrays))):
-                array_idx[mask] = len(self.jagged_arrays) - 1
-                entry_idx[mask] = self.block_size + entry_idx[mask]
-
+        elif isinstance(t_index, np.ndarray):
             graphs = []
             num_elements = []
-            current_location = [entry_idx] + self._current_location[1:]
             for i, array in enumerate(self.jagged_arrays):
                 mask = array_idx == i
                 new_current_location = tuple(
@@ -216,7 +194,7 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
 
             return graphs, num_elements
         else:
-            raise NotImplementedError
+            raise ValueError(f"Unknown index type {type(t_index).__name__}")
 
     def rotate(self) -> None:
         if not self._rotatable:
@@ -258,3 +236,75 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
     def close(self):
         for array in self.jagged_arrays:
             array.close()
+
+    def __repr__(self) -> str:
+        try:
+            return super().__repr__()
+        except NotImplementedError:
+            return (
+                type(self).__name__ + "("
+                "..."
+                f", storage={self.storage}"
+                f", dtype={self.dtype.name}"
+                f", padding={self.padding}"
+                ")"
+            )
+
+
+IndexType = TypeVar("IndexType", int, slice, np.ndarray)
+
+
+def divmod_with_padding(
+    index: IndexType,
+    block_size: int,
+    active_block: int,
+    n_blocks: int,
+    padding: int,
+) -> tuple[IndexType, IndexType]:
+    if isinstance(index, int):
+        if (
+            active_block * block_size - padding
+            <= index
+            < (active_block + 1) * block_size + padding
+        ):
+            # index is contained within active block +/- padding
+            return active_block, index - active_block * block_size
+        elif index < 0:
+            # index is in leading padding of first block
+            return 0, index
+        elif index > n_blocks * block_size:
+            # index is in trailing padding of final block
+            return n_blocks - 1, index - (n_blocks - 1) * block_size
+        else:
+            # index is not within any of the accessible padding regions
+            return divmod(index, block_size)
+
+    elif isinstance(index, np.ndarray):
+        # create new arrays major and minor so we don't modify index
+        # divmod is actually equivalent to np.divmod
+        major, minor = np.divmod(index, block_size)
+
+        # index is contained within active block +/- padding
+        mask = (active_block * block_size - padding <= index) & (
+            index < (active_block + 1) * block_size + padding
+        )
+        major[mask], minor[mask] = active_block, index[mask] - active_block * block_size
+
+        # index is in leading padding of first block
+        mask = index < 0
+        major[mask], minor[mask] = 0, index[mask]
+
+        # index is in trailing padding of final block
+        mask = index > n_blocks * block_size
+        major[mask], minor[mask] = (
+            n_blocks - 1,
+            index[mask] - (n_blocks - 1) * block_size,
+        )
+
+        return major, minor
+
+    elif isinstance(index, slice):
+        raise NotImplementedError
+
+    else:
+        raise ValueError(f"Unknown index type {type(t_index).__name__}")
