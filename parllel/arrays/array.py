@@ -25,7 +25,7 @@ class Array:
         >>> array[:, slice(1, 3), 2] = 5.
     """
 
-    _subclasses = {}
+    _subclasses: dict[tuple[str, str], type[Array]] = {}
     storage = "local"
     kind = "default"
     _base_array: np.ndarray
@@ -47,6 +47,29 @@ class Array:
         storage = storage if storage is not None else "local"
         cls._subclasses[(kind, storage)] = cls
 
+    @classmethod
+    def _get_subclass(cls, kind: str | None, storage: str | None) -> type[Array]:
+        if kind is None and storage is None:
+            # instantiate a subclass directly by just not passing kind/storage
+            # e.g. JaggedArray(shape=(4,4), dtype=np.float32)
+            return cls
+
+        # fill in None arguments with values from class used to instantiate
+        kind = kind if kind is not None else cls.kind
+        storage = storage if storage is not None else cls.storage
+
+        if kind == "default" and storage == "local":
+            # Array is not a registered subclass
+            return Array
+
+        # otherwise look up name in dictionary of registered subclasses
+        try:
+            return cls._subclasses[(kind, storage)]
+        except KeyError:
+            raise ValueError(
+                f"No array subclass registered under {kind=} and {storage=}"
+            )
+
     def __new__(
         cls,
         *args,
@@ -54,26 +77,18 @@ class Array:
         storage: str | None = None,
         **kwargs,
     ) -> Array:
-        # fill in empty arguments with values from class used to instantiate
-        # can instantiate a subclass directly by just not passing kind/storage
-        # e.g. JaggedArray(shape=(4,4), dtype=np.float32)
-        kind = kind if kind is not None else cls.kind
-        storage = storage if storage is not None else cls.storage
+        # get requested specialization based on kind/storage
+        subcls = cls._get_subclass(kind, storage)
+        # give a change for the subclass to specialize itself further based on args/kwargs
+        subcls = subcls._specialize_subclass(
+            *args, kind=kind, storage=storage, **kwargs
+        )
+        # instantiate that class
+        return super().__new__(subcls)
 
-        if kind == "default" and storage == "local":
-            # instantiating "Array" with default arguments
-            return object.__new__(cls)
-        # otherwise look up name in dictionary of registered subclasses
-        try:
-            subcls = cls._subclasses[(kind, storage)]
-        except KeyError:
-            raise ValueError(
-                f"No array subclass registered under {kind=} and {storage=}"
-            )
-        if subcls.__new__ is Array.__new__:
-            return object.__new__(subcls)
-        else:
-            return subcls.__new__(subcls, *args, kind=kind, storage=storage, **kwargs)
+    @classmethod
+    def _specialize_subclass(cls, *args, **kwargs) -> type[Array]:
+        return cls
 
     def __init__(
         self,
@@ -172,8 +187,9 @@ class Array:
                 else None
             )
         )
-        # TODO: maybe switch to type(self) once subclass resolution works
-        # on all subclasses
+        # We use Array() because using type(self)() would skip calling __init__
+        # if the new array is not a subclass of the current array
+        # (e.g. shared_mem_array.new_array(storage="local"))
         return Array(
             feature_shape=feature_shape,
             dtype=dtype,

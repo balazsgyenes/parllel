@@ -30,25 +30,22 @@ class JaggedArray(Array, kind="jagged"):
     _base_array: np.ndarray
     _ptr: np.ndarray
 
-    def __new__(
+    @classmethod
+    def _specialize_subclass(
         cls,
         *args,
         batch_shape: tuple[int, ...] | None = None,
         full_size: int | None = None,
         **kwargs,
-    ) -> Array:
-        # TODO: still specialize storage type if called like JaggedArray(storage="shared")
-
+    ) -> type[Array]:
         if full_size is None or full_size == batch_shape[0]:
             # batch_shape is only None if calling JaggedArray[List].__new__(type(self))
-            # explicitly: must return the same type as cls in order for getitem to work
-            #
-            # cannot call super().__new__ without creating an infinite loop
-            return object.__new__(cls)
+            # explicitly: must return the same type in order for pickling to work
+            return cls
         else:
             from parllel.arrays.jagged_list import JaggedArrayList
 
-            return object.__new__(JaggedArrayList)
+            return JaggedArrayList
 
     def __init__(
         self,

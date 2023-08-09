@@ -6,7 +6,6 @@ from typing import Literal
 
 import numpy as np
 
-from parllel.arrays.array import Array
 from parllel.arrays.indices import (Location, StandardIndex, add_locations,
                                     init_location)
 from parllel.arrays.jagged import JaggedArray
@@ -54,12 +53,11 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
         num_arrays = full_size // batch_shape[0]
 
         self.jagged_arrays: list[JaggedArray] = [
-            Array(
+            JaggedArray(
                 batch_shape=batch_shape,
                 dtype=dtype,
                 max_mean_num_elem=max_mean_num_elem,
                 feature_shape=feature_shape,
-                kind="jagged",
                 storage=storage,
                 padding=padding,
                 full_size=None,
@@ -166,7 +164,7 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
         else:
             raise NotImplementedError
 
-    def to_list(self, dtype=None) -> tuple[list[np.ndarray], list[int]]:
+    def to_list(self) -> tuple[list[np.ndarray], list[int]]:
         if self._shape is None:
             self._resolve_indexing_history()
 
@@ -192,18 +190,16 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
             )
             if np.any(
                 mask := (
-                    np.logical_and(
-                        array_idx == self._current_array_idx + 1,
-                        entry_idx < self.padding,
-                    )
+                    (array_idx == self._current_array_idx + 1)
+                    & (entry_idx < self.padding)
                 )
             ):
                 array_idx[mask] = self._current_array_idx
-                entry_idx[mask] = self.block_size - entry_idx[mask]
+                entry_idx[mask] = self.block_size + entry_idx[mask]
 
             if np.any(mask := (array_idx >= len(self.jagged_arrays))):
                 array_idx[mask] = len(self.jagged_arrays) - 1
-                entry_idx[mask] = self.block_size - entry_idx[mask]
+                entry_idx[mask] = self.block_size + entry_idx[mask]
 
             graphs = []
             num_elements = []
@@ -211,10 +207,8 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
             for i, array in enumerate(self.jagged_arrays):
                 mask = array_idx == i
                 new_current_location = tuple(
-                    [
-                        loc[mask] if isinstance(loc, np.ndarray) else loc
-                        for loc in current_location
-                    ]
+                    loc[mask] if isinstance(loc, np.ndarray) else loc
+                    for loc in current_location
                 )
                 new_graphs, new_nums = array[new_current_location].to_list()
                 graphs.extend(new_graphs)
