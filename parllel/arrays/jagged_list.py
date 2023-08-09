@@ -166,9 +166,10 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
         else:
             raise NotImplementedError
 
-    def __array__(self, dtype=None) -> np.ndarray:
+    def to_list(self, dtype=None) -> tuple[list[np.ndarray], list[int]]:
         if self._shape is None:
             self._resolve_indexing_history()
+
         if isinstance(self._current_location[0], int):
             array_idx, entry_idx = divmod(
                 self._current_location[0] - self.padding, self.block_size
@@ -183,8 +184,7 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
                 entry_idx = self.block_size + entry_idx
 
             current_location = tuple([entry_idx] + self._current_location[1:])
-            graphs, current_ptrs = self.jagged_arrays[array_idx][current_location].to_list()  # type: ignore
-            current_ptrs = np.array(current_ptrs)
+            return self.jagged_arrays[array_idx][current_location].to_list()  # type: ignore
 
         elif isinstance(self._current_location[0], np.ndarray):
             array_idx, entry_idx = np.divmod(
@@ -206,7 +206,7 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
                 entry_idx[mask] = self.block_size - entry_idx[mask]
 
             graphs = []
-            num_nodes = []
+            num_elements = []
             current_location = [entry_idx] + self._current_location[1:]
             for i, array in enumerate(self.jagged_arrays):
                 mask = array_idx == i
@@ -216,23 +216,13 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
                         for loc in current_location
                     ]
                 )
-                # current_location = tuple([entry_idx[array_idx == i]] + self._current_location[1:])
-                graph, ptr = array[new_current_location].to_list()
-                if len(ptr) > 1:
-                    num_nodes.append(ptr[1:] - ptr[:-1])
-                    graphs.extend(graph)
+                new_graphs, new_nums = array[new_current_location].to_list()
+                graphs.extend(new_graphs)
+                num_elements.extend(new_nums)
 
-            current_ptrs = np.concatenate(num_nodes)
-            current_ptrs = np.cumsum(current_ptrs)
-            current_ptrs = np.insert(current_ptrs, 0, 0)
+            return graphs, num_elements
         else:
             raise NotImplementedError
-
-        self._current_ptrs = current_ptrs.flatten()
-        array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
-        if dtype is not None:
-            array = array.astype(dtype, copy=False)
-        return array
 
     def rotate(self) -> None:
         if not self._rotatable:

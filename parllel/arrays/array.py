@@ -266,7 +266,7 @@ class Array:
         # that differ between self and result are modified next. This allows
         # subclasses to override and only handle additional attributes that
         # need to be modified.
-        subarray: Self = self.__new__(type(self))
+        subarray: Self = object.__new__(type(self))
         subarray.__dict__.update(self.__dict__)
         # disallow rotate and reset on subarrays
         subarray._rotatable = False
@@ -401,18 +401,18 @@ class Array:
         # update current location with modified start/stop
         self._current_location[0] = slice(start, stop, 1)
 
-    def __array__(self, dtype=None) -> np.ndarray:
+    def to_ndarray(self) -> ArrayTree[np.ndarray]:
         if self._shape is None:
             self._resolve_indexing_history()
 
-        array = self._base_array[tuple(self._current_location)]
+        return self._base_array[tuple(self._current_location)]
+
+    def __array__(self, dtype=None) -> np.ndarray:
+        array = self.to_ndarray()
         array = np.asarray(array)  # promote scalars to 0d arrays
         if dtype is not None:
             array = array.astype(dtype, copy=False)
         return array
-
-    def to_ndarray(self) -> ArrayTree[np.ndarray]:
-        return self.__array__()
 
     def __repr__(self) -> str:
         prefix = type(self).__name__ + "("
