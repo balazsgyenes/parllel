@@ -2,18 +2,25 @@
 from __future__ import annotations
 
 import itertools
+from dataclasses import dataclass
 from typing import Literal, TypeVar
 
 import numpy as np
 
+import parllel.logger as logger
 from parllel.arrays.indices import (Location, StandardIndex, add_locations,
                                     init_location)
 from parllel.arrays.jagged import JaggedArray
 
 
 # fmt: on
-class CurrentIndex:  # we can't add attributes to objects created via object()
-    pass
+@dataclass
+class Integer:
+    """A mutable type that stores an integer. Used to share an integer value
+    among all views of an array.
+    """
+
+    val: int
 
 
 class JaggedArrayList(JaggedArray):  # do not register subclass
@@ -82,8 +89,7 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
         self._rotatable = True
 
         self._current_array_iter = itertools.cycle(range(len(self.jagged_arrays)))
-        self._current_array = CurrentIndex()
-        self._current_array_idx = next(self._current_array_iter)
+        self._active_idx = Integer(val=next(self._current_array_iter))
         self._resolve_indexing_history()
 
     @property
@@ -102,18 +108,10 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
     def on_overflow(self) -> str:
         return self.jagged_arrays[0].on_overflow
 
-    @property
-    def _current_array_idx(self) -> int:
-        return self._current_array.index
-
-    @_current_array_idx.setter
-    def _current_array_idx(self, value: int):
-        self._current_array.index = value
-
     def reset(self):
         super().reset()
         # the current jagged array is the last one in the list
-        self._current_array_idx = len(self.jagged_arrays) - 1
+        self._active_idx.val = len(self.jagged_arrays) - 1
         # next time next() is called, the iterator is at 0
         self._current_array_iter = itertools.cycle(range(len(self.jagged_arrays)))
 
@@ -139,7 +137,7 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
         array_idx, entry_idx = divmod_with_padding(
             index=t_index - self.padding,
             block_size=self.block_size,
-            active_block=self._current_array_idx,
+            active_block=self._active_idx.val,
             n_blocks=len(self.jagged_arrays),
             padding=self.padding,
         )
@@ -170,7 +168,7 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
         array_idx, entry_idx = divmod_with_padding(
             index=t_index - self.padding,
             block_size=self.block_size,
-            active_block=self._current_array_idx,
+            active_block=self._active_idx.val,
             n_blocks=len(self.jagged_arrays),
             padding=self.padding,
         )
@@ -228,10 +226,10 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
                     self.jagged_arrays[next_array_idx][
                         (destination,) + b_loc
                     ] = np.asarray(
-                        self.jagged_arrays[self._current_array_idx][(source,) + b_loc]
+                        self.jagged_arrays[self._active_idx.val][(source,) + b_loc]
                     )
 
-        self._current_array_idx = next_array_idx
+        self._active_idx.val = next_array_idx
 
     def close(self):
         for array in self.jagged_arrays:
