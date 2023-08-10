@@ -35,15 +35,16 @@ def dtype(request):
 
 @pytest.fixture(params=[
     "local",
+    "shared",
     ], scope="module")
 def storage(request):
     return request.param
 
-@pytest.fixture(params=[0], ids=["padding=0"], scope="module")
+@pytest.fixture(params=[0, 1], ids=["padding=0", "padding=1"], scope="module")
 def padding(request):
     return request.param
 
-@pytest.fixture(params=[None], ids=["default_size"], scope="module")
+@pytest.fixture(params=[None, 128], ids=["default_size", "full_size=2X"], scope="module")
 def full_size(request):
     return request.param
 
@@ -94,6 +95,9 @@ class TestJaggedArray:
         assert np.array_equal(blank_array[loc], graph)
 
     def test_write_consecutive_graphs(self, blank_array, graph_generator):
+        if blank_array.full_size > blank_array.shape[0]:
+            pytest.skip("Slice access is not supported for JaggedArrayList")
+        
         graph1 = graph_generator()
         graph2 = graph_generator()
 
@@ -137,21 +141,41 @@ class TestJaggedArray:
         assert np.array_equal(np_batch, batch)
 
     def test_rotate(self, blank_array: JaggedArray, graph_generator):
-        batch_shape, feature_shape = blank_array.shape[:2], blank_array.shape[3:]
-        array = JaggedArray(
-            batch_shape=batch_shape,
-            dtype=blank_array.dtype,
-            max_mean_num_elem=blank_array.max_mean_num_elem,
-            feature_shape=feature_shape,
-            padding=1,
-        )
+        if blank_array.padding == 0 and (blank_array.full_size == blank_array.shape[0]):
+            pytest.skip("Rotate has no effect in this case.")
 
         graphs = [graph_generator() for _ in range(2)]
 
-        array[array.last, 0] = graphs[0]
-        array[array.last + 1, 0] = graphs[1]
+        blank_array[blank_array.last, 0] = graphs[0]
+        blank_array[blank_array.last + 1, 0] = graphs[1]
 
-        array.rotate()
+        blank_array.rotate()
 
-        assert np.array_equal(array[-1, 0], graphs[0])
-        assert np.array_equal(array[0, 0], graphs[1])
+        assert np.array_equal(blank_array[-1, 0], graphs[0])
+        assert np.array_equal(blank_array[0, 0], graphs[1])
+
+    def test_rotate_full_size(self, blank_array: JaggedArray, graph_generator):
+        if (blank_array.full_size == blank_array.shape[0]):
+            pytest.skip()
+
+        if blank_array.padding > 0:
+            pytest.skip("Rotating might destroy some elements in this case.")
+
+        graphs = [graph_generator() for _ in range(4)]
+
+        blank_array[0, 0] = graphs[0]
+        blank_array[blank_array.last, 0] = graphs[1]
+        blank_array[blank_array.last + 1, 0] = graphs[2]
+
+        blank_array.rotate()
+
+        assert np.array_equal(blank_array[-1, 0], graphs[1])
+        assert np.array_equal(blank_array[0, 0], graphs[2])
+        blank_array[blank_array.last, 0] = graphs[3]
+
+        blank_array.rotate()
+
+        assert np.array_equal(blank_array[0, 0], graphs[0])
+        assert np.array_equal(blank_array[blank_array.last, 0], graphs[1])
+        assert np.array_equal(blank_array[blank_array.last + 1, 0], graphs[2])
+        assert np.array_equal(blank_array[blank_array.last * 2 + 1, 0], graphs[3])
