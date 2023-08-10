@@ -8,87 +8,38 @@ from parllel.arrays import Array
 from parllel.arrays.managedmemory import SharedMemoryArray
 from parllel.arrays.sharedmemory import InheritedMemoryArray
 
+
 # fmt: off
-@pytest.fixture(params=[
-    Array,
-], scope="module")
-def ArrayClass(request):
-    return request.param
-
-@pytest.fixture(scope="module")
-def shape():
-    return (10, 4, 4)
-
-@pytest.fixture(params=[np.float32, np.int32], scope="module")
-def dtype(request):
-    return request.param
-
-@pytest.fixture(params=[
-    "local",
-    "inherited",
-    "shared",
-], scope="module")
-def storage(request):
-    return request.param
-
-@pytest.fixture(params=[0, 1, 2], ids=["padding=0", "padding=1", "padding=2"], scope="module")
-def padding(request):
-    return request.param
-
-@pytest.fixture(params=[None, 10, 20], ids=["default_size", "1X_size", "2X_size"], scope="module")
-def full_size(request):
-    return request.param
-
-@pytest.fixture
-def blank_array(ArrayClass, shape, dtype, storage, padding, full_size):
-    array = ArrayClass(
-        batch_shape=shape,
-        dtype=dtype,
-        storage=storage,
-        padding=padding,
-        full_size=full_size,
-    )
-    yield array
-    array.close()
-
-@pytest.fixture
-def np_array(shape, dtype):
-    return np.arange(np.prod(shape), dtype=dtype).reshape(shape)
-
-@pytest.fixture
-def array(blank_array, np_array):
-    blank_array[:] = np_array
-    return blank_array
-
-
 class TestArrayCreation:
-    def test_no_args(self, ArrayClass):
+    def test_no_args(self):
         with pytest.raises(TypeError):
-            _ = ArrayClass()
+            _ = Array()
 
-    def test_empty_shape(self, ArrayClass, dtype):
+    def test_empty_shape(self, dtype):
         with pytest.raises(ValueError):
-            _ = ArrayClass(batch_shape=(), dtype=dtype)
+            _ = Array(batch_shape=(), dtype=dtype)
 
-    def test_wrong_dtype(self, ArrayClass, shape):
+    def test_wrong_dtype(self, batch_shape):
         with pytest.raises(ValueError):
-            _ = ArrayClass(batch_shape=shape, dtype=list)
+            _ = Array(batch_shape=batch_shape, dtype=list)
 
-    def test_calling_array(self, ArrayClass, shape, dtype, storage, padding):
-        array = ArrayClass(batch_shape=shape, dtype=dtype, storage=storage, padding=padding)
-        assert array.shape == shape
+    def test_calling_array(self, batch_shape, dtype, storage, padding):
+        array = Array(batch_shape=batch_shape, dtype=dtype, storage=storage, padding=padding)
+        assert array.shape == batch_shape
         assert array.dtype == dtype
         assert array.storage == storage
         assert array.padding == padding
 
-    def test_calling_subclass(self, ArrayClass, shape, dtype, storage, padding):
-        if storage == "inherited":
+    def test_calling_subclass(self, batch_shape, dtype, storage, padding):
+        if storage == "local":
+            ArrayClass = Array
+        elif storage == "inherited":
             ArrayClass = InheritedMemoryArray
         elif storage == "shared":
             ArrayClass = SharedMemoryArray
 
-        array = ArrayClass(batch_shape=shape, dtype=dtype, padding=padding)
-        assert array.shape == shape
+        array = ArrayClass(batch_shape=batch_shape, dtype=dtype, padding=padding)
+        assert array.shape == batch_shape
         assert array.dtype == dtype
         assert array.storage == storage
         assert array.padding == padding
@@ -145,8 +96,8 @@ class TestArrayCreation:
 
 
 class TestArray:
-    def test_init(self, blank_array, shape, dtype):
-        assert np.array_equal(blank_array, np.zeros(shape, dtype))
+    def test_init(self, blank_array, batch_shape, dtype):
+        assert np.array_equal(blank_array, np.zeros(batch_shape, dtype))
         assert blank_array.dtype == dtype
         assert np.asarray(blank_array).dtype == dtype
 
@@ -232,14 +183,14 @@ class TestArray:
         with pytest.raises(IndexError):
             element[1:] = -8
 
-    def test_getitem(self, array, np_array, shape):
-        assert array.shape == shape
-        assert np.asarray(array).shape == shape
+    def test_getitem(self, array, np_array, batch_shape):
+        assert array.shape == batch_shape
+        assert np.asarray(array).shape == batch_shape
         assert np.array_equal(array, np_array)
 
         array = array[:]
-        assert array.shape == shape
-        assert np.asarray(array).shape == shape
+        assert array.shape == batch_shape
+        assert np.asarray(array).shape == batch_shape
         assert np.array_equal(array, np_array)
 
         array = array[2]

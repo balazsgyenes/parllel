@@ -1,8 +1,7 @@
-import pytest
 import numpy as np
+import pytest
 
-# reuse fixtures from array_test
-from array_test import ArrayClass, shape, dtype, storage, padding, blank_array, np_array, array
+from parllel.arrays import Array
 
 
 @pytest.fixture(params=[20], ids=["2X_size"], scope="module")
@@ -11,16 +10,21 @@ def full_size(request):
 
 
 class TestFullSize:
-    def test_nonmultiple_fullsize(self, ArrayClass, shape, dtype, storage):
+    def test_nonmultiple_fullsize(self, batch_shape, dtype, storage):
         with pytest.raises(ValueError):
-            _ = ArrayClass(batch_shape=shape, dtype=dtype, storage=storage, full_size=15)
+            _ = Array(
+                batch_shape=batch_shape,
+                dtype=dtype,
+                storage=storage,
+                full_size=15,
+            )
 
     def test_rotate(self, array, np_array, padding):
         array.rotate()
         array[:] = np_array * 2
         # in case there is padding, ensure that the value expected in the
         # beginning is copied into the padding
-        array[(array.last + 1):(array.last + padding + 1)] = np_array[:padding]
+        array[(array.last + 1) : (array.last + padding + 1)] = np_array[:padding]
         array.rotate()
 
         assert np.array_equal(array, np_array)

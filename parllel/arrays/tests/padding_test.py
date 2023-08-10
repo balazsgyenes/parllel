@@ -1,12 +1,12 @@
 import functools
 
-import pytest
 import numpy as np
+import pytest
 
-# reuse fixtures from array_test
-from array_test import ArrayClass, shape, dtype, storage, full_size, blank_array, np_array
+from parllel.arrays import Array
 
 
+# fmt: off
 @pytest.fixture(params=[1, 2], ids=["padding=1", "padding=2"], scope="module")
 def padding(request):
     return request.param
@@ -31,13 +31,13 @@ def array(blank_array, np_array, padding, previous_region, next_region):
 
 
 class TestPaddedArray:
-    def test_negative_padding(self, ArrayClass, shape, dtype, storage):
+    def test_negative_padding(self, batch_shape, dtype, storage):
         with pytest.raises(ValueError):
-            _ = ArrayClass(batch_shape=shape, dtype=dtype, storage=storage, padding=-1)
+            _ = Array(batch_shape=batch_shape, dtype=dtype, storage=storage, padding=-1)
 
-    def test_init(self, blank_array, shape, dtype):
-        assert blank_array.shape == shape
-        assert np.asarray(blank_array).shape == shape
+    def test_init(self, blank_array, batch_shape, dtype):
+        assert blank_array.shape == batch_shape
+        assert np.asarray(blank_array).shape == batch_shape
         assert blank_array.dtype == dtype
         assert np.asarray(blank_array).dtype == dtype
 
@@ -50,9 +50,9 @@ class TestPaddedArray:
         assert np.array_equal(array[array.first - 1], ones * -7)
         np.array_equal(array[array.last + 1], ones * -8)
 
-    def test_setitem_slices(self, array, shape, dtype, np_array):
+    def test_setitem_slices(self, array, batch_shape, dtype, np_array):
         array[array.first - 1 : 1] = -7
-        ones = np.ones((2,) + shape[1:], dtype)
+        ones = np.ones((2,) + batch_shape[1:], dtype)
         assert np.array_equal(array[array.first - 1 : 1], ones * -7)
         assert np.array_equal(array[1:], np_array[1:])
 
@@ -70,8 +70,8 @@ class TestPaddedArray:
         assert np.array_equal(array[first - padding : 0], previous_region)
         assert np.array_equal(array[last + 1 : last + padding + 1], next_region)
 
-    def test_setitem_beyond_last(self, blank_array, padding, shape, full_size):
-        if full_size is not None and full_size > shape[0]:
+    def test_setitem_beyond_last(self, blank_array, padding, batch_shape, full_size):
+        if full_size is not None and full_size > batch_shape[0]:
             pytest.skip()
         with pytest.raises(IndexError):
             blank_array[blank_array.last + padding + 1] = 1

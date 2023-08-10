@@ -1,26 +1,13 @@
+import multiprocessing as mp
+
+import numpy as np
 import pytest
 
-import multiprocessing as mp
-import numpy as np
 
-from parllel.arrays import Array
-
-from array_test import blank_array, np_array, array
-
-
+# fmt: off
 @pytest.fixture(params=["fork", "spawn"], scope="module")
 def mp_ctx(request):
     return mp.get_context(request.param)
-
-@pytest.fixture(params=[
-    Array,
-], scope="module")
-def ArrayClass(request):
-    return request.param
-
-@pytest.fixture(scope="module")
-def shape():
-    return (10, 4, 4)
 
 @pytest.fixture(params=[np.float32], scope="module")
 def dtype(request):

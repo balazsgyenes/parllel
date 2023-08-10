@@ -11,12 +11,6 @@ STD = 2.0
 
 
 # fmt: off
-@pytest.fixture(params=[
-    JaggedArray,
-], scope="module")
-def ArrayClass(request):
-    return request.param
-
 @pytest.fixture(scope="module")
 def max_points():
     return 1000
@@ -33,24 +27,13 @@ def batch_shape():
 def dtype(request):
     return request.param
 
-@pytest.fixture(params=[
-    "local",
-    "shared",
-    ], scope="module")
-def storage(request):
-    return request.param
-
-@pytest.fixture(params=[0, 1], ids=["padding=0", "padding=1"], scope="module")
-def padding(request):
-    return request.param
-
 @pytest.fixture(params=[None, 128], ids=["default_size", "full_size=2X"], scope="module")
 def full_size(request):
     return request.param
 
 @pytest.fixture
-def blank_array(ArrayClass, max_points, feature_shape, dtype, batch_shape, storage, padding, full_size):
-    array = ArrayClass(
+def blank_array(max_points, feature_shape, dtype, batch_shape, storage, padding, full_size):
+    array = JaggedArray(
         batch_shape=batch_shape,
         dtype=dtype,
         max_mean_num_elem=max_points,
