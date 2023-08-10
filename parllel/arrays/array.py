@@ -78,7 +78,7 @@ class Array:
         **kwargs,
     ) -> Array:
         # get requested specialization based on kind/storage
-        subcls = cls._get_subclass(kind, storage)
+        subcls = cls._get_subclass(kind=kind, storage=storage)
         # give a change for the subclass to specialize itself further based on args/kwargs
         subcls = subcls._specialize_subclass(
             *args, kind=kind, storage=storage, **kwargs
@@ -205,34 +205,34 @@ class Array:
     def from_numpy(
         cls,
         example: Any,
-        batch_shape: tuple[int, ...],
-        dtype: np.dtype | None = None,
-        feature_shape: tuple[int, ...] | None = None,
+        *,
         force_32bit: Literal[True, "float", "int", False] = True,
-        kind: str | None = None,
-        storage: str | None = None,
-        padding: int = 0,
-        full_size: int | None = None,
         **kwargs,
     ) -> Array:
+        subcls = cls._get_subclass(
+            kind=kwargs.get("kind"),
+            storage=kwargs.get("storage"),
+        )
+        kwargs = subcls._get_from_numpy_kwargs(example, kwargs)
+
         np_example: np.ndarray = np.asanyarray(example)  # promote scalars to 0d arrays
-        feature_shape = feature_shape if feature_shape is not None else np_example.shape
-        if dtype is None:
+
+        if kwargs.get("feature_shape") is None:
+            kwargs["feature_shape"] = np_example.shape
+
+        if kwargs.get("dtype") is None:
             dtype = np_example.dtype
             if dtype == np.int64 and force_32bit in {True, "int"}:
                 dtype = np.int32
             elif dtype == np.float64 and force_32bit in {True, "float"}:
                 dtype = np.float32
-        return cls(
-            feature_shape=feature_shape,
-            dtype=dtype,
-            batch_shape=batch_shape,
-            kind=kind,
-            storage=storage,
-            padding=padding,
-            full_size=full_size,
-            **kwargs,
-        )
+            kwargs["dtype"] = dtype
+
+        return cls(**kwargs)
+
+    @classmethod
+    def _get_from_numpy_kwargs(cls, example: Any, kwargs: dict) -> dict:
+        return kwargs
 
     def _allocate(self, shape: tuple[int, ...], dtype: np.dtype, name: str) -> None:
         # initialize numpy array

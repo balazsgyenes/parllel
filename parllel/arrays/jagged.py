@@ -150,16 +150,16 @@ class JaggedArray(Array, kind="jagged"):
         return super().new_array(*args, **kwargs)
 
     @classmethod
-    def from_numpy(cls, *args, example: Any, **kwargs) -> Array:
-        if "kind" not in kwargs or kwargs["kind"] == "jagged":
+    def _get_from_numpy_kwargs(cls, example: Any, kwargs: dict) -> dict:
+        if kwargs.get("feature_shape") is None:
             # promote scalars to 0d arrays
             np_example: np.ndarray = np.asanyarray(example)
             if len(np_example.shape) == 0:
                 raise ValueError(
                     "Expected example of data with variable-sized leading dimension."
                 )
-            elem_example = np_example[0]
-        return super().from_numpy(*args, elem_example, *kwargs)
+            kwargs["feature_shape"] = np_example.shape[1:]
+        return super()._get_from_numpy_kwargs(example[0], kwargs)
 
     def _resolve_indexing_history(self) -> None:
         super()._resolve_indexing_history()
