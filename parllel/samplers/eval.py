@@ -70,7 +70,8 @@ class EvalSampler(Sampler):
         for t in range(self.max_traj_length):
             # apply any transforms to the observation before the agent steps
             if self.obs_transform is not None:
-                sample_tree = self.obs_transform(sample_tree, 0)
+                # sample_tree = self.obs_transform(sample_tree, 0)
+                sample_tree = self.obs_transform(sample_tree)
 
             # agent observes environment and outputs actions
             action[...], agent_info[...] = self.agent.step(observation[0])
