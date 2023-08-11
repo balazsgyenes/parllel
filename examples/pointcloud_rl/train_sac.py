@@ -212,7 +212,6 @@ def main(config: DictConfig) -> None:
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch
-        mode="disabled",
     )
 
     logger.init(

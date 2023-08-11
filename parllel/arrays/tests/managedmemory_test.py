@@ -9,23 +9,21 @@ import pytest
 def mp_ctx(request):
     return mp.get_context(request.param)
 
-@pytest.fixture(params=[np.float32], scope="module")
-def dtype(request):
-    return request.param
+@pytest.fixture(scope="module")
+def dtype():
+    return np.float32
 
-@pytest.fixture(params=[
-    "shared",
-    ], scope="module")
-def storage(request):
-    return request.param
+@pytest.fixture(scope="module")
+def storage():
+    return "shared"
 
-@pytest.fixture(params=[0], ids=["padding=0"], scope="module")
-def padding(request):
-    return request.param
+@pytest.fixture(scope="module")
+def padding():
+    return 0
 
-@pytest.fixture(params=[None], ids=["default_size"], scope="module")
-def full_size(request):
-    return request.param
+@pytest.fixture(scope="module")
+def full_size():
+    return None
 
 
 def setitem_in_piped_array(pipe):
