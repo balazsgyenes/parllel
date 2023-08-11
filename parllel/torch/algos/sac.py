@@ -47,7 +47,7 @@ class SAC(Algorithm):
         self.updates_per_optimize = int(
             self.replay_ratio * batch_spec.size / replay_batch_size
         )
-        logger.debug(
+        logger.info(
             f"{type(self).__name__}: From sampler batch size {batch_spec.size}, "
             f"training batch size {replay_batch_size}, and replay ratio "
             f"{self.replay_ratio}, computed {self.updates_per_optimize} "
@@ -73,6 +73,9 @@ class SAC(Algorithm):
         self.replay_buffer.next_iteration()
 
         if elapsed_steps < self.learning_starts:
+            logger.debug(
+                f"Skipping optimization at {elapsed_steps} steps, waiting until {self.learning_starts} steps."
+            )
             return {}
 
         self.agent.train_mode(elapsed_steps)

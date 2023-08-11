@@ -119,7 +119,7 @@ class SacAgent(TorchAgent):
     def sample_mode(self, elapsed_steps: int) -> None:
         super().sample_mode(elapsed_steps)
         if elapsed_steps == 0 and self.learning_starts > 0:
-            logger.debug(
+            logger.info(
                 f"For the first {self.learning_starts} steps, agent will use a fixed std of {self.pretrain_std} for exploration."
             )
         std = None if elapsed_steps >= self.learning_starts else self.pretrain_std

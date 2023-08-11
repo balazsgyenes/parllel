@@ -30,6 +30,23 @@ class JaggedArray(Array, kind="jagged"):
     _base_array: np.ndarray
     _ptr: np.ndarray
 
+    @classmethod
+    def _specialize_subclass(
+        cls,
+        *args,
+        batch_shape: tuple[int, ...] | None = None,
+        full_size: int | None = None,
+        **kwargs,
+    ) -> type[Array]:
+        if full_size is None or full_size == batch_shape[0]:
+            # batch_shape is only None if calling JaggedArray[List].__new__(type(self))
+            # explicitly: must return the same type in order for pickling to work
+            return cls
+        else:
+            from parllel.arrays.jagged_list import JaggedArrayList
+
+            return JaggedArrayList
+
     def __init__(
         self,
         batch_shape: tuple[int, ...],
@@ -128,19 +145,21 @@ class JaggedArray(Array, kind="jagged"):
                 feature_shape = self.shape[n_batch_and_point_dims:]
             kwargs["feature_shape"] = feature_shape
 
+            on_overflow: str | None = kwargs.get("on_overflow")
+            kwargs["on_overflow"] = on_overflow if on_overflow else self.on_overflow
         return super().new_array(*args, **kwargs)
 
     @classmethod
-    def from_numpy(cls, *args, example: Any, **kwargs) -> Array:
-        if "kind" not in kwargs or kwargs["kind"] == "jagged":
+    def _get_from_numpy_kwargs(cls, example: Any, kwargs: dict) -> dict:
+        if kwargs.get("feature_shape") is None:
             # promote scalars to 0d arrays
             np_example: np.ndarray = np.asanyarray(example)
             if len(np_example.shape) == 0:
                 raise ValueError(
                     "Expected example of data with variable-sized leading dimension."
                 )
-            elem_example = np_example[0]
-        return super().from_numpy(*args, elem_example, *kwargs)
+            kwargs["feature_shape"] = np_example.shape[1:]
+        return super()._get_from_numpy_kwargs(example[0], kwargs)
 
     def _resolve_indexing_history(self) -> None:
         super()._resolve_indexing_history()
@@ -262,7 +281,7 @@ class JaggedArray(Array, kind="jagged"):
         new_slice: StandardIndex = slice(start, stop, 1)
         self._current_location[0] = new_slice
 
-    def __array__(self, dtype=None) -> np.ndarray:
+    def to_list(self) -> tuple[list[np.ndarray], list[int]]:
         if self._shape is None:
             self._resolve_indexing_history()
 
@@ -278,15 +297,15 @@ class JaggedArray(Array, kind="jagged"):
             )
 
         # create a list of graphs to be concatenated into one large "batch"
-        graphs = []
-        current_ptrs = []
+        graphs: list[np.ndarray] = []
+        num_elements: list[int] = []
 
         if any(isinstance(loc, np.ndarray) for loc in batch_locs):
             # advanced indexing: zip arrays and iterate over them together
             # TODO: also iterate over product of this zip any slices present
             batch_locs = zip(
                 *(
-                    iter(loc) if isinstance(loc, np.ndarray) else (loc,)
+                    iter(loc) if isinstance(loc, np.ndarray) else itertools.repeat(loc)
                     for loc in batch_locs
                 )
             )
@@ -318,29 +337,27 @@ class JaggedArray(Array, kind="jagged"):
             real_loc = b_loc + (n_loc,) + feature_locs[1:]
             graph = self._base_array[real_loc]
             graphs.append(graph)
-            current_ptrs.append(graph.shape[0])
+            num_elements.append(graph.shape[0])
 
+        return graphs, num_elements
+
+    def to_ndarray(self) -> ArrayDict[np.ndarray]:
+        graphs, num_elements = self.to_list()
         array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
-        current_ptrs = np.cumsum(current_ptrs, dtype=np.int64)
-        current_ptrs = np.insert(current_ptrs, 0, 0)  # insert 0 at beginning of ptrs
-        assert array.shape[0] == current_ptrs[-1]
+        ptr = np.cumsum(num_elements, dtype=np.int64)
+        ptr = np.insert(ptr, 0, 0)  # insert 0 at beginning of ptr
+        assert array.shape[0] == ptr[-1]
+        # TODO: hard-coded that JaggedArray is point/node positions
+        # what about point/node features?
+        return ArrayDict({"pos": array, "ptr": ptr})
 
+    def __array__(self, dtype=None) -> np.ndarray:
+        graphs, _ = self.to_list()
+        array = np.concatenate(graphs) if len(graphs) > 1 else graphs[0]
         if dtype is not None:
             array = array.astype(dtype, copy=False)
 
-        self._current_ptrs = current_ptrs  # save for consumption by to_ndarray
         return array
-
-    def to_ndarray(self) -> ArrayDict[np.ndarray]:
-        # TODO: hard-coded that JaggedArray is point/node positions
-        # what about point/node features?
-        data = self.__array__()
-        return ArrayDict(
-            {
-                "pos": data,
-                "ptr": self._current_ptrs,  # updated during execution of __array__
-            }
-        )
 
 
 class InheritedMemoryJaggedArray(

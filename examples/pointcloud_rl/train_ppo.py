@@ -64,7 +64,6 @@ def build(config: DictConfig) -> RLRunner:
         metadata.example_obs,
         batch_shape=tuple(batch_spec),
         max_mean_num_elem=obs_space.max_num_points,
-        feature_shape=obs_space.shape,
         kind="jagged",
         storage="shared" if parallel else "local",
         padding=1,

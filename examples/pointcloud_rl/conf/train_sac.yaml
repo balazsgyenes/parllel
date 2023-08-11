@@ -2,15 +2,15 @@ defaults:
   - sac@algo
   - _self_
 
-parallel: False
-batch_T: 32
-batch_B: 16
+parallel: True
+batch_T: 8
+batch_B: 32
 max_steps_decorrelate: 50
 env:
   prob_done: 0.1
 device: "cpu"
 algo:
-  replay_length: 320  # 10 iterations
+  replay_length: 800  # 100 iterations
   learning_starts: 2560  # 5 iterations
   replay_ratio: 1
   target_update_tau: 0.01
@@ -25,6 +25,6 @@ eval_sampler:
   max_trajectories: 20
   n_eval_envs: 8
 runner:
-  n_steps: 204800  # 100 iterations
+  n_steps: 204800  # 800 iterations
   log_interval_steps: 10240  # log every 5 iterations
   eval_interval_steps: 10240  # evaluate every 5 iterations

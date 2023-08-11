@@ -62,17 +62,23 @@ class RLRunner(Runner):
             ):
                 self.log_progress(elapsed_steps, itr)
 
+            logger.debug(f"{type(self).__name__}: Collecting batch #{itr + 1}...")
             batch_samples, completed_trajs = self.sampler.collect_batch(elapsed_steps)
             self.record_completed_trajectories(
                 completed_trajs,
                 prefix="sampling" if self.eval_sampler is not None else "trajectory",
             )
+            logger.debug(
+                f"{type(self).__name__}: Finished collecting batch #{itr + 1}."
+            )
 
+            logger.debug(f"{type(self).__name__}: Optimizing agent...")
             algo_info = self.algorithm.optimize_agent(
                 elapsed_steps,
                 batch_samples,
             )
             self.record_algo_info(algo_info)
+            logger.debug(f"{type(self).__name__}: Finished optimizing agent.")
 
             progress_bar.update(batch_size)
 
@@ -90,6 +96,7 @@ class RLRunner(Runner):
 
     def evaluate_agent(self, elapsed_steps: int) -> None:
         assert self.eval_sampler is not None
-        logger.debug(f"{type(self).__name__}: Evaluating agent.")
+        logger.info(f"{type(self).__name__}: Evaluating agent...")
         eval_trajs = self.eval_sampler.collect_batch(elapsed_steps)
         self.record_completed_trajectories(eval_trajs, prefix="eval")
+        logger.debug(f"{type(self).__name__}: Finished evaluating agent.")

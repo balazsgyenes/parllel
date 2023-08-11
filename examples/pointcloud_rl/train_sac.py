@@ -63,9 +63,8 @@ def build(config: DictConfig) -> RLRunner:
         metadata.example_obs,
         batch_shape=tuple(batch_spec),
         max_mean_num_elem=obs_space.max_num_points,
-        feature_shape=obs_space.shape,
         kind="jagged",
-        storage="managed" if parallel else "local",
+        storage="shared" if parallel else "local",
         padding=1,
         full_size=config["algo"]["replay_length"],
     )
@@ -136,7 +135,7 @@ def build(config: DictConfig) -> RLRunner:
         size_T=config["algo"]["replay_length"],
         replay_batch_size=config["algo"]["batch_size"],
         newest_n_samples_invalid=0,
-        oldest_n_samples_invalid=20,  # TODO: temporary fix to prevent sampling from accessing overwritten point clouds
+        oldest_n_samples_invalid=1,
         batch_transform=batch_transform,
     )
 
