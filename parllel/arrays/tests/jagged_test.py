@@ -189,33 +189,33 @@ class TestDivmodWithPadding:
     def test_integers(self, batch_shape, full_size, padding):
         block_size = batch_shape[0]
         n_blocks = full_size // batch_shape[0]
-        translate = functools.partial(
+        translator = functools.partial(
             divmod_with_padding,
             block_size=block_size,
             n_blocks=n_blocks,
             padding=padding,
         )
 
-        major, minor = translate(index=0, active_block=0)
-        assert (major, minor) == (0, 0)
+        # body and padding of active block (active_block = 0)
+        assert translator(index=0, active_block=0) == (0, 0)
 
-        major, minor = translate(index=1, active_block=0)
-        assert (major, minor) == (0, 1)
+        assert translator(index=1, active_block=0) == (0, 1)
 
-        major, minor = translate(index=-1, active_block=0)
-        assert (major, minor) == (0, -1)
+        assert translator(index=-1, active_block=0) == (0, -1)
 
-        major, minor = translate(index=block_size - 1, active_block=0)
-        assert (major, minor) == (0, block_size - 1)
+        assert translator(index=block_size - 1, active_block=0) == (0, block_size - 1)
 
-        major, minor = translate(index=block_size, active_block=0)
-        assert (major, minor) == (0, block_size)
+        assert translator(index=block_size, active_block=0) == (0, block_size)
 
-        major, minor = translate(index=block_size - 1, active_block=1)
-        assert (major, minor) == (1, -1)
+        # body and padding of active block (active_block = 1)
+        assert translator(index=block_size - 1, active_block=1) == (1, -1)
 
-        major, minor = translate(index=block_size, active_block=1)
-        assert (major, minor) == (1, 0)
+        assert translator(index=block_size, active_block=1) == (1, 0)
 
-        major, minor = translate(index=block_size // 2, active_block=1)
-        assert (major, minor) == (0, block_size // 2)
+        # outside of active block
+        assert translator(index=block_size // 2, active_block=1) == (0, block_size // 2)
+
+        # padding at ends of array
+        assert translator(index=-1, active_block=1) == (0, -1)
+
+        assert translator(index=full_size, active_block=0) == (n_blocks - 1, block_size)

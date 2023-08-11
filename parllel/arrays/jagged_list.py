@@ -7,7 +7,6 @@ from typing import Any, Literal, TypeVar
 
 import numpy as np
 
-import parllel.logger as logger
 from parllel.arrays.indices import (Location, StandardIndex, add_locations,
                                     init_location)
 from parllel.arrays.jagged import JaggedArray
@@ -287,7 +286,7 @@ def divmod_with_padding(
         elif index < 0:
             # index is in leading padding of first block
             return 0, index
-        elif index > n_blocks * block_size:
+        elif index >= n_blocks * block_size:
             # index is in trailing padding of final block
             return n_blocks - 1, index - (n_blocks - 1) * block_size
         else:
@@ -310,7 +309,7 @@ def divmod_with_padding(
         major[mask], minor[mask] = 0, index[mask]
 
         # index is in trailing padding of final block
-        mask = index > n_blocks * block_size
+        mask = index >= n_blocks * block_size
         major[mask], minor[mask] = (
             n_blocks - 1,
             index[mask] - (n_blocks - 1) * block_size,
