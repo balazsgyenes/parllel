@@ -4,12 +4,12 @@ import pytest
 from parllel.arrays import Array
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def batch_shape():
     return (10, 4, 4)
 
 
-@pytest.fixture(params=[np.float32, np.int32], scope="session")
+@pytest.fixture(params=[np.float32, np.int32], scope="module")
 def dtype(request):
     return request.param
 
@@ -20,24 +20,31 @@ def dtype(request):
         "inherited",
         "shared",
     ],
-    scope="session",
+    scope="module",
 )
 def storage(request):
     return request.param
 
 
 @pytest.fixture(
-    params=[0, 1, 2], ids=["padding=0", "padding=1", "padding=2"], scope="session"
+    params=[0, 1, 2],
+    ids=["padding=0", "padding=1", "padding=2"],
+    scope="module",
 )
 def padding(request):
     return request.param
 
 
 @pytest.fixture(
-    params=[None, 10, 20], ids=["default_size", "1X_size", "2X_size"], scope="session"
+    params=[None, 1, 2],
+    ids=["default_size", "1X_size", "2X_size"],
+    scope="module",
 )
-def full_size(request):
-    return request.param
+def full_size(request, batch_shape):
+    if request.param is None:
+        return None
+    else:
+        return request.param * batch_shape[0]
 
 
 @pytest.fixture
