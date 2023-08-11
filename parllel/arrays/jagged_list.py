@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 import numpy as np
 
@@ -231,6 +231,23 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
 
         self._active_idx.val = next_array_idx
 
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+
+        # subprocesses should not be able to call rotate()
+        # if processes are started by fork, this is not guaranteed to be called
+        state["_rotatable"] = False
+
+        # dirty hack to improve performance, since sending 2N blocks of shared
+        # memory across the pipe at every step is expensive
+        # set all jagged arrays to None except the active one
+        state["jagged_arrays"] = [None for _ in self.jagged_arrays]
+        state["jagged_arrays"][self._active_idx.val] = self.jagged_arrays[
+            self._active_idx.val
+        ]
+
+        return state
+
     def close(self):
         for array in self.jagged_arrays:
             array.close()
@@ -305,4 +322,4 @@ def divmod_with_padding(
         raise NotImplementedError
 
     else:
-        raise ValueError(f"Unknown index type {type(t_index).__name__}")
+        raise ValueError(f"Unknown index type {type(index).__name__}")

@@ -79,6 +79,7 @@ def build_cages_and_sample_tree(
 
     if {"obs", "observation"} & set(keys_to_skip) == set():
         # allocate sample tree based on examples
+        logger.debug("Allocating observations...")
         sample_tree["observation"] = dict_map(
             Array.from_numpy,
             obs,
@@ -89,6 +90,7 @@ def build_cages_and_sample_tree(
         )
 
     if "reward" not in keys_to_skip:
+        logger.debug("Allocating rewards...")
         # in case environment creates rewards of shape (1,) or of integer type,
         # force to be correct shape and type
         sample_tree["reward"] = dict_map(
@@ -102,6 +104,7 @@ def build_cages_and_sample_tree(
         )
 
     if "terminated" not in keys_to_skip:
+        logger.debug("Allocating terminated...")
         sample_tree["terminated"] = Array.from_numpy(
             terminated,
             batch_shape=tuple(batch_spec),
@@ -112,6 +115,7 @@ def build_cages_and_sample_tree(
         )
 
     if "truncated" not in keys_to_skip:
+        logger.debug("Allocating truncated...")
         sample_tree["truncated"] = Array.from_numpy(
             truncated,
             batch_shape=tuple(batch_spec),
@@ -121,6 +125,7 @@ def build_cages_and_sample_tree(
         )
 
     if "done" not in keys_to_skip:
+        logger.debug("Allocating done...")
         # add padding in case reward normalization is used
         # TODO: ideally, we only would add padding if we know we want reward
         # normalization, but how to do this?
@@ -134,6 +139,7 @@ def build_cages_and_sample_tree(
         )
 
     if "env_info" not in keys_to_skip:
+        logger.debug("Allocating env_info...")
         sample_tree["env_info"] = dict_map(
             Array.from_numpy,
             info,
@@ -142,6 +148,7 @@ def build_cages_and_sample_tree(
         )
 
     if "action" not in keys_to_skip:
+        logger.debug("Allocating actions...")
         # in discrete problems, integer actions are used as array indices during
         # optimization. Pytorch requires indices to be 64-bit integers, so we
         # force actions to be 32 bits only if they are floats
@@ -155,16 +162,17 @@ def build_cages_and_sample_tree(
         )
 
     if "agent_info" not in keys_to_skip:
+        logger.debug("Allocating agent_info...")
         # add empty agent_info field by default
         # user is free to set a different value later
         sample_tree["agent_info"] = ArrayDict()
 
-    logger.debug(f"Instantiating {batch_spec.B} environments...")
+    logger.info(f"Instantiating {batch_spec.B} environments...")
 
     # create cages to manage environments
     cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
-    logger.debug("Environments instantiated.")
+    logger.info("Environments instantiated.")
 
     # get obs and action spaces for metadata
     spaces = cages[0].spaces
@@ -376,6 +384,8 @@ def build_eval_sampler(
     max_trajectories: int,
     step_transforms: list[StepTransform] | None = None,
 ) -> tuple[EvalSampler, ArrayDict[Array]]:
+    logger.debug("Allocating eval sample tree...")
+
     # allocate a sample tree with space for a single time step
     # first, collect only the keys needed for evaluation
     eval_tree_keys = [

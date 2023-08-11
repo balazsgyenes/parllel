@@ -56,11 +56,11 @@ class Sampler(ABC):
         """
         logger.debug(f"{type(self).__name__}: Resetting sample tree state.")
         self.sample_tree.reset()
-        logger.debug(f"{type(self).__name__}: Resetting all environments.")
+        logger.info(f"{type(self).__name__}: Resetting all environments.")
         observation = self.sample_tree["observation"]
         env_info = self.sample_tree["env_info"]
         for b, env in enumerate(self.envs):
-            # save reset observation to the end of sample tree, since it will 
+            # save reset observation to the end of sample tree, since it will
             # be rotated to the beginning
             env.reset_async(
                 out_obs=observation[self.batch_spec.T, b],
@@ -76,7 +76,7 @@ class Sampler(ABC):
 
     def reset_agent(self) -> None:
         """Reset RNN state of agent, if it has one"""
-        logger.debug(f"{type(self).__name__}: Resetting agent.")
+        logger.info(f"{type(self).__name__}: Resetting agent.")
         self.agent.reset()
 
     def seed(self, seed) -> None:

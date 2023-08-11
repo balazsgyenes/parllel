@@ -96,7 +96,7 @@ class RLRunner(Runner):
 
     def evaluate_agent(self, elapsed_steps: int) -> None:
         assert self.eval_sampler is not None
-        logger.debug(f"{type(self).__name__}: Evaluating agent...")
+        logger.info(f"{type(self).__name__}: Evaluating agent...")
         eval_trajs = self.eval_sampler.collect_batch(elapsed_steps)
         self.record_completed_trajectories(eval_trajs, prefix="eval")
         logger.debug(f"{type(self).__name__}: Finished evaluating agent.")

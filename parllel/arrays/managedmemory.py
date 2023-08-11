@@ -56,7 +56,7 @@ class SharedMemoryArray(Array, storage="shared"):
         shared_mem.close()
         # these debug statements may not print if the finalizer is called during
         # process shutdown
-        logger.debug(f"Process {os.getpid()} closed shared memory {shared_mem.name}")
+        # logger.debug(f"Process {os.getpid()} closed shared memory {shared_mem.name}")
         if os.getpid() == spawning_pid:
             # unlink must be called once and only once to release shared memory
             shared_mem.unlink()

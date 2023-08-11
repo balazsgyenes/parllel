@@ -87,7 +87,7 @@ class ReplayBuffer(Generic[TreeType]):
         if self._cursor >= self.size_T:
             self._cursor %= self.size_T
             if not self._full:
-                logger.debug(
+                logger.info(
                     f"{type(self).__name__}: Replay buffer is now full. cursor={self._cursor}."
                 )
             self._full = True
