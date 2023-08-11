@@ -14,20 +14,31 @@ import numpy as np
 import parllel.logger as logger
 from parllel import Array, ArrayDict
 
+try:
+    import wandb
+
+    # catch if wandb is a local import, e.g. if a wandb folder exists in the
+    # current directory
+    has_wandb = wandb.__file__ is not None
+except ImportError:
+    has_wandb = False
+
 from .transform import BatchTransform
 
 
 class RecordVectorizedVideo(BatchTransform):
-    def __init__(self,
+    def __init__(
+        self,
         output_dir: Path,
         batch_buffer: ArrayDict[Array],
-        buffer_key_to_record: str, # e.g. "observation" or "env_info.rendering"
+        buffer_key_to_record: str,  # e.g. "observation" or "env_info.rendering"
         record_every_n_steps: int,
         video_length: int,
         env_fps: int | None = None,
         output_fps: int = 30,
         tiled_height: int | None = None,
         tiled_width: int | None = None,
+        use_wandb: bool = False,
     ) -> None:
         self.output_dir = Path(output_dir)
         self.record_every = int(record_every_n_steps)
@@ -35,6 +46,9 @@ class RecordVectorizedVideo(BatchTransform):
         self.keys = buffer_key_to_record.split(".")
         self.env_fps = env_fps if env_fps is not None else output_fps
         self.output_fps = output_fps
+        self.use_wandb = (
+            has_wandb and use_wandb
+        )  # TODO: warning or error if use_wandb and !has_wandb
 
         self.output_dir.mkdir(parents=True)
 
@@ -69,7 +83,7 @@ class RecordVectorizedVideo(BatchTransform):
             self.tiled_height, height, self.tiled_width, width, n_channels
         )
 
-        self.total_t = 0 # used for naming video files
+        self.total_t = 0  # used for naming video files
         # force first batch to be recorded
         self.steps_since_last_recording = self.record_every
         self.recording = False
@@ -110,7 +124,7 @@ class RecordVectorizedVideo(BatchTransform):
     def _record_batch(self, batch_samples: ArrayDict[Array]) -> None:
         images_batch = dict_get_nested(batch_samples, self.keys)
         valid_batch = batch_samples.get("valid", None)
-        
+
         # convert to numpy arrays
         images_batch = np.asarray(images_batch)
         if valid_batch is not None:
@@ -119,9 +133,9 @@ class RecordVectorizedVideo(BatchTransform):
         # if this is the start of recording, delay start to arrive at exact
         # desired start point
         if self.recorded_frames == 0:
-            images_batch = images_batch[self.offset_t:]
+            images_batch = images_batch[self.offset_t :]
             if valid_batch is not None:
-                valid_batch = valid_batch[self.offset_t:]
+                valid_batch = valid_batch[self.offset_t :]
 
         # loop through time, saving images from each step to file
         for images, valid in zip_with_valid(images_batch, valid_batch):
@@ -149,6 +163,8 @@ class RecordVectorizedVideo(BatchTransform):
         self.recorder.close()
         self.recording = False
         logger.debug(f"Finished recording video of policy to {self.path}")
+        if self.use_wandb:
+            wandb.log({"video": wandb.Video(str(self.path), format="mp4")})
 
     def close(self) -> None:
         if self.recording:
@@ -156,6 +172,8 @@ class RecordVectorizedVideo(BatchTransform):
 
 
 ValueType = TypeVar("ValueType")
+
+
 def dict_get_nested(buffer: Mapping[str, ValueType], keys: list[str]) -> ValueType:
     result = buffer
     for key in keys:
@@ -175,14 +193,16 @@ def find_tiling(n_images: int) -> tuple[int, int]:
     min_tiled_height = int(np.ceil(np.sqrt(n_images / 2)))
     try:
         tiled_height = next(
-            i for i in range(max_tiled_height, min_tiled_height - 1, -1) if n_images % i == 0
+            i
+            for i in range(max_tiled_height, min_tiled_height - 1, -1)
+            if n_images % i == 0
         )
         tiled_width = n_images // tiled_height
         return (tiled_height, tiled_width)
-    
+
     except StopIteration:
         pass
-    
+
     # if such factors do not exist, construct a grid that is roughly
     # square. Additional tiles will be filled in with black
     tiled_height = int(np.ceil(np.sqrt(n_images)))
@@ -212,7 +232,7 @@ def write_tiles_to_frame(
     freezes images if the image data is no longer valid.
     """
     n_images = images.shape[0]
-    images_hwc = images.transpose(0, 2, 3, 1) # move channel dimension to the end
+    images_hwc = images.transpose(0, 2, 3, 1)  # move channel dimension to the end
 
     b = 0
     for i in range(tiled_height):
@@ -231,6 +251,7 @@ class ImageEncoder(object):
 
     Copied from gym v0.21
     """
+
     def __init__(self, output_path, frame_shape, frames_per_sec, output_frames_per_sec):
         self.proc: Optional[subprocess.Popen] = None
         self.output_path = output_path
@@ -285,7 +306,7 @@ class ImageEncoder(object):
                 "-s:v",
                 "{}x{}".format(*self.wh),
                 "-pix_fmt",
-                ("rgb32" if self.includes_alpha else "rgb24"),
+                ("bgr32" if self.includes_alpha else "bgr24"),
                 "-r",
                 "%d" % self.frames_per_sec,
                 "-i",
@@ -295,9 +316,9 @@ class ImageEncoder(object):
                 "-r",
                 "%d" % self.frames_per_sec,
                 "-vcodec",
-                "mpeg4",
+                "libx264", # NOTE: browsers apparently don't support mpeg4 codecs anymore, also much smaller files
                 "-pix_fmt",
-                "bgr24",
+                "yuv420p",
                 "-r",
                 "%d" % self.output_frames_per_sec,
                 self.output_path,
