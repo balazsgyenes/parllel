@@ -1,10 +1,21 @@
 from typing import Mapping, Sequence, TypedDict
 
 from flax import linen as nn
+import jax.numpy as jnp
+from jax.typing import ArrayLike
+from typing_extensions import NotRequired
 
+class DistParams(TypedDict):
+    probs: ArrayLike
+    # log_std: ArrayLike
+
+
+class ModelOutputs(TypedDict):
+    dist_params: DistParams
+    value: NotRequired[ArrayLike]
 
 class ActorCriticModel(nn.Module):
-    actor_hiddden_sizes: Sequence[int]
+    actor_hidden_sizes: Sequence[int]
     critic_hidden_sizes: Sequence[int]
     action_dim: int
 
@@ -15,8 +26,8 @@ class ActorCriticModel(nn.Module):
             x = nn.Dense(features=size)(x)
             x = nn.relu(x)
 
-        mean = nn.Dense(features=self.action_dim)
-        log_std = nn.Dense(features=self.action_dim)
+        probs = nn.Dense(features=self.action_dim)
+        # log_std = nn.Dense(features=self.action_dim)
 
         x = input
         for size in self.critic_hidden_sizes:
@@ -24,4 +35,4 @@ class ActorCriticModel(nn.Module):
             x = nn.relu(x)
         value = nn.Dense(features=1)(x)
 
-        return mean, log_std, value
+        return probs, value

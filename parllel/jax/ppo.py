@@ -16,13 +16,10 @@ from jax.typing import ArrayLike
 from parllel import ArrayDict
 from parllel.algorithm import Algorithm
 from parllel.jax import agent
+from parllel.jax.models import ActorCriticModel
 from parllel.replays.batched_dataloader import BatchedDataLoader
 
 
-# @jax.jit
-# @functools.partial(jax.vmap, in_axes=(1, 1, 1, None, None), out_axes=1)
-# def gae_advantages():
-#     pass
 class PPO(Algorithm):
     def __init__(
         self,
@@ -64,7 +61,7 @@ class PPO(Algorithm):
                 self.algo_log_info["loss"].append(loss)
 
 
-@functools.partial(jax.jit, static_argnums=(2,))
+@jax.jit
 def train_step(
     state: TrainState,
     batch,
@@ -124,3 +121,13 @@ def create_train_state(
         tx=tx,
     )
     return state
+
+
+if __name__ == "__main__":
+    model = ActorCriticModel(
+        actor_hidden_sizes=[128, 256], critic_hidden_sizes=[128, 256], action_dim=4
+    )
+    init_shape = jnp.ones((1, 64, 64, 3), jnp.float32)
+    key = jax.random.PRNGKey(0)
+    initial_params = model.init(key, init_shape)["params"]
+    print(initial_params)
