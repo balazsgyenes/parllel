@@ -80,6 +80,20 @@ def random_graph(
 
 
 class TestJaggedArray:
+    def test_calling_directly(self, batch_shape, dtype, max_points, storage, padding):
+        array = JaggedArray(
+            batch_shape=batch_shape,
+            dtype=dtype,
+            max_mean_num_elem=max_points,
+            storage=storage,
+            padding=padding,
+        )
+        assert array.kind == "jagged"
+        assert array.batch_shape == batch_shape
+        assert array.dtype == dtype
+        assert array.storage == storage
+        assert array.padding == padding
+
     def test_write_single_graph(self, blank_array, graph_generator):
         graph = graph_generator()
         loc = (0, 4)

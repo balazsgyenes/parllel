@@ -12,11 +12,9 @@ from parllel.arrays.array import Array
 from parllel.arrays.indices import (Location, StandardIndex, add_locations,
                                     batch_dims_from_location, index_slice,
                                     init_location)
-from parllel.arrays.managedmemory import SharedMemoryArray
-from parllel.arrays.sharedmemory import InheritedMemoryArray
+from parllel.arrays.storage import Storage, StorageType
 
 # fmt: on
-
 Self = TypeVar("Self", bound="JaggedArray")
 
 
@@ -27,8 +25,6 @@ class JaggedArray(Array, kind="jagged"):
 
     # TODO: maybe create a repr that doesn't call __array__, as this can be expensive
     kind = "jagged"
-    _base_array: np.ndarray
-    _ptr: np.ndarray
 
     @classmethod
     def _specialize_subclass(
@@ -55,7 +51,7 @@ class JaggedArray(Array, kind="jagged"):
         max_mean_num_elem: int,
         feature_shape: tuple[int, ...] = (),
         kind: str | None = None,
-        storage: str | None = None,
+        storage: StorageType = "local",
         padding: int = 0,
         full_size: int | None = None,
         on_overflow: Literal["drop", "resize", "wrap"] = "drop",
@@ -108,12 +104,12 @@ class JaggedArray(Array, kind="jagged"):
         self._flattened_size = self._base_shape[0] * max_mean_num_elem
 
         allocate_shape = batch_shape[1:] + (self._flattened_size,) + feature_shape
-        self._allocate(shape=allocate_shape, dtype=self.dtype, name="_base_array")
+        self._storage = Storage(kind=storage, shape=allocate_shape, dtype=self.dtype)
 
         # add an extra element to node dimension so it's always possible to
         # access the element at t+1
         ptr_shape = batch_shape[1:] + (self._base_shape[0] + 1,)
-        self._allocate(shape=ptr_shape, dtype=np.int64, name="_ptr")
+        self._ptr = Storage(kind=storage, shape=ptr_shape, dtype=np.int64)
 
         self._current_location = init_location(self._base_shape)
         init_slice = slice(padding, batch_shape[0] + padding)
@@ -202,49 +198,50 @@ class JaggedArray(Array, kind="jagged"):
             destination[self._base_batch_dims :],
         )
 
-        # loop over all batch locations by taking the product of slices
-        batch_locs = (
-            (loc,) if isinstance(loc, int) else slice_to_range(loc)
-            for loc in batch_locs
-        )
-        for loc in itertools.product(*batch_locs):
-            t_loc, batch_loc = loc[0], loc[1:]
+        with self._storage as base_array, self._ptr as ptr:
+            # loop over all batch locations by taking the product of slices
+            batch_locs = (
+                (loc,) if isinstance(loc, int) else slice_to_range(loc)
+                for loc in batch_locs
+            )
+            for loc in itertools.product(*batch_locs):
+                t_loc, batch_loc = loc[0], loc[1:]
 
-            # get lengths of all graphs stored in this "element"
-            ptrs = self._ptr[batch_loc]
+                # get lengths of all graphs stored in this "element"
+                ptrs = ptr[batch_loc]
 
-            if (end := ptrs[t_loc] + value_n_points) > self._flattened_size:
-                if self.on_overflow == "resize":
-                    # TODO: add a resize method and call it here
-                    raise NotImplementedError
-                else:
-                    # drop input
-                    logger.warn(
-                        f"JaggedArray input {value} dropped due to size exceeded."
-                    )
-                    return
+                if (end := ptrs[t_loc] + value_n_points) > self._flattened_size:
+                    if self.on_overflow == "resize":
+                        # TODO: add a resize method and call it here
+                        raise NotImplementedError
+                    else:
+                        # drop input
+                        logger.warn(
+                            f"JaggedArray input {value} dropped due to size exceeded."
+                        )
+                        return
 
-            # set end point at ptrs[t_loc + 1]
-            ptrs[t_loc + 1] = end
+                # set end point at ptrs[t_loc + 1]
+                ptrs[t_loc + 1] = end
 
-            # to ensure that ptrs remains monotonic, remove end points of entries
-            # that have now been overwritten
-            ptrs_after = ptrs[t_loc + 1 :]
-            ptrs_after[ptrs_after < end] = end
-            # TODO: to prevent fragments of overwritten entries from remaining,
-            # make ptrs actual two values (start and end) for each entry (add
-            # trailing dimension of size 2)
+                # to ensure that ptrs remains monotonic, remove end points of entries
+                # that have now been overwritten
+                ptrs_after = ptrs[t_loc + 1 :]
+                ptrs_after[ptrs_after < end] = end
+                # TODO: to prevent fragments of overwritten entries from remaining,
+                # make ptrs actual two values (start and end) for each entry (add
+                # trailing dimension of size 2)
 
-            # compute the subarray within the slice of all nodes
-            start, end = ptrs[t_loc], ptrs[t_loc + 1]
-            n_slice = slice(start, end, 1)  # standard slice must have integer step
-            # use neg_from_end=True here to ensure that slice doesn't get
-            # extended beyond the size of the point cloud
-            n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
-            real_loc = batch_loc + (n_loc,) + feature_locs[1:]
+                # compute the subarray within the slice of all nodes
+                start, end = ptrs[t_loc], ptrs[t_loc + 1]
+                n_slice = slice(start, end, 1)  # standard slice must have integer step
+                # use neg_from_end=True here to ensure that slice doesn't get
+                # extended beyond the size of the point cloud
+                n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
+                real_loc = batch_loc + (n_loc,) + feature_locs[1:]
 
-            # write to underlying array at that location
-            self._base_array[real_loc] = value
+                # write to underlying array at that location
+                base_array[real_loc] = value
 
     def rotate(self) -> None:
         # TODO: once setitem supports JaggedArray, no override needed
@@ -321,25 +318,26 @@ class JaggedArray(Array, kind="jagged"):
                 )
             )
 
-        # loop over all batch locations except the T dimension
-        for batch_loc in batch_locs:
-            if any(isinstance(loc, slice) for loc in batch_loc):
-                raise NotImplementedError(f"{batch_loc=}")
+        with self._storage as base_array, self._ptr as ptr:
+            # loop over all batch locations except the T dimension
+            for batch_loc in batch_locs:
+                if any(isinstance(loc, slice) for loc in batch_loc):
+                    raise NotImplementedError(f"{batch_loc=}")
 
-            t_loc, b_loc = batch_loc[0], batch_loc[1:]
-            ptrs = self._ptr[b_loc]
+                t_loc, b_loc = batch_loc[0], batch_loc[1:]
+                ptrs = ptr[b_loc]
 
-            start, end = ptrs[t_loc], ptrs[t_loc + 1]
-            n_slice = slice(start, end, 1)
-            # use neg_from_end=True here to ensure that slice doesn't get
-            # extended beyond the size of the point cloud
-            n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
-            real_loc = b_loc + (n_loc,) + feature_locs[1:]
-            graph = self._base_array[real_loc]
-            graphs.append(graph)
-            num_elements.append(graph.shape[0])
+                start, end = ptrs[t_loc], ptrs[t_loc + 1]
+                n_slice = slice(start, end, 1)
+                # use neg_from_end=True here to ensure that slice doesn't get
+                # extended beyond the size of the point cloud
+                n_loc = index_slice(n_slice, feature_locs[0], self._flattened_size)
+                real_loc = b_loc + (n_loc,) + feature_locs[1:]
+                graph = base_array[real_loc]
+                graphs.append(graph)
+                num_elements.append(graph.shape[0])
 
-        return graphs, num_elements
+            return graphs, num_elements
 
     def to_ndarray(self) -> ArrayDict[np.ndarray]:
         graphs, num_elements = self.to_list()
@@ -358,18 +356,6 @@ class JaggedArray(Array, kind="jagged"):
             array = array.astype(dtype, copy=False)
 
         return array
-
-
-class InheritedMemoryJaggedArray(
-    InheritedMemoryArray, JaggedArray, kind="jagged", storage="inherited"
-):
-    pass
-
-
-class SharedMemoryJaggedArray(
-    SharedMemoryArray, JaggedArray, kind="jagged", storage="shared"
-):
-    pass
 
 
 def slice_to_range(slice_: slice) -> range:

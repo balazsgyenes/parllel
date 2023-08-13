@@ -4,11 +4,14 @@ import ctypes
 import multiprocessing as mp
 import os
 from multiprocessing.shared_memory import SharedMemory as MpSharedMem
+from typing import Literal
 from weakref import finalize
 
 import numpy as np
 
 import parllel.logger as logger
+
+StorageType = Literal["local", "shared", "inherited"]
 
 
 class Storage:
@@ -20,6 +23,7 @@ class Storage:
     _shape: tuple[int, ...]
     _dtype = np.dtype
     _resizable: bool
+    kind: StorageType
 
     def __init_subclass__(
         cls,
