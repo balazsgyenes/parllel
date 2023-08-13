@@ -17,6 +17,9 @@ class Storage:
     """
 
     _subclasses = {}
+    _shape: tuple[int, ...]
+    _dtype = np.dtype
+    _resizable: bool
 
     def __init_subclass__(
         cls,
@@ -37,24 +40,39 @@ class Storage:
             raise ValueError(f"No array subclass registered under {kind=}")
         return super().__new__(subcls)
 
-    def __init__(self, kind: str, size: int, dtype: np.dtype) -> None:
-        self._size = size
-        self._allocate(size=size, dtype=dtype)
+    def __init__(
+        self,
+        kind: str,
+        shape: tuple[int, ...],
+        dtype: np.dtype,
+        resizable: bool = False,
+    ) -> None:
+        raise NotImplementedError
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self._shape
+
+    @property
+    def dtype(self) -> np.dtype:
+        return self._dtype
+
+    @property
+    def resizable(self) -> bool:
+        return self._resizable
 
     @property
     def size(self) -> int:
-        return self._size
+        return int(np.prod(self._shape))
 
-    @property
-    def buffer(self) -> memoryview:
+    def __enter__(self) -> np.ndarray:
         raise NotImplementedError
 
-    def _allocate(self, size: int, dtype: np.dtype) -> None:
-        raise NotImplementedError
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        return False
 
-    def resize(self, size: int, dtype: np.dtype) -> None:
-        self.close()
-        self._allocate(size=size, dtype=dtype)
+    def resize(self, shape: tuple[int, ...], dtype: np.dtype) -> None:
+        raise NotImplementedError
 
     def close(self) -> None:
         ...
@@ -63,12 +81,31 @@ class Storage:
 class LocalMemory(Storage, kind="local"):
     kind = "local"
 
-    def _allocate(self, size: int, dtype: np.dtype) -> None:
-        self._memory = np.zeros((size,), dtype=dtype)
+    def __init__(
+        self,
+        kind: str,
+        shape: tuple[int, ...],
+        dtype: np.dtype,
+        resizable: bool = True,
+    ) -> None:
+        self._shape = shape
+        self._dtype = dtype
+        self._resizable = True
+        self._memory = np.zeros(shape, dtype)
 
-    @property
-    def buffer(self) -> memoryview:
-        return self._memory.data
+    def resize(self, shape: tuple[int, ...], dtype: np.dtype) -> None:
+        new_memory = np.zeros(shape, dtype)
+
+        # copy data to new memory
+        location = tuple(slice(0, size) for size in self.shape)
+        new_memory[location] = self._memory
+
+        self._memory = new_memory
+        self._shape = shape
+        self._dtype = dtype
+
+    def __enter__(self):
+        return self._memory
 
 
 class SharedMemory(Storage, kind="shared"):
@@ -77,9 +114,50 @@ class SharedMemory(Storage, kind="shared"):
     """
 
     kind = "shared"
+    _shmem: MpSharedMem
+    _name: str
 
-    def __init__(self, kind: str, size: int, dtype: np.dtype) -> None:
-        super().__init__(kind=kind, size=size, dtype=dtype)
+    # @property
+    # def shmem(self) -> MpSharedMem:
+    #     if self.resizable:
+    #         # this operation takes around 10us
+    #         # by doing this only on demand, we ensure that resizing operations
+    #         # take effect
+    #         return MpSharedMem(create=False, name=self._name)
+    #     else:
+    #         return self._shmem
+
+    # @shmem.setter
+    # def shmem(self, shmem: MpSharedMem) -> None:
+    #     if self.resizable:
+    #         self._name = shmem.name
+    #     else:
+    #         self._shmem = shmem
+
+    def __init__(
+        self,
+        kind: str,
+        shape: tuple[int, ...],
+        dtype: np.dtype,
+        resizable: bool = False,
+    ) -> None:
+        self._shape = shape
+        self._dtype = dtype
+        self._resizable = resizable
+
+        nbytes = self.size * np.dtype(dtype).itemsize
+        shmem = MpSharedMem(create=True, size=nbytes)
+        if self.resizable:
+            # SharedMemory is given a unique name that other processes can use to
+            # attach to it.
+            self._name = shmem.name
+        else:
+            self._shmem = shmem
+
+        logger.debug(
+            f"Process {os.getpid()} allocated {shmem.size} bytes of shared "
+            f"memory with name {shmem.name}"
+        )
 
         # keep track of which process created this (presumably the main process)
         self._spawning_pid = os.getpid()
@@ -87,30 +165,17 @@ class SharedMemory(Storage, kind="shared"):
         # create a finalizer to ensure that shared memory is cleaned up
         self._finalizer = finalize(self, self.close)
 
-    def _allocate(self, size: int, dtype: np.dtype, name: str | None = None) -> None:
-        nbytes = size * np.dtype(dtype).itemsize
-        shmem = MpSharedMem(create=True, name=name, size=nbytes)
-        # SharedMemory is given a unique name that other processes can use to
-        # attach to it.
-        self._name = shmem.name
-        logger.debug(
-            f"Process {os.getpid()} allocated {shmem.size} bytes of shared "
-            f"memory with name {shmem.name}"
+    def __enter__(self) -> np.ndarray:
+        if self.resizable:
+            shmem = MpSharedMem(create=False, name=self._name)
+        else:
+            shmem = self._shmem
+
+        return np.ndarray(
+            shape=self.shape,
+            dtype=self.dtype,
+            buffer=shmem.buf,
         )
-
-    def _get_shmem(self) -> MpSharedMem:
-        # this operation takes around 10us
-        # by doing this only on demand, we ensure that resizing operations
-        # take effect
-        return MpSharedMem(create=False, name=self._name)
-
-    @property
-    def buffer(self) -> memoryview:
-        return self._get_shmem().buf
-
-    def resize(self, size: int, dtype: np.dtype) -> None:
-        self.close(force=True)
-        self._allocate(size=size, dtype=dtype, name=self._name)
 
     def __setstate__(self, state: dict) -> None:
         # restore state dict entries
@@ -124,7 +189,10 @@ class SharedMemory(Storage, kind="shared"):
         # close must be called by each instance (i.e. each process) on cleanup
         # calling close on shared memory that has already been unlinked appears
         # not to throw an error
-        shmem = self._get_shmem()
+        if self.resizable:
+            shmem = MpSharedMem(create=False, name=self._name)
+        else:
+            shmem = self._shmem
         pid = os.getpid()
         shmem.close()
         # these debug statements may not print if the finalizer is called during
@@ -144,23 +212,30 @@ class InheritedMemory(Storage, kind="inherited"):
 
     kind = "inherited"
 
-    def _allocate(self, size: int, dtype: np.dtype) -> None:
+    def __init__(
+        self,
+        kind: str,
+        shape: tuple[int, ...],
+        dtype: np.dtype,
+        resizable: bool = False,
+    ) -> None:
+        self._shape = shape
+        self._dtype = dtype
+        self._resizable = resizable
         # allocate array in OS shared memory
-        nbytes = size * np.dtype(dtype).itemsize
+        nbytes = self.size * np.dtype(dtype).itemsize
         # mp.RawArray can be safely passed between processes on startup, even
         # when using the "spawn" start method. However, it cannot be sent
         # through a Pipe or Queue
         self._raw_array = mp.RawArray(ctypes.c_char, nbytes)
 
-    def buffer(self) -> memoryview:
-        # TODO: there must be a better way to do this
-        # if you call the ndarray constructor with raw_array.raw, the resulting
-        # array is readonly
-        # this might also work, but seems hacky:
-        # return self._raw_array._wrapper.create_memoryview()
-        array: np.ndarray = np.frombuffer(
+    def __enter__(self) -> np.ndarray:
+        array = np.frombuffer(
             self._raw_array,
-            dtype=np.uint8,
-            count=len(self._raw_array),
+            dtype=self.dtype,
+            count=self.size,
         )
-        return array.data
+        # assign to shape attribute so that error is raised when data is copied
+        # array.reshape might silently copy the data
+        array.shape = self.shape
+        return array
