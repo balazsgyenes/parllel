@@ -35,13 +35,17 @@ class Storage:
         kind = kind if kind is not None else "local"
         cls._subclasses[kind] = cls
 
-    def __new__(cls, *args, kind: str, **kwargs) -> Storage:
-        # note that Storage object can never be instantiated, only its
-        # subclasses
-        try:
-            subcls = cls._subclasses[kind]
-        except KeyError:
-            raise ValueError(f"No array subclass registered under {kind=}")
+    def __new__(cls, *args, kind: str | None = None, **kwargs) -> Storage:
+        if kind is None:
+            if cls is Storage:
+                # forbidden to instantiate parent class directly
+                raise TypeError("Storage requires kind to be specified.")
+            subcls = cls
+        else:
+            try:
+                subcls = cls._subclasses[kind]
+            except KeyError:
+                raise ValueError(f"No array subclass registered under {kind=}")
         return super().__new__(subcls)
 
     def __init__(
@@ -197,15 +201,16 @@ class SharedMemory(Storage, kind="shared"):
             shmem = MpSharedMem(create=False, name=self._name)
         else:
             shmem = self._shmem
+        name = shmem.name
         pid = os.getpid()
         shmem.close()
         # these debug statements may not print if the finalizer is called during
         # process shutdown
-        logger.debug(f"Process {pid} closed shared memory {self._name}")
+        logger.debug(f"Process {pid} closed shared memory {name}")
         if force or pid == self._spawning_pid:
             # unlink must be called once and only once to release shared memory
             shmem.unlink()
-            logger.debug(f"Process {pid} unlinked shared memory {self._name}")
+            logger.debug(f"Process {pid} unlinked shared memory {name}")
 
 
 class InheritedMemory(Storage, kind="inherited"):
