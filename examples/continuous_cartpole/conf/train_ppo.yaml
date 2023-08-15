@@ -2,6 +2,7 @@ defaults:
   - ppo@algo
   - _self_
 
+start_method: forkserver
 parallel: True
 batch_T: 128
 batch_B: 16

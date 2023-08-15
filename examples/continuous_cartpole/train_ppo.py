@@ -170,12 +170,10 @@ def build(config: DictConfig) -> RLRunner:
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo")
 def main(config: DictConfig) -> None:
-    mp.set_start_method("fork")
+    mp.set_start_method(config["start_method"])
 
     run = wandb.init(
-        anonymous="must",  # for this example, send to wandb dummy account
-        project="Continuous CartPole",
-        tags=["continuous", "state-based", "ppo", "feedforward"],
+        project="parllel_startmethod",
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch
