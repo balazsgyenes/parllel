@@ -173,7 +173,8 @@ def main(config: DictConfig) -> None:
     mp.set_start_method(config["start_method"])
 
     run = wandb.init(
-        project="parllel_startmethod",
+        entity="kirurc",
+        project="Continuous CartPole",
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch

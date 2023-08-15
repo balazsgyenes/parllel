@@ -15,6 +15,7 @@ videos
 
 # hydra default log folder
 outputs
+multirun
 
 # build folder for editable installs
 build
