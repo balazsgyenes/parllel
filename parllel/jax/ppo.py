@@ -13,7 +13,7 @@ from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax.typing import ArrayLike
 
-from parllel import ArrayDict
+from parllel import ArrayDict, Array
 from parllel.algorithm import Algorithm
 from parllel.jax import agent
 from parllel.jax.models import ActorCriticModel
@@ -25,7 +25,6 @@ class PPO(Algorithm):
         self,
         state: TrainState,
         dataloader: BatchedDataLoader,
-        optimizer: Callable,
         clip_grad_norm: float,
         value_loss_coeff: float,
         entropy_loss_coeff: float,
@@ -33,12 +32,10 @@ class PPO(Algorithm):
         ratio_clip: float,
         value_clipping_mode,
         value_clip: float | None = None,
+        **kwargs, # ignore additional arguments
     ):
         self.state = state
         self.dataloader = dataloader
-        self.optimizer = (
-            optimizer  # optimizer function already includes gradient clipping
-        )
         self.clip_grad_norm = clip_grad_norm
         self.epochs = epochs
         self.ratio_clip = ratio_clip
@@ -89,7 +86,7 @@ def loss_fn(
     entropy_coeff: float,
 ):
     states, actions, old_log_probs, returns, advantages = minibatch
-    log_probs, values = agent.policy_action(apply_fn, params, states)
+    log_probs, values = agent.step(apply_fn, params, states)
     values = values[:, 0]  # Convert shapes: (batch, 1) -> (batch,)
     probs = jnp.exp(log_probs)
 
@@ -121,6 +118,33 @@ def create_train_state(
         tx=tx,
     )
     return state
+
+
+def build_loss_sample_tree(
+    sample_tree: ArrayDict[Array],
+) -> ArrayDict[Array]:
+    loss_sample_tree = ArrayDict(
+        {
+            "observation": sample_tree["observation"],
+            "agent_info": sample_tree["agent_info"],
+            "action": sample_tree["action"],
+            "return_": sample_tree["return_"],
+            "advantage": sample_tree["advantage"],
+        }
+    )
+
+    # move these to the top level for convenience
+    # anything else in agent_info is agent-specific state
+    loss_sample_tree["old_value"] = loss_sample_tree["agent_info"].pop("value")
+    loss_sample_tree["old_dist_params"] = loss_sample_tree["agent_info"].pop(
+        "dist_params"
+    )
+
+    if "valid" in sample_tree:
+        loss_sample_tree["valid"] = sample_tree["valid"]
+        assert "initial_rnn_state" in sample_tree
+        loss_sample_tree["initial_rnn_state"] = sample_tree["initial_rnn_state"]
+    return loss_sample_tree
 
 
 if __name__ == "__main__":

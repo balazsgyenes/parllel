@@ -1,0 +1,13 @@
+discount: 0.99
+gae_lambda: 0.95
+normalize_advantage: True
+epochs: 4
+minibatches: 4
+ratio_clip: 0.1
+value_clipping_mode: "none"
+value_loss_coeff: 1.
+entropy_loss_coeff: 0.01
+clip_grad_norm: 1.
+learning_rate: 0.001
+learning_rate_scheduler: null
+
