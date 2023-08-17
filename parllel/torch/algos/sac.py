@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Sequence
 
+import numpy as np
 import torch
 from torch import Tensor
 from torch.nn.utils.clip_grad import clip_grad_norm_
@@ -32,7 +33,9 @@ class SAC(Algorithm):
         replay_ratio: int,  # data_consumption / data_generation
         target_update_tau: float,  # tau=1 for hard update.
         target_update_interval: int,  # 1000 for hard update, 1 for soft.
-        ent_coeff: float,
+        ent_coeff: float
+        | None,  # if ent_coeff == None, it is learned # TODO: also allow setting initial value and target entropy
+        ent_coeff_lr: float | None = None,
         clip_grad_norm: float | None = None,
         learning_rate_schedulers: Sequence[LRScheduler] | None = None,
         **kwargs,  # ignore additional arguments
@@ -63,8 +66,22 @@ class SAC(Algorithm):
         self.update_counter = 0
         self.algo_log_info = defaultdict(list)
 
-        self._alpha = torch.tensor([ent_coeff]).to(agent.device)
-        self._log_alpha = torch.log(self._alpha).to(agent.device)
+        self._ent_coeff = torch.tensor([ent_coeff]).to(agent.device)
+        self._log_ent_coeff = torch.log(self._ent_coeff).to(agent.device) # TODO: this was previously never used
+        self.ent_coeff_optimizer = None
+
+        if ent_coeff is None:
+            assert ent_coeff_lr is not None
+            init_value = 1.0  # TODO: allow providing init value
+            self.target_entropy = float(
+                -np.prod(self.agent.model["pi"].action_space.shape).astype(np.float32)  # type: ignore #TODO: model needs to save action_space?
+            )
+            self._log_ent_coeff = torch.log(
+                torch.ones(1, device=agent.device) * init_value
+            ).requires_grad_(True)
+            self.ent_coeff_optimizer = torch.optim.Adam(
+                [self._log_ent_coeff], lr=ent_coeff_lr
+            )  # TODO: how to handle the ent_coeff leraning rate?
 
     def optimize_agent(
         self,
@@ -126,6 +143,19 @@ class SAC(Algorithm):
         # using the gradients from the policy network.
         observation = self.agent.encode(samples["observation"])
 
+        new_action, log_prob = self.agent.pi(observation) # NOTE: reordering is necessary
+        log_prob = log_prob.reshape(-1, 1) #TODO: why?
+
+        if self.ent_coeff_optimizer is not None:
+            ent_coeff = torch.exp(self._log_ent_coeff.detach())
+            ent_coeff_loss = -(self._log_ent_coeff * (log_prob + self.target_entropy).detach()).mean()
+            self.ent_coeff_optimizer.zero_grad()
+            ent_coeff_loss.backward()
+            self.ent_coeff_optimizer.step()
+            self.algo_log_info["ent_ceff_loss"].append(ent_coeff_loss.item())
+        else:
+            ent_coeff = self._ent_coeff
+
         # compute target Q according to formula
         # r + gamma * (1 - d) * (min Q_targ(s', a') - alpha * log pi(s', a'))
         # where a' ~ pi(.|s')
@@ -134,7 +164,7 @@ class SAC(Algorithm):
             next_action, next_log_prob = self.agent.pi(next_observation)
             target_q1, target_q2 = self.agent.target_q(next_observation, next_action)
         min_target_q = torch.min(target_q1, target_q2)
-        next_q = min_target_q - self._alpha * next_log_prob
+        next_q = min_target_q - ent_coeff * next_log_prob
         y = samples["reward"] + self.discount * ~samples["terminated"] * next_q
         q1, q2 = self.agent.q(observation.detach(), samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
@@ -164,10 +194,9 @@ class SAC(Algorithm):
         # train policy model by maximizing the predicted Q value
         # maximize (min Q(s, a) - alpha * log pi(a, s))
         # where a ~ pi(.|s)
-        new_action, log_prob = self.agent.pi(observation)
         q1, q2 = self.agent.q(observation.detach(), new_action)
         min_q = torch.min(q1, q2)
-        pi_losses = self._alpha * log_prob - min_q
+        pi_losses = ent_coeff * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
         self.algo_log_info["actor_loss"].append(pi_loss.item())
 
