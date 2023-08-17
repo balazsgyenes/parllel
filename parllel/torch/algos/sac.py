@@ -64,8 +64,6 @@ class SAC(Algorithm):
         self.update_counter = 0
         self.algo_log_info = defaultdict(list)
 
-        self._ent_coeff = torch.tensor([ent_coeff]).to(agent.device)
-        self._log_ent_coeff = torch.log(self._ent_coeff).to(agent.device) # TODO: this was previously never used
         self.ent_coeff_optimizer = None
 
         if ent_coeff is None:
@@ -80,6 +78,9 @@ class SAC(Algorithm):
             self.ent_coeff_optimizer = torch.optim.Adam(
                 [self._log_ent_coeff], lr=ent_coeff_lr
             )  # TODO: how to handle the ent_coeff leraning rate?
+        else:
+            self._ent_coeff = torch.tensor([ent_coeff]).to(agent.device)
+            self._log_ent_coeff = torch.log(self._ent_coeff).to(agent.device) # TODO: this was previously never used
 
     def optimize_agent(
         self,
