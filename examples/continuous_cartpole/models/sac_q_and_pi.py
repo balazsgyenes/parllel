@@ -25,6 +25,7 @@ class PiMlpModel(nn.Module):
         assert isinstance(obs_space, spaces.Box)
         assert len(obs_space.shape) == 1
         obs_size = obs_space.shape[0]
+        self.action_space = action_space
 
         assert isinstance(action_space, spaces.Box)
         assert len(action_space.shape) == 1
