@@ -441,8 +441,8 @@ class Array:
         if self._shape is None:
             self._resolve_indexing_history()
 
-        with self._storage as base_array:
-            return base_array[tuple(self._current_location)]
+        base_array = self._storage.get_numpy()
+        return base_array[tuple(self._current_location)]
 
     def __array__(self, dtype=None) -> np.ndarray:
         array = self.to_ndarray()

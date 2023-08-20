@@ -4,7 +4,7 @@ import ctypes
 import multiprocessing as mp
 import os
 from multiprocessing.shared_memory import SharedMemory as MpSharedMem
-from typing import Literal
+from typing import Any, Literal
 from weakref import finalize
 
 import numpy as np
@@ -79,6 +79,9 @@ class Storage:
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
         return False
 
+    def get_numpy(self) -> np.ndarray:
+        raise NotImplementedError
+
     def resize(self, shape: tuple[int, ...], dtype: np.dtype) -> None:
         raise NotImplementedError
 
@@ -115,6 +118,9 @@ class LocalMemory(Storage, kind="local"):
     def __enter__(self):
         return self._memory
 
+    def get_numpy(self) -> np.ndarray:
+        return self._memory
+
 
 class SharedMemory(Storage, kind="shared"):
     """An array in OS shared memory that can be shared between processes at any
@@ -124,23 +130,6 @@ class SharedMemory(Storage, kind="shared"):
     kind = "shared"
     _shmem: MpSharedMem
     _name: str
-
-    # @property
-    # def shmem(self) -> MpSharedMem:
-    #     if self.resizable:
-    #         # this operation takes around 10us
-    #         # by doing this only on demand, we ensure that resizing operations
-    #         # take effect
-    #         return MpSharedMem(create=False, name=self._name)
-    #     else:
-    #         return self._shmem
-
-    # @shmem.setter
-    # def shmem(self, shmem: MpSharedMem) -> None:
-    #     if self.resizable:
-    #         self._name = shmem.name
-    #     else:
-    #         self._shmem = shmem
 
     def __init__(
         self,
@@ -159,6 +148,9 @@ class SharedMemory(Storage, kind="shared"):
             # SharedMemory is given a unique name that other processes can use to
             # attach to it.
             self._name = shmem.name
+            # create a dictionary to store hard references to shmem until the
+            # ndarrays using them are garbage collected
+            self._hard_refs: dict[int, tuple[MpSharedMem, finalize]] = {}
         else:
             self._shmem = shmem
 
@@ -175,19 +167,50 @@ class SharedMemory(Storage, kind="shared"):
 
     def __enter__(self) -> np.ndarray:
         if self.resizable:
-            shmem = MpSharedMem(create=False, name=self._name)
-        else:
-            shmem = self._shmem
+            # store a reference to the SharedMem so that it doesn't get cleaned up
+            self._shmem = MpSharedMem(create=False, name=self._name)
 
         return np.ndarray(
             shape=self.shape,
             dtype=self.dtype,
-            buffer=shmem.buf,
+            buffer=self._shmem.buf,
         )
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if self.resizable:
+            self._shmem.close()
+            # delete hard reference to SharedMem allowing it to be garbage collected
+            del self._shmem
+        return False
+
+    def get_numpy(self) -> np.ndarray:
+        if self.resizable:
+            shmem = MpSharedMem(create=False, name=self._name)
+            ndarray = np.ndarray(shape=self.shape, dtype=self.dtype, buffer=shmem.buf)
+            # finalizer = finalize(ndarray, self._hard_refs.pop, id(ndarray))
+            finalizer = finalize(ndarray, self._hard_refs.pop, id(ndarray))
+            # lookup ndarray by id, which also avoids storing a reference to ndarray
+            # and preventing it from being garbage collected
+            self._hard_refs[id(ndarray)] = (shmem, finalizer)
+            return ndarray
+        else:
+            return np.ndarray(
+                shape=self.shape,
+                dtype=self.dtype,
+                buffer=self._shmem.buf,
+            )
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        state.pop("_hard_refs", None)
+        return state
 
     def __setstate__(self, state: dict) -> None:
         # restore state dict entries
         self.__dict__.update(state)
+
+        if self.resizable:
+            self._hard_refs = {}
 
         # finalizer is marked dead when transferred between processes
         # restore finalizer by recreating it
@@ -201,16 +224,14 @@ class SharedMemory(Storage, kind="shared"):
             shmem = MpSharedMem(create=False, name=self._name)
         else:
             shmem = self._shmem
-        name = shmem.name
-        pid = os.getpid()
         shmem.close()
-        # these debug statements may not print if the finalizer is called during
-        # process shutdown
-        logger.debug(f"Process {pid} closed shared memory {name}")
+        pid = os.getpid()
         if force or pid == self._spawning_pid:
             # unlink must be called once and only once to release shared memory
             shmem.unlink()
-            logger.debug(f"Process {pid} unlinked shared memory {name}")
+            # this debug statement may not print if the finalizer is called during
+            # process shutdown
+            logger.debug(f"Process {pid} unlinked shared memory {shmem.name}")
 
 
 class InheritedMemory(Storage, kind="inherited"):
@@ -237,14 +258,30 @@ class InheritedMemory(Storage, kind="inherited"):
         # when using the "spawn" start method. However, it cannot be sent
         # through a Pipe or Queue
         self._raw_array = mp.RawArray(ctypes.c_char, nbytes)
+        self._wrap_raw_array()
 
-    def __enter__(self) -> np.ndarray:
-        array = np.frombuffer(
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        del state["_ndarray"]
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        # restore state dict entries
+        self.__dict__.update(state)
+        self._wrap_raw_array()
+
+    def _wrap_raw_array(self) -> None:
+        self._ndarray = np.frombuffer(
             self._raw_array,
             dtype=self.dtype,
             count=self.size,
         )
         # assign to shape attribute so that error is raised when data is copied
         # array.reshape might silently copy the data
-        array.shape = self.shape
-        return array
+        self._ndarray.shape = self.shape
+
+    def __enter__(self) -> np.ndarray:
+        return self._ndarray
+
+    def get_numpy(self) -> np.ndarray:
+        return self._ndarray
