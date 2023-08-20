@@ -477,7 +477,7 @@ class Array:
         return self.__array__() == o
 
     def close(self):
-        pass
+        self._storage.close(force=True)
 
 
 def shift_indices(
