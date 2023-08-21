@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from itertools import chain
 from typing import Sequence
 
 import numpy as np
@@ -33,8 +34,7 @@ class SAC(Algorithm):
         replay_ratio: int,  # data_consumption / data_generation
         target_update_tau: float,  # tau=1 for hard update.
         target_update_interval: int,  # 1000 for hard update, 1 for soft.
-        ent_coeff: float
-        | None,  # if ent_coeff == None, it is learned # TODO: also allow setting initial value and target entropy
+        ent_coeff: float,
         ent_coeff_lr: float | None = None,
         clip_grad_norm: float | None = None,
         learning_rate_schedulers: Sequence[LRScheduler] | None = None,
@@ -68,9 +68,8 @@ class SAC(Algorithm):
 
         self.ent_coeff_optimizer = None
 
-        if ent_coeff is None:
-            assert ent_coeff_lr is not None
-            init_value = 1.0  # TODO: allow providing init value
+        if ent_coeff_lr is not None:
+            init_value = ent_coeff
             self.target_entropy = float(
                 -np.prod(self.agent.model["pi"].action_space.shape).astype(np.float32)  # type: ignore #TODO: model needs to save action_space?
             )
@@ -79,10 +78,10 @@ class SAC(Algorithm):
             ).requires_grad_(True)
             self.ent_coeff_optimizer = torch.optim.Adam(
                 [self._log_ent_coeff], lr=ent_coeff_lr
-            )  # TODO: how to handle the ent_coeff leraning rate?
+            )
         else:
             self._ent_coeff = torch.tensor([ent_coeff]).to(agent.device)
-            self._log_ent_coeff = torch.log(self._ent_coeff).to(agent.device) # TODO: this was previously never used
+            self._log_ent_coeff = torch.log(self._ent_coeff).to(agent.device)
 
     def optimize_agent(
         self,
@@ -144,30 +143,36 @@ class SAC(Algorithm):
         # using the gradients from the policy network.
         observation = self.agent.encode(samples["observation"])
 
-        new_action, log_prob = self.agent.pi(observation) # NOTE: reordering is necessary
-        log_prob = log_prob.reshape(-1, 1) #TODO: why?
+        new_action, log_prob = self.agent.pi(
+            observation.detach()
+        )  # NOTE: reordering is necessary
+        log_prob = log_prob.reshape(-1, 1)  # TODO: why?
 
         if self.ent_coeff_optimizer is not None:
-            ent_coeff = torch.exp(self._log_ent_coeff.detach())
-            ent_coeff_loss = -(self._log_ent_coeff * (log_prob + self.target_entropy).detach()).mean()
+            entropy_coeff = torch.exp(self._log_ent_coeff.detach())
+            ent_coeff_loss = -(
+                self._log_ent_coeff * (log_prob + self.target_entropy).detach()
+            ).mean()
             self.ent_coeff_optimizer.zero_grad()
             ent_coeff_loss.backward()
             self.ent_coeff_optimizer.step()
             self.algo_log_info["ent_ceff_loss"].append(ent_coeff_loss.item())
         else:
-            ent_coeff = self._ent_coeff
+            entropy_coeff = self._ent_coeff
 
         # compute target Q according to formula
         # r + gamma * (1 - d) * (min Q_targ(s', a') - alpha * log pi(s', a'))
         # where a' ~ pi(.|s')
         with torch.no_grad():
-            next_observation = self.agent.encode(samples["next_observation"])
+            next_observation = self.agent.target_encode(samples["next_observation"])
             next_action, next_log_prob = self.agent.pi(next_observation)
             target_q1, target_q2 = self.agent.target_q(next_observation, next_action)
-        min_target_q = torch.min(target_q1, target_q2)
-        next_q = min_target_q - ent_coeff * next_log_prob
-        y = samples["reward"] + self.discount * ~samples["terminated"] * next_q
-        q1, q2 = self.agent.q(observation.detach(), samples["action"])
+            min_target_q = torch.min(target_q1, target_q2)
+            entropy_bonus = -entropy_coeff * next_log_prob
+            y = samples["reward"] + self.discount * ~samples["terminated"] * (
+                min_target_q + entropy_bonus
+            )
+        q1, q2 = self.agent.q(observation, samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
         self.algo_log_info["critic_loss"].append(q_loss.item())
 
@@ -188,6 +193,11 @@ class SAC(Algorithm):
             self.algo_log_info["q2_grad_norm"].append(q2_grad_norm.item())
 
         self.q_optimizer.step()
+        self.algo_log_info["critic_loss"].append(q_loss.item())
+        self.algo_log_info["ent_coeff"].append(entropy_coeff.item())
+        self.algo_log_info["mean_ent_bonus"].append(entropy_bonus.mean().item())
+        self.algo_log_info["max_target_q"].append(min_target_q.max().item())
+        self.algo_log_info["min_target_q"].append(min_target_q.min().item())
 
         # freeze Q models while optimizing policy model
         self.agent.freeze_q_models(True)
@@ -197,7 +207,7 @@ class SAC(Algorithm):
         # where a ~ pi(.|s)
         q1, q2 = self.agent.q(observation.detach(), new_action)
         min_q = torch.min(q1, q2)
-        pi_losses = ent_coeff * log_prob - min_q
+        pi_losses = entropy_coeff * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
         self.algo_log_info["actor_loss"].append(pi_loss.item())
 
