@@ -2,17 +2,18 @@
 # annotations as strings and do not evaluate them
 from __future__ import annotations
 
+import warnings
 from collections import defaultdict
 from enum import IntEnum
 from os import PathLike
 from pathlib import Path
 from typing import Any
-import warnings
 
 import numpy as np
 
 try:
     import wandb
+
     # catch if wandb is a local import, e.g. if a wandb folder exists in the
     # current directory
     has_wandb = wandb.__file__ is not None
@@ -21,8 +22,8 @@ except ImportError:
 
 import parllel
 
+from .logwriters import KeyValueWriter, LogWriter, MessageWriter, StdOutWriter
 from .serializers import JSONConfigSerializer
-from .logwriters import LogWriter, KeyValueWriter, MessageWriter, StdOutWriter
 
 
 class Verbosity(IntEnum):
@@ -36,9 +37,15 @@ class Verbosity(IntEnum):
 # for now, all warnings from this module should be converted to errors
 warnings.filterwarnings("error", module=__name__)
 # except these ones, which should remain warnings
-warnings.filterwarnings("default", message="No logger output will be saved to disk!", module=__name__)
-warnings.filterwarnings("default", message="No trained models will be saved to disk!", module=__name__)
-warnings.filterwarnings("default", message="No config information will be saved to disk!", module=__name__)
+warnings.filterwarnings(
+    "default", message="No logger output will be saved to disk!", module=__name__
+)
+warnings.filterwarnings(
+    "default", message="No trained models will be saved to disk!", module=__name__
+)
+warnings.filterwarnings(
+    "default", message="No config information will be saved to disk!", module=__name__
+)
 
 
 class Logger:
@@ -46,7 +53,9 @@ class Logger:
     accessible through the parllel.logger module. To initialize the logger,
     call parllel.logger.init().
     """
-    def __init__(self,
+
+    def __init__(
+        self,
         stdout: bool,
         verbosity: Verbosity,
     ):
@@ -74,6 +83,7 @@ class Logger:
         # after setting member variable, also set value in logger API
         self._log_dir = log_dir
         import parllel.logger as logger
+
         logger.log_dir = log_dir
 
     @property
@@ -84,11 +94,13 @@ class Logger:
     def model_save_path(self, model_save_path: Path) -> None:
         self._model_save_path = model_save_path
         import parllel.logger as logger
+
         logger.model_save_path = model_save_path
 
-    def init(self,
+    def init(
+        self,
         log_dir: PathLike | None = None,
-        tensorboard: bool = False, # TODO: add passing tensorboard dir explicitly
+        tensorboard: bool = False,  # TODO: add passing tensorboard dir explicitly
         wandb_run: "wandb.Run" | None = None,
         stdout: bool = True,
         stdout_max_length: int | None = None,
@@ -118,19 +130,15 @@ class Logger:
         :param verbosity: the minimum verbosity that should be written to text
             output and standard out
         """
-        if self.initialized:
-            # TODO: allow reinitialization
-            raise RuntimeError("Logging has already been initialized!")
-
-        self.close() # clean default writers created by __init__
+        self.close()  # clean default writers created by __init__ or previous init
 
         # TODO: if a wandb is detected but none was passed, should wandb be
         # used by default?
-        use_wandb = self.use_wandb = (has_wandb and wandb_run is not None)
+        use_wandb = self.use_wandb = has_wandb and wandb_run is not None
         self.missing_wandb = False
         if use_wandb:
             # check if user did not call wandb.init with sync_tensorboard=True
-            wandb_sync_tensorboard = len(wandb.patched['tensorboard']) > 0
+            wandb_sync_tensorboard = len(wandb.patched["tensorboard"]) > 0
             if not wandb_sync_tensorboard:
                 warnings.warn(
                     "No data will be logged to WandB because WandB is not set "
@@ -168,7 +176,7 @@ class Logger:
         elif use_wandb:
             # if wandb is disabled, use its log_dir instead of raising error
             log_dir = Path(wandb_run.dir)
-        else: # all outputs must have absolute paths
+        else:  # all outputs must have absolute paths
             raise ValueError("Must specify either log_dir or use WandB")
             # TODO: add option to specify all paths absolutely
         self.log_dir = log_dir
@@ -214,7 +222,7 @@ class Logger:
             serializer.dump(config=config, path=config_path)
         else:
             warnings.warn("No config information will be saved to disk!")
-        
+
         # make model_save_path absolute
         # if using wandb, set up live syncing of model
         # TODO: add other model saving schemes (e.g. all, best, etc.)
@@ -242,10 +250,6 @@ class Logger:
 
         # TODO: give each writer its own verbosity level
         self.verbosity = verbosity
-        
-        self.values.clear()
-        self.counts.clear()
-        self.excluded_writers.clear()
 
         self.initialized = True
 
@@ -253,9 +257,10 @@ class Logger:
         if self.initialized:
             # check if user initialized wandb after initializing parllel
             if (
-                has_wandb and wandb.run is not None # wandb run exists
-                and not self.use_wandb # everything called properly
-                and not self.missing_wandb # warning was already issued    
+                has_wandb
+                and wandb.run is not None  # wandb run exists
+                and not self.use_wandb  # everything called properly
+                and not self.missing_wandb  # warning was already issued
             ):
                 warnings.warn(
                     "No data will be logged to WandB because wandb.init was "
@@ -273,7 +278,8 @@ class Logger:
                     "Please call parllel.logger.init."
                 )
 
-    def record(self,
+    def record(
+        self,
         key: str,
         value: Any,
         do_not_write_to: str | tuple[str, ...] | None = "",
@@ -290,7 +296,8 @@ class Logger:
         self.values[key] = value
         self.excluded_writers[key] = do_not_write_to
 
-    def record_mean(self,
+    def record_mean(
+        self,
         key: str,
         value: np.ndarray | list[float] | float,
         do_not_write_to: str | tuple[str, ...] | None = "",
@@ -424,3 +431,7 @@ class Logger:
         for writer in self.writers.values():
             writer.close()
         self.writers.clear()
+        self.values.clear()
+        self.counts.clear()
+        self.excluded_writers.clear()
+        self.initialized = False
