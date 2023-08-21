@@ -143,10 +143,7 @@ class SAC(Algorithm):
         # using the gradients from the policy network.
         observation = self.agent.encode(samples["observation"])
 
-        new_action, log_prob = self.agent.pi(
-            observation.detach()
-        )  # NOTE: reordering is necessary
-        log_prob = log_prob.reshape(-1, 1)  # TODO: why?
+        new_action, log_prob = self.agent.pi(observation.detach())
 
         if self.ent_coeff_optimizer is not None:
             entropy_coeff = torch.exp(self._log_ent_coeff.detach())
@@ -167,11 +164,11 @@ class SAC(Algorithm):
             next_observation = self.agent.target_encode(samples["next_observation"])
             next_action, next_log_prob = self.agent.pi(next_observation)
             target_q1, target_q2 = self.agent.target_q(next_observation, next_action)
-            min_target_q = torch.min(target_q1, target_q2)
-            entropy_bonus = -entropy_coeff * next_log_prob
-            y = samples["reward"] + self.discount * ~samples["terminated"] * (
-                min_target_q + entropy_bonus
-            )
+        min_target_q = torch.min(target_q1, target_q2)
+        entropy_bonus = -entropy_coeff * next_log_prob
+        y = samples["reward"] + self.discount * ~samples["terminated"] * (
+            min_target_q + entropy_bonus
+        )
         q1, q2 = self.agent.q(observation, samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
         self.algo_log_info["critic_loss"].append(q_loss.item())
@@ -210,6 +207,8 @@ class SAC(Algorithm):
         pi_losses = entropy_coeff * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
         self.algo_log_info["actor_loss"].append(pi_loss.item())
+        self.algo_log_info["min_q"].append(min_q.min().item())
+        self.algo_log_info["max_q"].append(min_q.max().item())
 
         # update Pi model parameters according to pi loss
         self.pi_optimizer.zero_grad()
