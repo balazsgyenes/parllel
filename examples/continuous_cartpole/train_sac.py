@@ -183,8 +183,6 @@ def build(config: DictConfig) -> RLRunner:
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_sac")
 def main(config: DictConfig) -> None:
-    mp.set_start_method("fork")
-
     run = wandb.init(
         # anonymous="must",  # for this example, send to wandb dummy account
         project="parllel",
@@ -197,9 +195,6 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=Path(
-            f"log_data/cartpole-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
-        ),
         tensorboard=True,
         output_files={
             "txt": "log.txt",
@@ -217,4 +212,5 @@ def main(config: DictConfig) -> None:
 
 
 if __name__ == "__main__":
+    mp.set_start_method("fork")
     main()
