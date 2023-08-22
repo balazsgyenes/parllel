@@ -168,6 +168,8 @@ class SAC(Algorithm):
         self.algo_log_info["actor_loss"].append(pi_loss.item())
         self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
         self.algo_log_info["mean_min_q"].append(min_q.detach().mean().item())
+        self.algo_log_info["max_min_q"].append(min_q.detach().max().item())
+        self.algo_log_info["min_min_q"].append(min_q.detach().min().item())
 
 
 def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array]:

@@ -2,12 +2,21 @@ defaults:
   - sac@algo
   - _self_
 
+hydra:
+  sweeper:
+    params:
+      env.reward_scale: 1.0,2.0,5.0
+      env.reward_type: sparse,dense
+      algo.ent_coeff: 1.e-4,1.e-5,1.e-6
+      +iteration: range(3)
+
 parallel: True
 batch_T: 128
 batch_B: 16
 max_steps_decorrelate: 50
 env:
   max_episode_steps: 1000
+  reward_scale: 1.0
   reward_type: sparse
 device: "cpu"
 algo:

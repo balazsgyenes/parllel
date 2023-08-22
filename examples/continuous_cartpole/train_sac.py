@@ -186,9 +186,9 @@ def main(config: DictConfig) -> None:
     mp.set_start_method("fork")
 
     run = wandb.init(
-        anonymous="must",  # for this example, send to wandb dummy account
-        project="CartPole",
-        tags=["continuous", "state-based", "sac", "feedforward"],
+        # anonymous="must",  # for this example, send to wandb dummy account
+        project="parllel",
+        tags=["continuous", "state-based", "sac", "feedforward", "parllel"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch
