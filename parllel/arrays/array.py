@@ -445,7 +445,7 @@ class Array:
         return self.__array__() == o
 
     def close(self):
-        self._storage.close(force=True)
+        self._storage.close()
 
 
 Array._subclasses["default"] = Array

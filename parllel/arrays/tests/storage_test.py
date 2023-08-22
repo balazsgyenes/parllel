@@ -21,9 +21,9 @@ def dtype(request) -> np.dtype:
     return request.param
 
 
-@pytest.fixture(scope="module")
-def resizable() -> bool:
-    return False
+@pytest.fixture(params=[False, True], scope="module")
+def resizable(request) -> bool:
+    return request.param
 
 
 @pytest.fixture

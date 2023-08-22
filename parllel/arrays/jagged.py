@@ -362,8 +362,8 @@ class JaggedArray(Array, kind="jagged"):
         return array
 
     def close(self):
-        self._storage.close(force=True)
-        self._ptr.close(force=True)
+        self._storage.close()
+        self._ptr.close()
 
 
 def slice_to_range(slice_: slice) -> range:

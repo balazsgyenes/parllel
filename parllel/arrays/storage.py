@@ -16,8 +16,8 @@ StorageType = Literal["local", "shared", "inherited"]
 
 
 class Storage:
-    """A block of memory that exposes a memoryview, which can be wrapped with
-    an ndarray.
+    """A block of memory that is exposed through a numpy narray, supporting
+    primitive read/write operations.
     """
 
     _subclasses: dict[tuple[str, bool], type[Storage]] = {}
@@ -37,6 +37,7 @@ class Storage:
         if resizable is not None:
             cls._subclasses[(kind, resizable)] = cls
         else:
+            # i.e. subclass is always resizable (e.g. LocalMemory)
             cls._subclasses[(kind, False)] = cls
             cls._subclasses[(kind, True)] = cls
 
@@ -165,9 +166,6 @@ class SharedMemory(Storage, kind="shared", resizable=False):
             f"memory with name {self._shmem.name}"
         )
 
-        # keep track of which process created this (presumably the main process)
-        self._spawning_pid = os.getpid()
-
         # create a finalizer to ensure that shared memory is cleaned up
         finalize(self, call_weakmethod, WeakMethod(self.close))
 
@@ -195,23 +193,18 @@ class SharedMemory(Storage, kind="shared", resizable=False):
     def __setstate__(self, state: dict[str, Any]) -> None:
         # restore state dict entries
         self.__dict__.update(state)
-        # create new finalizer in this new process
-        finalize(self, call_weakmethod, WeakMethod(self.close))
+        # create new finalizer to close shared memory reference in this new process
+        finalize(self, self._shmem.close)
         # restore numpy array wrapper
         self._wrap_raw_array()
 
-    def close(self, force: bool = False) -> None:
-        # close must be called by each instance (i.e. each process) on cleanup
-        # calling close on shared memory that has already been unlinked appears
-        # not to throw an error
+    def close(self) -> None:
         self._shmem.close()
-        pid = os.getpid()
-        if force or pid == self._spawning_pid:
-            # unlink must be called once and only once to release shared memory
-            self._shmem.unlink()
-            # this debug statement may not print if the finalizer is called during
-            # process shutdown
-            logger.debug(f"Process {pid} unlinked shared memory {self._shmem.name}")
+        # unlink must be called once and only once to release shared memory
+        self._shmem.unlink()
+        # this debug statement may not print if the finalizer is called during
+        # process shutdown
+        logger.debug(f"Process {os.getpid()} unlinked shared memory {self._shmem.name}")
 
 
 class ResizableSharedMemory(Storage, kind="shared", resizable=True):
@@ -244,9 +237,6 @@ class ResizableSharedMemory(Storage, kind="shared", resizable=True):
             f"memory with name {shmem.name}"
         )
 
-        # keep track of which process created this (presumably the main process)
-        self._spawning_pid = os.getpid()
-
         # create a finalizer to ensure that shared memory is cleaned up
         finalize(self, call_weakmethod, WeakMethod(self.close))
 
@@ -272,17 +262,14 @@ class ResizableSharedMemory(Storage, kind="shared", resizable=True):
         finalize(ndarray, shmem.close)
         return ndarray
 
-    def close(self, force: bool = False) -> None:
-        # close must be called by each instance (i.e. each process) on cleanup
-        # calling close on shared memory that has already been unlinked appears
-        # not to throw an error
-        pid = os.getpid()
-        if force or pid == self._spawning_pid:
-            # unlink must be called once and only once to release shared memory
-            shmem = MpSharedMem(create=False, name=self._name)
-            shmem.close()
-            shmem.unlink()
-            logger.debug(f"Process {pid} unlinked shared memory {shmem.name}")
+    def close(self) -> None:
+        shmem = MpSharedMem(create=False, name=self._name)
+        shmem.close()
+        # unlink must be called once and only once to release shared memory
+        shmem.unlink()
+        # this debug statement may not print if the finalizer is called during
+        # process shutdown
+        logger.debug(f"Process {os.getpid()} unlinked shared memory {shmem.name}")
 
 
 class InheritedMemory(Storage, kind="inherited", resizable=False):
