@@ -5,7 +5,7 @@ import multiprocessing as mp
 import os
 from multiprocessing.shared_memory import SharedMemory as MpSharedMem
 from typing import Any, Literal
-from weakref import finalize
+from weakref import WeakMethod, finalize
 
 import numpy as np
 
@@ -131,6 +131,12 @@ class LocalMemory(Storage, kind="local", resizable=None):
         return self._memory
 
 
+def call_weakmethod(weakmethod: WeakMethod, *args, **kwargs) -> None:
+    method = weakmethod()
+    if method is not None:
+        return method(*args, **kwargs)
+
+
 class SharedMemory(Storage, kind="shared", resizable=False):
     """An array in OS shared memory that can be shared between processes at any
     time.
@@ -162,7 +168,7 @@ class SharedMemory(Storage, kind="shared", resizable=False):
         self._spawning_pid = os.getpid()
 
         # create a finalizer to ensure that shared memory is cleaned up
-        self._finalizer = finalize(self, self.close)
+        self._finalizer = finalize(self, call_weakmethod, WeakMethod(self.close))
 
     def __enter__(self) -> np.ndarray:
         return np.ndarray(
@@ -184,7 +190,7 @@ class SharedMemory(Storage, kind="shared", resizable=False):
 
         # finalizer is marked dead when transferred between processes
         # restore finalizer by recreating it
-        self._finalizer = finalize(self, self.close)
+        self._finalizer = finalize(self, call_weakmethod, WeakMethod(self.close))
 
     def close(self, force: bool = False) -> None:
         # close must be called by each instance (i.e. each process) on cleanup
