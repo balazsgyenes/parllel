@@ -46,15 +46,9 @@ class Array:
     def _get_subclass(cls, kind: str | None) -> type[Array]:
         if kind is None:
             # instantiate a subclass directly by just not passing kind
-            # e.g. JaggedArray(shape=(4,4), dtype=np.float32)
+            # e.g. JaggedArray(...)
+            # this is also required for pickling to work
             return cls
-
-        # fill in None arguments with values from class used to instantiate
-        kind = kind if kind is not None else cls.kind
-
-        if kind == "default":
-            # Array is not a registered subclass
-            return Array
 
         # otherwise look up name in dictionary of registered subclasses
         try:
@@ -115,20 +109,15 @@ class Array:
                 f"Full size ({full_size}) must be evenly divided by leading dimension {batch_shape[0]}."
             )
 
-        self.dtype = dtype
         self.padding = padding
         # size of leading dim of full array, without padding
         self.full_size = full_size
-        self._base_shape = (full_size + 2 * padding,) + batch_shape[1:] + feature_shape
+        storage_shape = (full_size + 2 * padding,) + batch_shape[1:] + feature_shape
         self._base_batch_dims = len(batch_shape)
 
-        self._storage = Storage(
-            kind=storage,
-            shape=self._base_shape,
-            dtype=dtype,
-        )
+        self._storage = Storage(kind=storage, shape=storage_shape, dtype=dtype)
 
-        self._current_location = init_location(self._base_shape)
+        self._current_location = init_location(storage_shape)
         init_slice = slice(padding, batch_shape[0] + padding)
         self._unresolved_indices: list[Location] = [init_slice]
         self._resolve_indexing_history()
@@ -218,7 +207,7 @@ class Array:
                 dtype = np.float32
             kwargs["dtype"] = dtype
 
-        return cls(**kwargs)
+        return Array(**kwargs)
 
     @classmethod
     def _get_from_numpy_kwargs(cls, example: Any, kwargs: dict) -> dict:
@@ -234,6 +223,14 @@ class Array:
     @property
     def storage(self) -> StorageType:
         return self._storage.kind
+
+    @property
+    def base_shape(self) -> tuple[int, ...]:
+        return self._storage.shape
+
+    @property
+    def dtype(self) -> np.dtype:
+        return self._storage.dtype
 
     @property
     def n_batch_dims(self) -> int:
@@ -267,35 +264,6 @@ class Array:
 
         return self._shape[0] - 1
 
-    def resize(
-        self,
-        feature_shape: tuple[int, ...] | None = None,
-        batch_shape: tuple[int, ...] | None = None,
-        dtype: np.dtype | None = None,
-        padding: int | None = None,
-        full_size: int | None = None,
-    ) -> None:
-        # also catches case if batch_shape == ()
-        batch_shape = batch_shape if batch_shape else self.batch_shape
-        feature_shape = (
-            feature_shape
-            if feature_shape is not None
-            else self.shape[self.n_batch_dims :]
-        )
-        dtype = dtype or self.dtype
-        padding = padding if padding is not None else self.padding
-        full_size = full_size if full_size is not None else self.full_size
-
-        self.dtype = dtype
-        self.padding = padding
-        self.full_size = full_size
-        self._base_shape = (full_size + 2 * padding,) + batch_shape[1:] + feature_shape
-        self._base_batch_dims = len(batch_shape)
-        # TODO: what to do about all the edge cases where subarrays calls
-        # resize()?
-        # should base_shape and dtype be part of storage?
-        self._storage.resize(shape=self._base_shape, dtype=dtype)
-
     def __getitem__(self: Self, indices: Location) -> Self:
         # new Array object initialized through a (shallow) copy. Attributes
         # that differ between self and result are modified next. This allows
@@ -317,13 +285,13 @@ class Array:
             self._current_location = add_locations(
                 self._current_location,
                 location,
-                self._base_shape,
+                self.base_shape,
                 neg_from_end=False,
             )
 
         self._unresolved_indices.clear()
 
-        self._shape = shape_from_location(self._current_location, self._base_shape)
+        self._shape = shape_from_location(self._current_location, self.base_shape)
         self._n_batch_dims = batch_dims_from_location(
             self._current_location, self._base_batch_dims
         )
@@ -337,7 +305,7 @@ class Array:
             add_locations(
                 self._current_location,
                 indices,
-                self._base_shape,
+                self.base_shape,
                 neg_from_end=False,
             )
         )
@@ -358,7 +326,7 @@ class Array:
         full._unresolved_indices.clear()
 
         # assign current location so that full array except padding is visible
-        full._current_location = init_location(full._base_shape)
+        full._current_location = init_location(full.base_shape)
         init_slice = slice(full.padding, full.full_size + full.padding)
         full._unresolved_indices.append(init_slice)
         full._resolve_indexing_history()
@@ -388,7 +356,7 @@ class Array:
             offsetted._current_location[0] = index_slice(
                 leading_loc,
                 offset_slice,
-                offsetted._base_shape[0],
+                offsetted.base_shape[0],
                 neg_from_end=False,
             )
         else:
@@ -478,6 +446,9 @@ class Array:
 
     def close(self):
         self._storage.close(force=True)
+
+
+Array._subclasses["default"] = Array
 
 
 def shift_indices(

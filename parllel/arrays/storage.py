@@ -8,6 +8,7 @@ from typing import Any, Literal
 from weakref import WeakMethod, finalize
 
 import numpy as np
+from numpy.typing import DTypeLike
 
 import parllel.logger as logger
 
@@ -64,7 +65,7 @@ class Storage:
         self,
         kind: str,
         shape: tuple[int, ...],
-        dtype: np.dtype,
+        dtype: DTypeLike,
         resizable: bool = False,
     ) -> None:
         raise NotImplementedError
@@ -90,7 +91,7 @@ class Storage:
     def get_numpy(self) -> np.ndarray:
         raise NotImplementedError
 
-    def resize(self, shape: tuple[int, ...], dtype: np.dtype) -> None:
+    def resize(self, shape: tuple[int, ...], dtype: DTypeLike) -> None:
         raise TypeError(f"Not possible to resize {type(self).__name__}.")
 
     def close(self, force: bool = False) -> None:
@@ -105,15 +106,15 @@ class LocalMemory(Storage, kind="local", resizable=None):
         self,
         kind: str,
         shape: tuple[int, ...],
-        dtype: np.dtype,
+        dtype: DTypeLike,
         resizable: bool = True,
     ) -> None:
         self._shape = shape
-        self._dtype = dtype
+        self._dtype = np.dtype(dtype)
         self._resizable = True
         self._memory = np.zeros(shape, dtype)
 
-    def resize(self, shape: tuple[int, ...], dtype: np.dtype) -> None:
+    def resize(self, shape: tuple[int, ...], dtype: DTypeLike) -> None:
         new_memory = np.zeros(shape, dtype)
 
         # copy data to new memory
@@ -122,7 +123,7 @@ class LocalMemory(Storage, kind="local", resizable=None):
 
         self._memory = new_memory
         self._shape = shape
-        self._dtype = dtype
+        self._dtype = np.dtype(dtype)
 
     def __enter__(self):
         return self._memory
@@ -150,13 +151,13 @@ class SharedMemory(Storage, kind="shared", resizable=False):
         self,
         kind: str,
         shape: tuple[int, ...],
-        dtype: np.dtype,
+        dtype: DTypeLike,
         resizable: bool = False,
     ) -> None:
         self._shape = shape
-        self._dtype = dtype
+        self._dtype = np.dtype(dtype)
 
-        nbytes = self.size * np.dtype(dtype).itemsize
+        nbytes = self.size * self.dtype.itemsize
         self._shmem = MpSharedMem(create=True, size=nbytes)
 
         logger.debug(
@@ -226,13 +227,13 @@ class ResizableSharedMemory(Storage, kind="shared", resizable=True):
         self,
         kind: str,
         shape: tuple[int, ...],
-        dtype: np.dtype,
+        dtype: DTypeLike,
         resizable: bool = True,
     ) -> None:
         self._shape = shape
-        self._dtype = dtype
+        self._dtype = np.dtype(dtype)
 
-        nbytes = self.size * np.dtype(dtype).itemsize
+        nbytes = self.size * self.dtype.itemsize
         shmem = MpSharedMem(create=True, size=nbytes)
         # SharedMemory is given a unique name that other processes can use to
         # attach to it.
@@ -245,6 +246,9 @@ class ResizableSharedMemory(Storage, kind="shared", resizable=True):
 
         # keep track of which process created this (presumably the main process)
         self._spawning_pid = os.getpid()
+
+        # create a finalizer to ensure that shared memory is cleaned up
+        finalize(self, call_weakmethod, WeakMethod(self.close))
 
     def __enter__(self) -> np.ndarray:
         # store a reference to the SharedMem so that it doesn't get cleaned up
@@ -294,13 +298,13 @@ class InheritedMemory(Storage, kind="inherited", resizable=False):
         self,
         kind: str,
         shape: tuple[int, ...],
-        dtype: np.dtype,
+        dtype: DTypeLike,
         resizable: bool = False,
     ) -> None:
         self._shape = shape
-        self._dtype = dtype
+        self._dtype = np.dtype(dtype)
         # allocate array in OS shared memory
-        nbytes = self.size * np.dtype(dtype).itemsize
+        nbytes = self.size * self.dtype.itemsize
         # mp.RawArray can be safely passed between processes on startup, even
         # when using the "spawn" start method. However, it cannot be sent
         # through a Pipe or Queue

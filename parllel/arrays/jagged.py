@@ -34,7 +34,7 @@ class JaggedArray(Array, kind="jagged"):
         full_size: int | None = None,
         **kwargs,
     ) -> type[Array]:
-        if full_size is None or full_size == batch_shape[0]:
+        if full_size is None or full_size == batch_shape[0]:  # type: ignore
             # batch_shape is only None if calling JaggedArray[List].__new__(type(self))
             # explicitly: must return the same type in order for pickling to work
             return cls
@@ -86,7 +86,6 @@ class JaggedArray(Array, kind="jagged"):
         elif on_overflow in {"resize", "wrap"}:
             raise NotImplementedError(f"{on_overflow=}")
 
-        self.dtype = dtype
         self.padding = padding
         self.on_overflow = on_overflow
         self.max_mean_num_elem = max_mean_num_elem
@@ -104,7 +103,7 @@ class JaggedArray(Array, kind="jagged"):
         self._flattened_size = self._base_shape[0] * max_mean_num_elem
 
         allocate_shape = batch_shape[1:] + (self._flattened_size,) + feature_shape
-        self._storage = Storage(kind=storage, shape=allocate_shape, dtype=self.dtype)
+        self._storage = Storage(kind=storage, shape=allocate_shape, dtype=dtype)
 
         # add an extra element to node dimension so it's always possible to
         # access the element at t+1
@@ -156,6 +155,10 @@ class JaggedArray(Array, kind="jagged"):
                 )
             kwargs["feature_shape"] = np_example.shape[1:]
         return super()._get_from_numpy_kwargs(example[0], kwargs)
+
+    @property
+    def base_shape(self) -> tuple[int, ...]:
+        return self._base_shape
 
     def _resolve_indexing_history(self) -> None:
         super()._resolve_indexing_history()
@@ -318,7 +321,8 @@ class JaggedArray(Array, kind="jagged"):
                 )
             )
 
-        with self._storage as base_array, self._ptr as ptr:
+        base_array = self._storage.get_numpy()
+        with self._ptr as ptr:
             # loop over all batch locations except the T dimension
             for batch_loc in batch_locs:
                 if any(isinstance(loc, slice) for loc in batch_loc):
