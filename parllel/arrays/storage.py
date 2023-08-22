@@ -168,29 +168,36 @@ class SharedMemory(Storage, kind="shared", resizable=False):
         self._spawning_pid = os.getpid()
 
         # create a finalizer to ensure that shared memory is cleaned up
-        self._finalizer = finalize(self, call_weakmethod, WeakMethod(self.close))
+        finalize(self, call_weakmethod, WeakMethod(self.close))
+
+        # wrap shared memory with a numpy array for accessing
+        self._wrap_raw_array()
+
+    def _wrap_raw_array(self) -> None:
+        self._ndarray = np.ndarray(
+            shape=self.shape,
+            dtype=self.dtype,
+            buffer=self._shmem.buf,
+        )
 
     def __enter__(self) -> np.ndarray:
-        return np.ndarray(
-            shape=self.shape,
-            dtype=self.dtype,
-            buffer=self._shmem.buf,
-        )
+        return self._ndarray
 
     def get_numpy(self) -> np.ndarray:
-        return np.ndarray(
-            shape=self.shape,
-            dtype=self.dtype,
-            buffer=self._shmem.buf,
-        )
+        return self._ndarray
 
-    def __setstate__(self, state: dict) -> None:
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        del state["_ndarray"]
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
         # restore state dict entries
         self.__dict__.update(state)
-
-        # finalizer is marked dead when transferred between processes
-        # restore finalizer by recreating it
-        self._finalizer = finalize(self, call_weakmethod, WeakMethod(self.close))
+        # create new finalizer in this new process
+        finalize(self, call_weakmethod, WeakMethod(self.close))
+        # restore numpy array wrapper
+        self._wrap_raw_array()
 
     def close(self, force: bool = False) -> None:
         # close must be called by each instance (i.e. each process) on cleanup
@@ -230,9 +237,6 @@ class ResizableSharedMemory(Storage, kind="shared", resizable=True):
         # SharedMemory is given a unique name that other processes can use to
         # attach to it.
         self._name = shmem.name
-        # create a dictionary to store hard references to shmem until the
-        # ndarrays using them are garbage collected
-        self._hard_refs: dict[int, tuple[MpSharedMem, finalize]] = {}
 
         logger.debug(
             f"Process {os.getpid()} allocated {shmem.size} bytes of shared "
@@ -260,32 +264,18 @@ class ResizableSharedMemory(Storage, kind="shared", resizable=True):
     def get_numpy(self) -> np.ndarray:
         shmem = MpSharedMem(create=False, name=self._name)
         ndarray = np.ndarray(shape=self.shape, dtype=self.dtype, buffer=shmem.buf)
-        finalizer = finalize(ndarray, self._cleanup_numpy, id(ndarray))
-        # lookup ndarray by id, which also avoids storing a reference to ndarray
-        # and preventing it from being garbage collected
-        self._hard_refs[id(ndarray)] = (shmem, finalizer)
+        # keep shmem alive until ndarray is garbage collected, and then close it
+        finalize(ndarray, shmem.close)
         return ndarray
-
-    def _cleanup_numpy(self, id_ndarray: int) -> None:
-        shmem, _ = self._hard_refs.pop(id_ndarray)
-        shmem.close()
-
-    def __getstate__(self) -> dict[str, Any]:
-        state = self.__dict__.copy()
-        state["_hard_refs"] = {}
-        return state
 
     def close(self, force: bool = False) -> None:
         # close must be called by each instance (i.e. each process) on cleanup
         # calling close on shared memory that has already been unlinked appears
         # not to throw an error
-        for shmem, _ in self._hard_refs.values():
-            shmem.close()
         pid = os.getpid()
         if force or pid == self._spawning_pid:
             # unlink must be called once and only once to release shared memory
             shmem = MpSharedMem(create=False, name=self._name)
-            # TODO: this isn't the right name, because the prefix is gone
             shmem.close()
             shmem.unlink()
             logger.debug(f"Process {pid} unlinked shared memory {shmem.name}")
@@ -317,16 +307,6 @@ class InheritedMemory(Storage, kind="inherited", resizable=False):
         self._raw_array = mp.RawArray(ctypes.c_char, nbytes)
         self._wrap_raw_array()
 
-    def __getstate__(self) -> dict[str, Any]:
-        state = self.__dict__.copy()
-        del state["_ndarray"]
-        return state
-
-    def __setstate__(self, state: dict[str, Any]) -> None:
-        # restore state dict entries
-        self.__dict__.update(state)
-        self._wrap_raw_array()
-
     def _wrap_raw_array(self) -> None:
         self._ndarray = np.frombuffer(
             self._raw_array,
@@ -342,3 +322,13 @@ class InheritedMemory(Storage, kind="inherited", resizable=False):
 
     def get_numpy(self) -> np.ndarray:
         return self._ndarray
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        del state["_ndarray"]
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        # restore state dict entries
+        self.__dict__.update(state)
+        self._wrap_raw_array()
