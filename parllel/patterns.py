@@ -122,6 +122,7 @@ def build_cages_and_sample_tree(
             dtype=bool,
             feature_shape=(),
             storage=storage,
+            full_size=full_size,  # used for SAC replay buffer
         )
 
     if "done" not in keys_to_skip:
@@ -136,6 +137,7 @@ def build_cages_and_sample_tree(
             feature_shape=(),
             storage=storage,
             padding=1,
+            full_size=full_size,  # used for SAC replay buffer
         )
 
     if "env_info" not in keys_to_skip:

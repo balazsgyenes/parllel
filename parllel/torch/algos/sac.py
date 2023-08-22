@@ -120,7 +120,7 @@ class SAC(Algorithm):
             target_q1, target_q2 = self.agent.target_q(next_observation, next_action)
         min_target_q = torch.min(target_q1, target_q2)
         next_q = min_target_q - self._alpha * next_log_prob
-        y = samples["reward"] + self.discount * ~samples["terminated"] * next_q
+        y = samples["reward"] + self.discount * ~samples["done"] * next_q
         q1, q2 = self.agent.q(observation.detach(), samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
 
@@ -166,7 +166,8 @@ class SAC(Algorithm):
         self.agent.freeze_q_models(False)
 
         self.algo_log_info["actor_loss"].append(pi_loss.item())
-        self.algo_log_info["q1_grad_norm"].append(pi_grad_norm.item())
+        self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
+        self.algo_log_info["mean_min_q"].append(min_q.detach().mean().item())
 
 
 def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array]:
@@ -176,6 +177,8 @@ def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array
             "action": sample_buffer["action"].full,
             "reward": sample_buffer["reward"].full,
             "terminated": sample_buffer["terminated"].full,
+            "truncated": sample_buffer["truncated"].full,
+            "done": sample_buffer["done"].full,
             "next_observation": sample_buffer["observation"].full.next,
         }
     )
