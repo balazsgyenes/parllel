@@ -1,0 +1,35 @@
+defaults:
+  - _self_
+
+parallel: True
+batch_T: 16
+batch_B: 16
+device: null
+pi_model:
+  hidden_sizes: [256, 256]
+  hidden_nonlinearity: ReLU
+q_model:
+  hidden_sizes: [256, 256]
+  hidden_nonlinearity: ReLU
+distribution:
+  deterministic_eval_mode: False
+algo:
+  discount: 0.98
+  replay_size: 300000
+  learning_starts: 10000
+  random_explore_steps: 10000
+  replay_ratio: 4
+  batch_size: 256
+  target_update_tau: 0.02
+  target_update_interval: 1
+  ent_coeff: 1.e-5
+  clip_grad_norm: 1.e+9
+  learning_rate: 7.3e-4
+eval_sampler:
+  max_traj_length: 2000
+  max_trajectories: 40
+  n_eval_envs: 16
+runner:
+  n_steps: 1.e+6
+  log_interval_steps: 50000
+  eval_interval_steps: 50000

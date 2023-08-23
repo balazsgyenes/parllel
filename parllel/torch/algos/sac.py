@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Mapping
 
 import torch
 from torch import Tensor
@@ -22,7 +23,7 @@ class SAC(Algorithm):
         batch_spec: BatchSpec,
         agent: SacAgent,
         replay_buffer: ReplayBuffer[ArrayDict[Tensor]],
-        optimizers: dict[str, torch.optim.Optimizer],
+        optimizers: Mapping[str, torch.optim.Optimizer],
         discount: float,
         learning_starts: int,
         replay_ratio: int,  # data_consumption / data_generation

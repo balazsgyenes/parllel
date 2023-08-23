@@ -104,10 +104,10 @@ class Logger:
         wandb_run: "wandb.Run" | None = None,
         stdout: bool = True,
         stdout_max_length: int | None = None,
-        output_files: dict[str, PathLike] | None = None,
+        output_files: dict[str, str | PathLike] | None = None,
         config: dict[str, Any] | None = None,
-        config_path: PathLike = "config.json",
-        model_save_path: PathLike | None = None,
+        config_path: str | PathLike = "config.json",
+        model_save_path: str | PathLike | None = None,
         verbosity: Verbosity = Verbosity.INFO,
     ) -> None:
         """Initialize logging.

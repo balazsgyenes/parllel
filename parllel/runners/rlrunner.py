@@ -30,7 +30,7 @@ class RLRunner(Runner):
         self.agent = agent
         self.algorithm = algorithm
         self.batch_spec = batch_spec
-        self.n_steps = n_steps
+        self.n_steps = int(n_steps)
 
         self.n_iterations = max(1, int(n_steps // batch_spec.size))
         self.log_interval_iters = max(1, int(log_interval_steps // batch_spec.size))
