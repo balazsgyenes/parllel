@@ -2,9 +2,9 @@ defaults:
   - _self_
 
 framework: parllel
-parallel: True
-batch_T: 1
-batch_B: 8
+parallel: False  # no point in parallel process with only 1 environment
+batch_T: 8  # corresponds to train_freq in SB3
+batch_B: 1  # from rl-baselines3-zoo
 device: null
 pi_model:
   hidden_sizes: [256, 256]  # from Haarnoja et al.
@@ -13,7 +13,7 @@ q_model:
   hidden_sizes: [256, 256]  # from Haarnoja et al.
   hidden_nonlinearity: ReLU  # from Haarnoja et al.
 distribution:
-  deterministic_eval_mode: False
+  deterministic_eval_mode: True  # from rl-baselines3-zoo
 algo:
   learning_rate: 7.3e-4  # from rl-baselines3-zoo
   replay_size: 300000  # from rl-baselines3-zoo
@@ -21,10 +21,10 @@ algo:
   ent_coeff: 0.005  # cannot use auto, as parllel doesn't support this
   discount: 0.98  # from rl-baselines3-zoo
   target_update_tau: 0.02  # from rl-baselines3-zoo
-  replay_ratio: 256  # from rl-baselines3-zoo
+  replay_ratio: 256  # rl-baselines3-zoo does 8 gradient updates with batch size 256 per 8 env steps, equivalent to replay_ratio 256
   learning_starts: 10000  # from rl-baselines3-zoo
   random_explore_steps: 10000  # from rl-baselines3-zoo
-  target_update_interval: 1
+  target_update_interval: 1  # default for SB3, also matches Haarnoja et al.
   clip_grad_norm: null
 eval_sampler:
   max_traj_length: 2000
@@ -37,7 +37,6 @@ runner:
 
 
 # TODO:
-# double check if train_freq is real steps or vectorized steps
 # check policy architectures
 # entropy coefficient
 # clip grad norm?

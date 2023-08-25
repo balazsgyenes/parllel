@@ -52,6 +52,8 @@ class RLRunner(Runner):
 
     def run(self) -> None:
         logger.info(f"{type(self).__name__}: Starting training...")
+        if logger.log_dir is not None:
+            logger.info(f"{type(self).__name__}: Saving log files to {logger.log_dir}")
 
         progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
