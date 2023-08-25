@@ -7,10 +7,10 @@ batch_T: 8  # corresponds to train_freq in SB3
 batch_B: 1  # from rl-baselines3-zoo
 device: null
 pi_model:
-  hidden_sizes: [256, 256]  # from Haarnoja et al.
+  hidden_sizes: [400, 300]  # from rl-baselines3-zoo
   hidden_nonlinearity: ReLU  # from Haarnoja et al.
 q_model:
-  hidden_sizes: [256, 256]  # from Haarnoja et al.
+  hidden_sizes: [400, 300]  # from rl-baselines3-zoo
   hidden_nonlinearity: ReLU  # from Haarnoja et al.
 distribution:
   deterministic_eval_mode: True  # from rl-baselines3-zoo
@@ -34,9 +34,3 @@ runner:
   n_steps: 1.e+6
   log_interval_steps: 50000
   eval_interval_steps: 50000
-
-
-# TODO:
-# check policy architectures
-# entropy coefficient
-# clip grad norm?
