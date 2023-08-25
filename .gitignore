@@ -13,8 +13,9 @@ wandb
 # videos of rollouts saved by gym's RecordVideo wrapper
 videos
 
-# hydra default log folder
+# hydra default log folders
 outputs
+multirun
 
 # build folder for editable installs
 build
