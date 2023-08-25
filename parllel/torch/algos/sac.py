@@ -43,9 +43,6 @@ class SAC(Algorithm):
         self.replay_ratio = replay_ratio
         self.target_update_tau = target_update_tau
         self.target_update_interval = target_update_interval
-
-        if clip_grad_norm is None:
-            clip_grad_norm = torch.inf
         self.clip_grad_norm = clip_grad_norm
 
         replay_batch_size = self.replay_buffer.replay_batch_size
@@ -128,23 +125,25 @@ class SAC(Algorithm):
         y = samples["reward"] + self.discount * ~samples["done"] * next_q
         q1, q2 = self.agent.q(observation.detach(), samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
+        self.algo_log_info["critic_loss"].append(q_loss.item())
 
         # update Q model parameters according to Q loss
         self.optimizers["q"].zero_grad()
         q_loss.backward()
-        q1_grad_norm = clip_grad_norm_(
-            self.agent.model["q1"].parameters(),
-            self.clip_grad_norm,
-        )
-        q2_grad_norm = clip_grad_norm_(
-            self.agent.model["q2"].parameters(),
-            self.clip_grad_norm,
-        )
-        self.optimizers["q"].step()
 
-        self.algo_log_info["critic_loss"].append(q_loss.item())
-        self.algo_log_info["q1_grad_norm"].append(q1_grad_norm.item())
-        self.algo_log_info["q2_grad_norm"].append(q2_grad_norm.item())
+        if self.clip_grad_norm is not None:
+            q1_grad_norm = clip_grad_norm_(
+                self.agent.model["q1"].parameters(),
+                self.clip_grad_norm,
+            )
+            q2_grad_norm = clip_grad_norm_(
+                self.agent.model["q2"].parameters(),
+                self.clip_grad_norm,
+            )
+            self.algo_log_info["q1_grad_norm"].append(q1_grad_norm.item())
+            self.algo_log_info["q2_grad_norm"].append(q2_grad_norm.item())
+
+        self.optimizers["q"].step()
 
         # freeze Q models while optimizing policy model
         self.agent.freeze_q_models(True)
@@ -157,21 +156,24 @@ class SAC(Algorithm):
         min_q = torch.min(q1, q2)
         pi_losses = self._alpha * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
+        self.algo_log_info["actor_loss"].append(pi_loss.item())
 
         # update Pi model parameters according to pi loss
         self.optimizers["pi"].zero_grad()
         pi_loss.backward()
-        pi_grad_norm = clip_grad_norm_(
-            self.agent.model["pi"].parameters(),
-            self.clip_grad_norm,
-        )
+
+        if self.clip_grad_norm is not None:
+            pi_grad_norm = clip_grad_norm_(
+                self.agent.model["pi"].parameters(),
+                self.clip_grad_norm,
+            )
+            self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
+
         self.optimizers["pi"].step()
 
         # unfreeze Q models for next training iteration
         self.agent.freeze_q_models(False)
 
-        self.algo_log_info["actor_loss"].append(pi_loss.item())
-        self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
         self.algo_log_info["mean_min_q"].append(min_q.detach().mean().item())
         self.algo_log_info["max_min_q"].append(min_q.detach().max().item())
         self.algo_log_info["min_min_q"].append(min_q.detach().min().item())
