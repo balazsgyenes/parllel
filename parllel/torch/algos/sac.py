@@ -5,6 +5,7 @@ from typing import Mapping
 
 import torch
 from torch import Tensor
+from torch.nn.utils.clip_grad import clip_grad_norm_
 
 import parllel.logger as logger
 from parllel import Array, ArrayDict
@@ -30,7 +31,7 @@ class SAC(Algorithm):
         target_update_tau: float,  # tau=1 for hard update.
         target_update_interval: int,  # 1000 for hard update, 1 for soft.
         ent_coeff: float,
-        clip_grad_norm: float,
+        clip_grad_norm: float | None = None,
         **kwargs,  # ignore additional arguments
     ):
         """Save input arguments."""
@@ -42,6 +43,9 @@ class SAC(Algorithm):
         self.replay_ratio = replay_ratio
         self.target_update_tau = target_update_tau
         self.target_update_interval = target_update_interval
+
+        if clip_grad_norm is None:
+            clip_grad_norm = torch.inf
         self.clip_grad_norm = clip_grad_norm
 
         replay_batch_size = self.replay_buffer.replay_batch_size
@@ -128,11 +132,11 @@ class SAC(Algorithm):
         # update Q model parameters according to Q loss
         self.optimizers["q"].zero_grad()
         q_loss.backward()
-        q1_grad_norm = torch.nn.utils.clip_grad_norm_(
+        q1_grad_norm = clip_grad_norm_(
             self.agent.model["q1"].parameters(),
             self.clip_grad_norm,
         )
-        q2_grad_norm = torch.nn.utils.clip_grad_norm_(
+        q2_grad_norm = clip_grad_norm_(
             self.agent.model["q2"].parameters(),
             self.clip_grad_norm,
         )
@@ -157,7 +161,7 @@ class SAC(Algorithm):
         # update Pi model parameters according to pi loss
         self.optimizers["pi"].zero_grad()
         pi_loss.backward()
-        pi_grad_norm = torch.nn.utils.clip_grad_norm_(
+        pi_grad_norm = clip_grad_norm_(
             self.agent.model["pi"].parameters(),
             self.clip_grad_norm,
         )

@@ -3,6 +3,7 @@ import itertools
 import multiprocessing as mp
 from contextlib import contextmanager
 from functools import partial
+from typing import Iterator
 
 # isort: off
 import gymnasium as gym
@@ -31,7 +32,7 @@ from models.sac_q_and_pi import PiMlpModel, QMlpModel
 
 # fmt: on
 @contextmanager
-def build(config: DictConfig) -> RLRunner:
+def build(config: DictConfig) -> Iterator[RLRunner]:
     build_env = partial(gym.make, "HalfCheetah-v4")
 
     parallel = config["parallel"]
@@ -186,7 +187,7 @@ def build(config: DictConfig) -> RLRunner:
 def main(config: DictConfig) -> None:
     run = wandb.init(
         project="parllel",
-        tags=["continuous", "state-based", "sac", "feedforward", "parllel", "cheetah"],
+        tags=["continuous", "state-based", "sac", "feedforward", "cheetah"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch
@@ -209,5 +210,5 @@ def main(config: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    mp.set_start_method("fork")
+    mp.set_start_method("forkserver")
     main()

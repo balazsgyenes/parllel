@@ -1,18 +1,23 @@
 defaults:
   - _self_
 
+framework: sb3
+n_parallel_envs: 8
+deterministic_eval_mode: False
 n_steps: 1.e+6
+log_interval_steps: 50000
+eval_interval_steps: 50000
 algo:  # taken from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/sac.yml#L74
   learning_rate: 7.3e-4
   buffer_size: 300000
   batch_size: 256
-  ent_coef: auto
+  ent_coef: 0.005  # cannot use auto, as parllel doesn't support this
   gamma: 0.98
   tau: 0.02
   train_freq: 8
   gradient_steps: 8
   learning_starts: 10000
-  use_sde: True
+  use_sde: False  # need to disable, as parllel doesn't support this
   policy_kwargs:
     log_std_init: -3
     net_arch: [400, 300]
