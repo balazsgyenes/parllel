@@ -33,7 +33,13 @@ def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, BaseCallback]]:
         resolve=True,
         throw_on_missing=True,
     )
-    model = SAC("MlpPolicy", env, verbose=1, **algo_config)
+    model = SAC(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        tensorboard_log=f"log_data/halfcheetah/{wandb.run.id}",
+        **algo_config,
+    )
 
     eval_env = SubprocVecEnv([make_env for _ in range(config["n_parallel_envs"])])
     eval_callback = EvalCallback(
@@ -45,7 +51,7 @@ def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, BaseCallback]]:
     callback = CallbackList(
         [
             eval_callback,
-            WandbCallback(verbosity=2),
+            WandbCallback(verbose=2),
         ]
     )
 

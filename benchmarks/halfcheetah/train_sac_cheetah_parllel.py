@@ -2,6 +2,7 @@
 import itertools
 import multiprocessing as mp
 from contextlib import contextmanager
+from dataclasses import dataclass
 from functools import partial
 from typing import Iterator
 
@@ -15,7 +16,6 @@ from omegaconf import DictConfig, OmegaConf
 
 # isort: on
 import parllel.logger as logger
-from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
 from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
 from parllel.replays.replay import ReplayBuffer
@@ -30,6 +30,42 @@ from parllel.types import BatchSpec
 from models.sac_q_and_pi import PiMlpModel, QMlpModel
 
 
+@dataclass
+class SB3EvalTrajInfo:
+    mean_ep_length: int = 0
+    mean_reward: float = 0
+
+    def step(
+        self,
+        observation,
+        action,
+        reward,
+        terminated,
+        truncated,
+        env_info,
+    ) -> None:
+        self.mean_ep_length += 1
+        self.mean_reward += reward
+
+
+@dataclass
+class SB3TrajInfo:
+    ep_len_mean: int = 0
+    ep_rew_mean: float = 0
+
+    def step(
+        self,
+        observation,
+        action,
+        reward,
+        terminated,
+        truncated,
+        env_info,
+    ) -> None:
+        self.ep_len_mean += 1
+        self.ep_rew_mean += reward
+
+
 # fmt: on
 @contextmanager
 def build(config: DictConfig) -> Iterator[RLRunner]:
@@ -40,14 +76,13 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         config["batch_T"],
         config["batch_B"],
     )
-    TrajInfo.set_discount(config["algo"]["discount"])
 
     replay_length = int(config["algo"]["replay_size"]) // batch_spec.B
     replay_length = (replay_length // batch_spec.T) * batch_spec.T
     cages, sample_tree, metadata = build_cages_and_sample_tree(
         EnvClass=build_env,
         env_kwargs={},
-        TrajInfoClass=TrajInfo,
+        TrajInfoClass=SB3TrajInfo,
         reset_automatically=True,
         batch_spec=batch_spec,
         parallel=parallel,
@@ -152,7 +187,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         CageCls=type(cages[0]),
         EnvClass=build_env,
         env_kwargs={},
-        TrajInfoClass=TrajInfo,
+        TrajInfoClass=SB3EvalTrajInfo,
         **config["eval_sampler"],
     )
 
@@ -163,6 +198,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         algorithm=algorithm,
         batch_spec=batch_spec,
         eval_sampler=eval_sampler,
+        logger_algo_prefix="train",
         **config["runner"],
     )
 
