@@ -83,7 +83,15 @@ class SAC(Algorithm):
         self.agent.train_mode(elapsed_steps)
         self.algo_log_info.clear()
 
+        UPDATE_TO_TRACE = 10
+
         for _ in range(self.updates_per_optimize):
+            if self.update_counter == UPDATE_TO_TRACE:
+                from viztracer import get_tracer
+
+                tracer = get_tracer()
+                tracer.start()
+
             # get a random batch of samples from the replay buffer and move them
             # to the GPU
             replay_samples = self.replay_buffer.sample_batch()
@@ -95,6 +103,9 @@ class SAC(Algorithm):
                 self.agent.update_target(self.target_update_tau)
 
             self.algo_log_info["n_updates"] = self.update_counter
+
+            if self.update_counter == UPDATE_TO_TRACE + 1:
+                tracer.stop()
 
         return self.algo_log_info
 

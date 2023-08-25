@@ -22,8 +22,8 @@ algo:
   discount: 0.98  # from rl-baselines3-zoo
   target_update_tau: 0.02  # from rl-baselines3-zoo
   replay_ratio: 256  # rl-baselines3-zoo does 8 gradient updates with batch size 256 per 8 env steps, equivalent to replay_ratio 256
-  learning_starts: 10000  # from rl-baselines3-zoo
-  random_explore_steps: 10000  # from rl-baselines3-zoo
+  learning_starts: 500  # from rl-baselines3-zoo
+  random_explore_steps: 500  # from rl-baselines3-zoo
   target_update_interval: 1  # default for SB3, also matches Haarnoja et al.
   clip_grad_norm: null
 eval_sampler:
@@ -31,6 +31,6 @@ eval_sampler:
   max_trajectories: 40
   n_eval_envs: 16
 runner:
-  n_steps: 1.e+6
+  n_steps: 2000
   log_interval_steps: 50000
   eval_interval_steps: 50000

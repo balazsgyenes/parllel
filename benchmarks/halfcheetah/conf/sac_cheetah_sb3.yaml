@@ -4,7 +4,7 @@ defaults:
 framework: sb3
 n_parallel_envs: 1  # rl-baselines3-zoo uses only 1 parallel environment
 deterministic_eval_mode: False  # rl-baselines3-zoo uses non-deterministic eval only for Atari and "minigrid" environments
-n_steps: 1.e+6
+n_steps: 2000
 log_interval_steps: 50000
 eval_interval_steps: 50000
 algo:  # taken from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/sac.yml#L74
@@ -16,7 +16,7 @@ algo:  # taken from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hype
   tau: 0.02
   train_freq: 8
   gradient_steps: 8
-  learning_starts: 10000
+  learning_starts: 500
   use_sde: False  # need to disable, as parllel doesn't support this
   policy_kwargs:
     log_std_init: -3

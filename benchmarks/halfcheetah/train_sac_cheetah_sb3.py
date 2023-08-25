@@ -11,6 +11,7 @@ from stable_baselines3.common.callbacks import (BaseCallback, CallbackList,
                                                 EvalCallback)
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
+from viztracer import VizTracer
 from wandb.integration.sb3 import WandbCallback
 
 import wandb
@@ -78,6 +79,13 @@ def main(config: DictConfig) -> None:
         save_code=True,  # save script used to start training, git commit, and patch
     )
 
+    tracer = VizTracer(
+        output_file=f"trace_sb3_{run.name}.json",
+        # max_stack_depth=10,
+        # ignore_c_function=True,
+        # ignore_frozen=True,
+    )
+
     with build(config) as (model, callback):
         model.learn(
             total_timesteps=int(config["n_steps"]),
@@ -87,6 +95,8 @@ def main(config: DictConfig) -> None:
         )
 
     run.finish()
+
+    tracer.save()
 
 
 if __name__ == "__main__":

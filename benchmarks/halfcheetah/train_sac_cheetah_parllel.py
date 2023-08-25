@@ -13,6 +13,7 @@ import torch
 import wandb
 from gymnasium import spaces
 from omegaconf import DictConfig, OmegaConf
+from viztracer import VizTracer
 
 # isort: on
 import parllel.logger as logger
@@ -197,7 +198,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         agent=agent,
         algorithm=algorithm,
         batch_spec=batch_spec,
-        eval_sampler=eval_sampler,
+        # eval_sampler=eval_sampler,
         logger_algo_prefix="train",
         **config["runner"],
     )
@@ -239,10 +240,19 @@ def main(config: DictConfig) -> None:
         model_save_path="model.pt",
     )
 
+    tracer = VizTracer(
+        output_file=f"trace_parllel_{run.name}.json",
+        # max_stack_depth=10,
+        # ignore_c_function=True,
+        # ignore_frozen=True,
+    )
+
     with build(config) as runner:
         runner.run()
 
     run.finish()
+
+    tracer.save()
 
 
 if __name__ == "__main__":
