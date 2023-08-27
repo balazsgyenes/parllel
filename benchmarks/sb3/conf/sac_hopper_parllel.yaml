@@ -3,9 +3,9 @@ defaults:
 
 framework: parllel
 env_name: Hopper-v4
-parallel: False  # no point in parallel process with only 1 environment
-batch_T: 8  # corresponds to train_freq in SB3
-batch_B: 1  # from rl-baselines3-zoo
+parallel: False  # for fast environments, no speedup with parallel processes
+batch_T: 8  # corresponds to "raw" train_freq in SB3
+batch_B: 8
 device: null
 pi_model:
   hidden_sizes: [400, 300]  # from rl-baselines3-zoo
@@ -22,7 +22,7 @@ algo:
   ent_coeff: 0.005  # cannot use auto, as parllel doesn't support this
   discount: 0.98  # from rl-baselines3-zoo
   target_update_tau: 0.02  # from rl-baselines3-zoo
-  replay_ratio: 256  # rl-baselines3-zoo does 8 gradient updates with batch size 256 per 8 env steps, equivalent to replay_ratio 256
+  replay_ratio: 32  # rl-baselines3-zoo does 8 gradient updates with batch size 256 per 8 env steps, equivalent to replay_ratio 256. reduced here to make training faster
   learning_starts: 10000  # from rl-baselines3-zoo
   random_explore_steps: 10000  # from rl-baselines3-zoo
   target_update_interval: 1  # default for SB3, also matches Haarnoja et al.
