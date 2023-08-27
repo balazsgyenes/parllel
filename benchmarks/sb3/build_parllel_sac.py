@@ -1,22 +1,17 @@
 # fmt: off
 import itertools
-import multiprocessing as mp
 from contextlib import contextmanager
-from dataclasses import dataclass
 from functools import partial
 from typing import Iterator
 
 # isort: off
 import gymnasium as gym
-import hydra
 import torch
 import wandb
 from gymnasium import spaces
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 # isort: on
-import parllel.logger as logger
-from parllel.logger import Verbosity
 from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import RLRunner
@@ -27,49 +22,14 @@ from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.types import BatchSpec
 
 # isort: split
+from common.traj_infos import SB3EvalTrajInfo, SB3TrajInfo
 from models.sac_q_and_pi import PiMlpModel, QMlpModel
-
-
-@dataclass
-class SB3EvalTrajInfo:
-    mean_ep_length: int = 0
-    mean_reward: float = 0
-
-    def step(
-        self,
-        observation,
-        action,
-        reward,
-        terminated,
-        truncated,
-        env_info,
-    ) -> None:
-        self.mean_ep_length += 1
-        self.mean_reward += reward
-
-
-@dataclass
-class SB3TrajInfo:
-    ep_len_mean: int = 0
-    ep_rew_mean: float = 0
-
-    def step(
-        self,
-        observation,
-        action,
-        reward,
-        terminated,
-        truncated,
-        env_info,
-    ) -> None:
-        self.ep_len_mean += 1
-        self.ep_rew_mean += reward
 
 
 # fmt: on
 @contextmanager
 def build(config: DictConfig) -> Iterator[RLRunner]:
-    build_env = partial(gym.make, "HalfCheetah-v4")
+    build_env = partial(gym.make, config["env_name"])
 
     parallel = config["parallel"]
     batch_spec = BatchSpec(
@@ -217,34 +177,3 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         for cage in cages:
             cage.close()
         sample_tree.close()
-
-
-@hydra.main(version_base=None, config_path="conf", config_name="sac_cheetah_parllel")
-def main(config: DictConfig) -> None:
-    run = wandb.init(
-        project="parllel",
-        tags=["continuous", "state-based", "sac", "feedforward", "cheetah"],
-        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
-        sync_tensorboard=True,  # auto-upload any values logged to tensorboard
-        save_code=True,  # save script used to start training, git commit, and patch
-    )
-
-    logger.init(
-        wandb_run=run,
-        tensorboard=True,
-        output_files={
-            "txt": "log.txt",
-        },
-        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
-        model_save_path="model.pt",
-    )
-
-    with build(config) as runner:
-        runner.run()
-
-    run.finish()
-
-
-if __name__ == "__main__":
-    mp.set_start_method("forkserver")
-    main()

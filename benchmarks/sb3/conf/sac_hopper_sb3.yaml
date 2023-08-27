@@ -2,10 +2,11 @@ defaults:
   - _self_
 
 framework: sb3
-n_parallel_envs: 1  # rl-baselines3-zoo uses only 1 parallel environment
+env_name: Hopper-v4
+n_envs: 1  # rl-baselines3-zoo uses only 1 parallel environment
 deterministic_eval_mode: False  # rl-baselines3-zoo uses non-deterministic eval only for Atari and "minigrid" environments
 n_steps: 1.e+6
-log_interval_steps: 50000
+log_interval_episodes: 100  # each episode is up to 1000 steps
 eval_interval_steps: 50000
 algo:  # taken from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/sac.yml#L74
   learning_rate: 7.3e-4

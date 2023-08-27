@@ -2,6 +2,7 @@ defaults:
   - _self_
 
 framework: parllel
+env_name: HalfCheetah-v4
 parallel: False  # no point in parallel process with only 1 environment
 batch_T: 8  # corresponds to train_freq in SB3
 batch_B: 1  # from rl-baselines3-zoo
