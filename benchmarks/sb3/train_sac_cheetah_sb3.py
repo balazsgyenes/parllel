@@ -1,8 +1,10 @@
 import hydra
-from build_sb3_sac import build
 from omegaconf import DictConfig, OmegaConf
 
 import wandb
+
+# isort: split
+from build_sb3_sac import build
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="sac_cheetah_sb3")
@@ -17,8 +19,7 @@ def main(config: DictConfig) -> None:
 
     with build(config) as (model, learn_kwargs):
         model.learn(**learn_kwargs)
-
-    run.finish()
+        run.finish()  # finish wandb run before tensorboard dir is deleted
 
 
 if __name__ == "__main__":
