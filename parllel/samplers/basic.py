@@ -63,6 +63,7 @@ class BasicSampler(Sampler):
         # get references to sample tree elements
         action = self.sample_tree["action"]
         agent_info = self.sample_tree["agent_info"]
+        next_observation = self.sample_tree["next_observation"]
         observation = self.sample_tree["observation"]
         reward = self.sample_tree["reward"]
         done = self.sample_tree["done"]
@@ -89,6 +90,7 @@ class BasicSampler(Sampler):
             for b, env in enumerate(self.envs):
                 env.step_async(
                     action[t, b],
+                    out_next_obs=next_observation[t, b],
                     out_obs=observation[t + 1, b],
                     out_reward=reward[t, b],
                     out_terminated=terminated[t, b],

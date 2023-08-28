@@ -1,3 +1,4 @@
+# fmt: off
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -6,13 +7,14 @@ from typing import Any, Callable, Mapping
 import gymnasium as gym
 import numpy as np
 
-from parllel import Array, ArrayLike, ArrayTree, ArrayOrMapping, dict_map
+from parllel import Array, ArrayLike, ArrayOrMapping, ArrayTree, dict_map
 
 from .collections import (EnvInfoType, EnvRandomStepType, EnvSpaces,
                           EnvStepType, ObsType)
 from .traj_info import TrajInfo
 
 
+# fmt: on
 class Cage(ABC):
     """Cages abstract communication between the sampler and the environments.
 
@@ -92,26 +94,20 @@ class Cage(ABC):
         # warning: this won't handle things like JaggedArray that require `to_ndarray`
         action = dict_map(np.asarray, action)
 
-        obs, reward, terminated, truncated, env_info = self._env.step(action)
-        self._traj_info.step(obs, action, reward, terminated, truncated, env_info)
+        next_obs, reward, terminated, truncated, env_info = self._env.step(action)
+        self._traj_info.step(next_obs, action, reward, terminated, truncated, env_info)
 
         if self._render:
             env_info["rendering"] = rendering
 
-        return obs, reward, terminated, truncated, env_info
+        return next_obs, reward, terminated, truncated, env_info
 
     def _random_step_env(self) -> EnvRandomStepType:
         action: ArrayOrMapping[np.ndarray] = self._env.action_space.sample()
 
-        obs, reward, terminated, truncated, env_info = self._step_env(action)
+        next_obs, reward, terminated, truncated, env_info = self._step_env(action)
 
-        if terminated or truncated:
-            # reset immediately and overwrite last observation
-            obs, reset_info = self._reset_env()
-            if not self.ignore_reset_info:
-                env_info = reset_info
-
-        return action, obs, reward, terminated, truncated, env_info
+        return action, next_obs, reward, terminated, truncated, env_info
 
     def _reset_env(
         self,
@@ -128,6 +124,7 @@ class Cage(ABC):
         self,
         action: ArrayTree[Array],
         *,
+        out_next_obs: ArrayTree[Array] | None = None,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
         out_terminated: Array | None = None,
@@ -169,6 +166,7 @@ class Cage(ABC):
         self,
         *,
         out_action: ArrayTree[Array] | None = None,
+        out_next_obs: ArrayTree[Array] | None = None,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
         out_terminated: Array | None = None,

@@ -49,13 +49,15 @@ class SerialCage(Cage):
         self,
         action: ArrayTree[Array],
         *,
+        out_next_obs: ArrayTree[Array] | None = None,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
     ) -> None:
-        obs, reward, terminated, truncated, env_info = self._step_env(action)
+        next_obs, reward, terminated, truncated, env_info = self._step_env(action)
+        obs = next_obs
 
         if terminated or truncated:
             if self.reset_automatically:
@@ -68,6 +70,7 @@ class SerialCage(Cage):
                 self._needs_reset = True
 
         try:
+            out_next_obs[...] = next_obs
             out_obs[...] = obs
             out_reward[...] = reward
             out_terminated[...] = terminated
@@ -75,12 +78,14 @@ class SerialCage(Cage):
             out_info[...] = env_info
         except TypeError as e:
             outs = (
+                out_next_obs,
                 out_obs,
                 out_reward,
                 out_terminated,
                 out_truncated,
                 out_info,
             )
+            # TODO: make out arguments optional
             if any(out is None for out in outs):
                 if not all(out is None for out in outs):
                     # if user passed a combination of None and Array, it's probably a mistake
@@ -89,7 +94,14 @@ class SerialCage(Cage):
                     )
 
                 # return step result if user passed no output args at all
-                self._step_result = (obs, reward, terminated, truncated, env_info)
+                self._step_result = (
+                    next_obs,
+                    obs,
+                    reward,
+                    terminated,
+                    truncated,
+                    env_info,
+                )
             else:
                 # otherwise this was an unexpected error
                 raise e
@@ -108,6 +120,7 @@ class SerialCage(Cage):
         self,
         *,
         out_action: ArrayTree[Array] | None = None,
+        out_next_obs: ArrayTree[Array] | None = None,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
         out_terminated: Array | None = None,
@@ -116,23 +129,33 @@ class SerialCage(Cage):
     ) -> None:
         (
             action,
-            obs,
+            next_obs,
             reward,
             terminated,
             truncated,
             env_info,
         ) = self._random_step_env()
+        obs = next_obs
+
+        if terminated or truncated:
+            # reset immediately and overwrite last observation
+            obs, reset_info = self._reset_env()
+            if not self.ignore_reset_info:
+                env_info = reset_info
 
         try:
             out_action[...] = action
+            out_next_obs[...] = next_obs
             out_obs[...] = obs
             out_reward[...] = reward
             out_terminated[...] = terminated
             out_truncated[...] = truncated
             out_info[...] = env_info
         except TypeError as e:
+            # TODO: make out arguments optional
             outs = (
                 out_action,
+                out_next_obs,
                 out_obs,
                 out_reward,
                 out_terminated,
@@ -149,6 +172,7 @@ class SerialCage(Cage):
                 # return step result if user passed no output args at all
                 self._step_result = (
                     action,
+                    next_obs,
                     obs,
                     reward,
                     terminated,
