@@ -190,7 +190,7 @@ class TxtFileWriter(KeyValueWriter, MessageWriter, LogWriter, name="txt"):
 
     def __init__(
         self,
-        filename: PathLike,
+        filename: str | PathLike,
         max_length: int = 36,
         name: str | None = None,
     ) -> None:
@@ -294,7 +294,7 @@ class JSONWriter(KeyValueWriter, LogWriter, name="json"):
     :param filename: the file to write the log to
     """
 
-    def __init__(self, filename: PathLike, name: str | None = None):
+    def __init__(self, filename: str | PathLike, name: str | None = None):
         self.file = open(filename, "wt")
 
     def write(self, key_values: dict[str, Any], step: int = 0) -> None:
@@ -330,7 +330,7 @@ class CSVWriter(KeyValueWriter, LogWriter, name="csv"):
     :param filename: the file to write the log to
     """
 
-    def __init__(self, filename: PathLike, name: str | None = None):
+    def __init__(self, filename: str | PathLike, name: str | None = None):
         self.file = open(filename, "w+t")
         self.keys = []
         self.separator = ","
@@ -388,7 +388,7 @@ class TensorBoardWriter(KeyValueWriter, LogWriter, name="tensorboard"):
     :param folder: the folder to write the log to
     """
 
-    def __init__(self, folder: PathLike, name: str | None = None):
+    def __init__(self, folder: str | PathLike, name: str | None = None):
         assert SummaryWriter is not None, (
             "tensorboard is not installed, you can use "
             "pip install tensorboard to do so"
