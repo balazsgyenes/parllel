@@ -1,13 +1,20 @@
 defaults:
   - sac@algo
+  - dummy@env
   - _self_
+
+hydra:
+  job:
+    name: pointcloudrl-sac
+  run:
+    dir: outputs/${hydra.job.name}/${framework}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: multirun/${hydra.job.name}/${framework}/${now:%Y-%m-%d_%H-%M-%S}
 
 parallel: True
 batch_T: 8
 batch_B: 32
 max_steps_decorrelate: 50
-env:
-  prob_done: 0.1
 device: "cpu"
 algo:
   replay_length: 800  # 100 iterations

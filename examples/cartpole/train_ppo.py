@@ -1,14 +1,14 @@
 # fmt: off
 import multiprocessing as mp
 from contextlib import contextmanager
-from datetime import datetime
-from pathlib import Path
+from typing import Iterator
 
 # isort: off
 import hydra
 import torch
 import wandb
 from gymnasium import spaces
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 # isort: on
@@ -35,7 +35,7 @@ from models.model import CartPoleFfPgModel
 
 # fmt: on
 @contextmanager
-def build(config: DictConfig) -> RLRunner:
+def build(config: DictConfig) -> Iterator[RLRunner]:
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -182,9 +182,7 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=Path(
-            f"log_data/cartpole-ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
-        ),
+        log_dir=HydraConfig.get().runtime.output_dir,
         tensorboard=True,
         output_files={
             "txt": "log.txt",

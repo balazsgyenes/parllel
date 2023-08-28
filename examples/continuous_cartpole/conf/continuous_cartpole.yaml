@@ -1,0 +1,3 @@
+max_episode_steps: 1000
+reward_scale: 1.0
+reward_type: sparse

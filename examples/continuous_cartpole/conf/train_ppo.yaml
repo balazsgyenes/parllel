@@ -1,6 +1,15 @@
 defaults:
   - ppo@algo
+  - continuous_cartpole@env
   - _self_
+
+hydra:
+  job:
+    name: continuous-cartpole-ppo
+  run:
+    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: multirun/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
 
 parallel: True
 batch_T: 128
@@ -9,10 +18,6 @@ reward_clip_min: -5
 reward_clip_max: 5
 obs_norm_initial_count: 10000
 max_steps_decorrelate: 50
-env:
-  max_episode_steps: 1000
-  reward_scale: 1.0
-  reward_type: sparse
 device: null
 model:
   hidden_sizes: [64, 64]
