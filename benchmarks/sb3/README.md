@@ -13,3 +13,7 @@ Run a benchmarking script once using: `python [script_name]`
 Run a benchmarking script with several (e.g. 5) random seeds using: `python [script_name] -m +iteration="range(5)"`
 
 Run all benchmarking scripts with 5 random seeds each using: `bash train_all.sh`
+
+# Benchmarking Results
+
+The training results using 5 random seeds for each framework can be accessed at this [public WandB report](https://api.wandb.ai/links/gyenes/96m63ytt).

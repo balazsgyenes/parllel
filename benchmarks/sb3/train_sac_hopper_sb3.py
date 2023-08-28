@@ -11,7 +11,7 @@ from build_sb3_sac import build
 def main(config: DictConfig) -> None:
     run = wandb.init(
         project="parllel",
-        tags=["sac", "halfcheetah"],
+        tags=["sac", "hopper"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch
