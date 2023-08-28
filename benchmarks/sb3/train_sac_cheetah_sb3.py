@@ -1,5 +1,5 @@
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 import wandb
 
@@ -17,9 +17,13 @@ def main(config: DictConfig) -> None:
         save_code=True,  # save script used to start training, git commit, and patch
     )
 
+    with open_dict(config):
+        config["log_dir"] = run.dir  # algo needs to know where to save tensorboard logs
+
     with build(config) as (model, learn_kwargs):
         model.learn(**learn_kwargs)
-        run.finish()  # finish wandb run before tensorboard dir is deleted
+
+    run.finish()
 
 
 if __name__ == "__main__":

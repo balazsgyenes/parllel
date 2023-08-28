@@ -1,6 +1,5 @@
 # fmt: off
 from contextlib import contextmanager
-from tempfile import TemporaryDirectory
 from typing import Iterator
 
 import gymnasium as gym
@@ -18,8 +17,12 @@ from wandb.integration.sb3 import WandbCallback
 @contextmanager
 def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, BaseCallback]]:
     with open_dict(config):
-        config["algo"]["train_freq"] = max(1, config["algo"]["train_freq"] // config["n_envs"])
-        config["eval_interval_steps"] = max(1, config["eval_interval_steps"] // config["n_envs"])
+        config["algo"]["train_freq"] = max(
+            1, config["algo"]["train_freq"] // config["n_envs"]
+        )
+        config["eval_interval_steps"] = max(
+            1, config["eval_interval_steps"] // config["n_envs"]
+        )
 
     def make_env() -> gym.Env:
         env = gym.make(config["env_name"])
@@ -33,12 +36,11 @@ def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, BaseCallback]]:
         resolve=True,
         throw_on_missing=True,
     )
-    tensorboard_dir = TemporaryDirectory()
     model = SAC(
         "MlpPolicy",
         env,
         verbose=1,
-        tensorboard_log=tensorboard_dir.name,
+        tensorboard_log=config["log_dir"],
         **algo_config,
     )
 
@@ -64,4 +66,3 @@ def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, BaseCallback]]:
         yield model, learn_kwargs
     finally:
         env.close()
-        tensorboard_dir.cleanup()

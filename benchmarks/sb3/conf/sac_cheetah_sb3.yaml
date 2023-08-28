@@ -1,6 +1,14 @@
 defaults:
   - _self_
 
+hydra:
+  job:
+    name: cheetah-sac
+  run:
+    dir: outputs/${hydra.job.name}/${framework}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: multirun/${hydra.job.name}/${framework}/${now:%Y-%m-%d_%H-%M-%S}
+
 framework: sb3
 env_name: HalfCheetah-v4
 n_envs: 8  # rl-baselines3-zoo uses only 1 parallel environment
