@@ -184,9 +184,9 @@ def build(config: DictConfig) -> RLRunner:
 @hydra.main(version_base=None, config_path="conf", config_name="train_sac")
 def main(config: DictConfig) -> None:
     run = wandb.init(
-        # anonymous="must",  # for this example, send to wandb dummy account
-        project="parllel",
-        tags=["continuous", "state-based", "sac", "feedforward", "parllel"],
+        anonymous="must",  # for this example, send to wandb dummy account
+        project="parllel examples",
+        tags=["continuous cartpole", "sac"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch
@@ -195,6 +195,9 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
+        log_dir=Path(
+            f"log_data/continuous-cartpole-sac/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        ),
         tensorboard=True,
         output_files={
             "txt": "log.txt",
@@ -208,6 +211,7 @@ def main(config: DictConfig) -> None:
     with build(config) as runner:
         runner.run()
 
+    logger.close()
     run.finish()
 
 

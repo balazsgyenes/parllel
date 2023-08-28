@@ -203,12 +203,10 @@ def build(config: DictConfig) -> RLRunner:
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_sac")
 def main(config: DictConfig) -> None:
-    mp.set_start_method("fork")
-
     run = wandb.init(
         anonymous="must",  # for this example, send to wandb dummy account
-        project="PointCloudRL",
-        tags=["continuous", "state-based", "sac", "feedforward"],
+        project="parllel examples",
+        tags=["pointcloud dummy env", "ppo"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch
@@ -233,8 +231,10 @@ def main(config: DictConfig) -> None:
     with build(config) as runner:
         runner.run()
 
+    logger.close()
     run.finish()
 
 
 if __name__ == "__main__":
+    mp.set_start_method("fork")
     main()

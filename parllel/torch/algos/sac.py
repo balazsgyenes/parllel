@@ -185,8 +185,6 @@ def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array
             "observation": sample_buffer["observation"].full,
             "action": sample_buffer["action"].full,
             "reward": sample_buffer["reward"].full,
-            "terminated": sample_buffer["terminated"].full,
-            "truncated": sample_buffer["truncated"].full,
             "done": sample_buffer["done"].full,
             "next_observation": sample_buffer["observation"].full.next,
         }
