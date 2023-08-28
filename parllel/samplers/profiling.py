@@ -1,22 +1,23 @@
 from __future__ import annotations
 
 import cProfile
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Sequence
 
 import numpy as np
 
-from parllel import Array, ArrayDict
-from parllel.cages import Cage, TrajInfo
 import parllel.logger as logger
+from parllel import Array, ArrayDict
+from parllel.cages import Cage
 from parllel.types import BatchSpec
 
 from .sampler import Sampler
 
 
 class ProfilingSampler(Sampler):
-    def __init__(self,
+    def __init__(
+        self,
         batch_spec: BatchSpec,
         envs: Sequence[Cage],
         sample_tree: ArrayDict[Array],
@@ -36,12 +37,12 @@ class ProfilingSampler(Sampler):
         self.action_space = envs[0].spaces.action
         self.durations = np.zeros((batch_spec.T,), dtype=float)
         self.profiler = cProfile.Profile() if profile_path is not None else None
-    
+
     def reset_agent(self) -> None:
         # skip resetting agent
         pass
 
-    def collect_batch(self, elapsed_steps: int) -> None:
+    def collect_batch(self) -> np.ndarray:
         batch_T, batch_B = self.batch_spec
         durations = self.durations
 
@@ -78,13 +79,15 @@ class ProfilingSampler(Sampler):
                     env.await_step()
 
                 done[t] = np.logical_or(terminated[t], truncated[t])
-                
-                end = time.perf_counter()
-                durations[t] = (end - start)
 
-            logger.info(f"Average step duration {durations.mean()*1000/batch_B:.4f} "
-                    f"+/- {durations.std()*1000/batch_B:.4f} (ms) "
-                    f"[{batch_B/durations.mean():.2f} FPS]")
+                end = time.perf_counter()
+                durations[t] = end - start
+
+            logger.info(
+                f"Average step duration {durations.mean()*1000/batch_B:.4f} "
+                f"+/- {durations.std()*1000/batch_B:.4f} (ms) "
+                f"[{batch_B/durations.mean():.2f} FPS]"
+            )
 
         if self.profiler is not None:
             self.profiler.disable()

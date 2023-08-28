@@ -1,0 +1,8 @@
+defaults:
+  - cartpole@env
+  - _self_
+
+parallel: True
+batch_T: 256
+batch_B: 16
+n_iterations: 5

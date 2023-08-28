@@ -17,7 +17,7 @@ class DummyEnv(gym.Env):
         self.observation_space = observation_space
         self.action_space = action_space
 
-    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, dict]:
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
         time.sleep(self._step_duration)
         return self.observation_space.sample(), 1.0, False, False, {}
 
