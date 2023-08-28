@@ -1,14 +1,14 @@
 # fmt: off
 import multiprocessing as mp
 from contextlib import contextmanager
-from datetime import datetime
-from pathlib import Path
+from typing import Iterator
 
 # isort: off
 import hydra
 import torch
 import wandb
 from gymnasium import spaces
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 # isort: on
@@ -38,7 +38,7 @@ from models.lstm_model import CartPoleLstmPgModel
 
 # fmt: on
 @contextmanager
-def build(config: DictConfig) -> RLRunner:
+def build(config: DictConfig) -> Iterator[RLRunner]:
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
@@ -191,12 +191,10 @@ def build(config: DictConfig) -> RLRunner:
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo_recurrent")
 def main(config: DictConfig) -> None:
-    mp.set_start_method("fork")
-
     run = wandb.init(
         anonymous="must",  # for this example, send to wandb dummy account
-        project="CartPole",
-        tags=["discrete", "state-based", "ppo", "recurrent"],
+        project="parllel examples",
+        tags=["cartpole", "recurrent ppo"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch
@@ -205,9 +203,7 @@ def main(config: DictConfig) -> None:
     logger.init(
         wandb_run=run,
         # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=Path(
-            f"log_data/cartpole-ppo-recurrent/{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
-        ),
+        log_dir=HydraConfig.get().runtime.output_dir,
         tensorboard=True,
         output_files={
             "txt": "log.txt",
@@ -221,8 +217,10 @@ def main(config: DictConfig) -> None:
     with build(config) as runner:
         runner.run()
 
+    logger.close()
     run.finish()
 
 
 if __name__ == "__main__":
+    mp.set_start_method("fork")
     main()

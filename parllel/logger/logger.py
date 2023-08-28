@@ -1,5 +1,3 @@
-# because this module is full of types from 3rd party packages, treat type
-# annotations as strings and do not evaluate them
 from __future__ import annotations
 
 import warnings
@@ -99,15 +97,15 @@ class Logger:
 
     def init(
         self,
-        log_dir: PathLike | None = None,
+        log_dir: str | PathLike | None = None,
         tensorboard: bool = False,  # TODO: add passing tensorboard dir explicitly
-        wandb_run: "wandb.Run" | None = None,
+        wandb_run: wandb.wandb_sdk.wandb_run.Run | None = None,
         stdout: bool = True,
         stdout_max_length: int | None = None,
-        output_files: dict[str, PathLike] | None = None,
+        output_files: dict[str, str | PathLike] | None = None,
         config: dict[str, Any] | None = None,
-        config_path: PathLike = "config.json",
-        model_save_path: PathLike | None = None,
+        config_path: str | PathLike = "config.json",
+        model_save_path: str | PathLike | None = None,
         verbosity: Verbosity = Verbosity.INFO,
     ) -> None:
         """Initialize logging.
@@ -155,7 +153,6 @@ class Logger:
                     "parllel.logger.init with `tensorboard=True`."
                 )
 
-            # TODO: if no config was passed, take config from wandb
         elif has_wandb and wandb.run is not None:
             self.missing_wandb = True
             warnings.warn(
@@ -171,8 +168,7 @@ class Logger:
         elif log_dir is not None:
             # if log_dir set manually, create it
             log_dir = Path(log_dir)
-            # error if specified log_dir already exists
-            log_dir.mkdir(parents=True)
+            log_dir.mkdir(parents=True, exist_ok=True)
         elif use_wandb:
             # if wandb is disabled, use its log_dir instead of raising error
             log_dir = Path(wandb_run.dir)
@@ -184,24 +180,25 @@ class Logger:
         if output_files is None:
             output_files = {}
 
-        # if requested, add tensorboard to output files
-        if tensorboard:
-            # tensorboard is special because the path should be a directory
-            output_files["tensorboard"] = ""
-
         # make relative paths absolute by prepending log_dir
         for name, path in output_files.items():
             path = Path(path)
             if not path.is_absolute():
                 path = log_dir / path
+            if path.exists():
+                raise FileExistsError(f"{name} output file at {path} already exists.")
             output_files[name] = path
 
-        # TODO: print info about where logs are saved
+        # if requested, add tensorboard to output files
+        if tensorboard:
+            # tensorboard is special because the path should be a directory
+            output_files["tensorboard"] = log_dir
 
         for _format, path in output_files.items():
             self.writers[_format] = LogWriter(path, name=_format)
 
         if not self.writers:
+            # TODO: move these warnings into the check_init method
             warnings.warn("No logger output will be saved to disk!")
 
         if stdout:
@@ -210,18 +207,22 @@ class Logger:
             else:
                 self.writers["stdout"] = StdOutWriter(stdout_max_length)
 
-        config_path = Path(config_path)
-        # make config_path absolute
-        if not config_path.is_absolute():
-            config_path = log_dir / config_path
-        self.config_path = config_path
+        # TODO: give each writer its own verbosity level
+        self.verbosity = verbosity
 
         # if given, write config to file
         if config is not None:
+            config_path = Path(config_path)
+            # make config_path absolute
+            if not config_path.is_absolute():
+                config_path = log_dir / config_path
+            if config_path.exists():
+                raise FileExistsError(f"Config file at {config_path} already exists.")
             serializer = JSONConfigSerializer()
             serializer.dump(config=config, path=config_path)
         else:
-            warnings.warn("No config information will be saved to disk!")
+            # before emitting this warning, check if wandb config exists
+            self.warn("No config information will be saved to disk!")
 
         # make model_save_path absolute
         # if using wandb, set up live syncing of model
@@ -233,6 +234,10 @@ class Logger:
                 model_save_path = log_dir / model_save_path
                 # on web UI, model will be at original relative path
                 model_base_path = str(log_dir)
+            if model_save_path.exists():
+                raise FileExistsError(
+                    f"Model checkpoint at {model_save_path} already exists."
+                )
             self.model_base_path = model_base_path
 
             if use_wandb:
@@ -245,11 +250,8 @@ class Logger:
             model_save_path.parent.mkdir(parents=True, exist_ok=True)
 
         else:
-            warnings.warn("No trained models will be saved to disk!")
+            self.warn("No trained models will be saved to disk!")
         self.model_save_path = model_save_path
-
-        # TODO: give each writer its own verbosity level
-        self.verbosity = verbosity
 
         self.initialized = True
 
@@ -402,7 +404,7 @@ class Logger:
 
         :param args: log the arguments
         """
-        self.log(*args, level=Verbosity.WARN)
+        self.log("WARNING:", *args, level=Verbosity.WARN)
         # TODO: throw warning, maybe with warnings module
 
     def error(self, *args) -> None:
@@ -413,7 +415,7 @@ class Logger:
 
         :param args: log the arguments
         """
-        self.log(*args, level=Verbosity.ERROR)
+        self.log("ERROR:", *args, level=Verbosity.ERROR)
         # TODO: throw runtime exception here?
 
     def set_verbosity(self, verbosity: Verbosity) -> None:

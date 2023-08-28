@@ -22,6 +22,9 @@ class RLRunner(Runner):
         log_interval_steps: int,
         eval_sampler: EvalSampler | None = None,
         eval_interval_steps: int | None = None,
+        logger_rollout_prefix: str = "rollout",
+        logger_eval_prefix: str = "eval",
+        logger_algo_prefix: str = "algo",
     ) -> None:
         super().__init__()
 
@@ -30,7 +33,10 @@ class RLRunner(Runner):
         self.agent = agent
         self.algorithm = algorithm
         self.batch_spec = batch_spec
-        self.n_steps = n_steps
+        self.n_steps = int(n_steps)
+        self.logger_rollout_prefix = logger_rollout_prefix
+        self.logger_eval_prefix = logger_eval_prefix
+        self.logger_algo_prefix = logger_algo_prefix
 
         self.n_iterations = max(1, int(n_steps // batch_spec.size))
         self.log_interval_iters = max(1, int(log_interval_steps // batch_spec.size))
@@ -46,6 +52,8 @@ class RLRunner(Runner):
 
     def run(self) -> None:
         logger.info(f"{type(self).__name__}: Starting training...")
+        if logger.log_dir is not None:
+            logger.info(f"{type(self).__name__}: Saving log files to {logger.log_dir}")
 
         progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
@@ -66,7 +74,7 @@ class RLRunner(Runner):
             batch_samples, completed_trajs = self.sampler.collect_batch(elapsed_steps)
             self.record_completed_trajectories(
                 completed_trajs,
-                prefix="sampling" if self.eval_sampler is not None else "trajectory",
+                prefix=self.logger_rollout_prefix,
             )
             logger.debug(
                 f"{type(self).__name__}: Finished collecting batch #{itr + 1}."
@@ -77,7 +85,7 @@ class RLRunner(Runner):
                 elapsed_steps,
                 batch_samples,
             )
-            self.record_algo_info(algo_info)
+            self.record_algo_info(algo_info, prefix=self.logger_algo_prefix)
             logger.debug(f"{type(self).__name__}: Finished optimizing agent.")
 
             progress_bar.update(batch_size)
@@ -98,5 +106,5 @@ class RLRunner(Runner):
         assert self.eval_sampler is not None
         logger.info(f"{type(self).__name__}: Evaluating agent...")
         eval_trajs = self.eval_sampler.collect_batch(elapsed_steps)
-        self.record_completed_trajectories(eval_trajs, prefix="eval")
+        self.record_completed_trajectories(eval_trajs, prefix=self.logger_eval_prefix)
         logger.debug(f"{type(self).__name__}: Finished evaluating agent.")

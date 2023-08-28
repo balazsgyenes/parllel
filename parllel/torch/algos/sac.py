@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Mapping
 
 import torch
 from torch import Tensor
+from torch.nn.utils.clip_grad import clip_grad_norm_
 
 import parllel.logger as logger
 from parllel import Array, ArrayDict
@@ -22,14 +24,14 @@ class SAC(Algorithm):
         batch_spec: BatchSpec,
         agent: SacAgent,
         replay_buffer: ReplayBuffer[ArrayDict[Tensor]],
-        optimizers: dict[str, torch.optim.Optimizer],
+        optimizers: Mapping[str, torch.optim.Optimizer],
         discount: float,
         learning_starts: int,
         replay_ratio: int,  # data_consumption / data_generation
         target_update_tau: float,  # tau=1 for hard update.
         target_update_interval: int,  # 1000 for hard update, 1 for soft.
         ent_coeff: float,
-        clip_grad_norm: float,
+        clip_grad_norm: float | None = None,
         **kwargs,  # ignore additional arguments
     ):
         """Save input arguments."""
@@ -120,26 +122,28 @@ class SAC(Algorithm):
             target_q1, target_q2 = self.agent.target_q(next_observation, next_action)
         min_target_q = torch.min(target_q1, target_q2)
         next_q = min_target_q - self._alpha * next_log_prob
-        y = samples["reward"] + self.discount * ~samples["terminated"] * next_q
+        y = samples["reward"] + self.discount * ~samples["done"] * next_q
         q1, q2 = self.agent.q(observation.detach(), samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
+        self.algo_log_info["critic_loss"].append(q_loss.item())
 
         # update Q model parameters according to Q loss
         self.optimizers["q"].zero_grad()
         q_loss.backward()
-        q1_grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.agent.model["q1"].parameters(),
-            self.clip_grad_norm,
-        )
-        q2_grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.agent.model["q2"].parameters(),
-            self.clip_grad_norm,
-        )
-        self.optimizers["q"].step()
 
-        self.algo_log_info["critic_loss"].append(q_loss.item())
-        self.algo_log_info["q1_grad_norm"].append(q1_grad_norm.item())
-        self.algo_log_info["q2_grad_norm"].append(q2_grad_norm.item())
+        if self.clip_grad_norm is not None:
+            q1_grad_norm = clip_grad_norm_(
+                self.agent.model["q1"].parameters(),
+                self.clip_grad_norm,
+            )
+            q2_grad_norm = clip_grad_norm_(
+                self.agent.model["q2"].parameters(),
+                self.clip_grad_norm,
+            )
+            self.algo_log_info["q1_grad_norm"].append(q1_grad_norm.item())
+            self.algo_log_info["q2_grad_norm"].append(q2_grad_norm.item())
+
+        self.optimizers["q"].step()
 
         # freeze Q models while optimizing policy model
         self.agent.freeze_q_models(True)
@@ -152,21 +156,23 @@ class SAC(Algorithm):
         min_q = torch.min(q1, q2)
         pi_losses = self._alpha * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
+        self.algo_log_info["actor_loss"].append(pi_loss.item())
 
         # update Pi model parameters according to pi loss
         self.optimizers["pi"].zero_grad()
         pi_loss.backward()
-        pi_grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.agent.model["pi"].parameters(),
-            self.clip_grad_norm,
-        )
+
+        if self.clip_grad_norm is not None:
+            pi_grad_norm = clip_grad_norm_(
+                self.agent.model["pi"].parameters(),
+                self.clip_grad_norm,
+            )
+            self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
+
         self.optimizers["pi"].step()
 
         # unfreeze Q models for next training iteration
         self.agent.freeze_q_models(False)
-
-        self.algo_log_info["actor_loss"].append(pi_loss.item())
-        self.algo_log_info["q1_grad_norm"].append(pi_grad_norm.item())
 
 
 def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array]:
@@ -175,7 +181,7 @@ def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array
             "observation": sample_buffer["observation"].full,
             "action": sample_buffer["action"].full,
             "reward": sample_buffer["reward"].full,
-            "terminated": sample_buffer["terminated"].full,
+            "done": sample_buffer["done"].full,
             "next_observation": sample_buffer["observation"].full.next,
         }
     )

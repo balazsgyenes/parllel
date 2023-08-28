@@ -1,21 +1,17 @@
 # fmt: off
 import itertools
-import multiprocessing as mp
 from contextlib import contextmanager
+from functools import partial
 from typing import Iterator
 
 # isort: off
-import hydra
+import gymnasium as gym
 import torch
 import wandb
 from gymnasium import spaces
-from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 # isort: on
-import parllel.logger as logger
-from parllel.cages import TrajInfo
-from parllel.logger import Verbosity
 from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import RLRunner
@@ -26,28 +22,31 @@ from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
 from parllel.types import BatchSpec
 
 # isort: split
-from envs.continuous_cartpole import build_cartpole
+from common.traj_infos import SB3EvalTrajInfo, SB3TrajInfo
 from models.sac_q_and_pi import PiMlpModel, QMlpModel
 
 
 # fmt: on
 @contextmanager
 def build(config: DictConfig) -> Iterator[RLRunner]:
+    build_env = partial(gym.make, config["env_name"])
+
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
         config["batch_B"],
     )
-    TrajInfo.set_discount(config["algo"]["discount"])
 
+    replay_length = int(config["algo"]["replay_size"]) // batch_spec.B
+    replay_length = (replay_length // batch_spec.T) * batch_spec.T
     cages, sample_tree, metadata = build_cages_and_sample_tree(
-        EnvClass=build_cartpole,
-        env_kwargs=config["env"],
-        TrajInfoClass=TrajInfo,
+        EnvClass=build_env,
+        env_kwargs={},
+        TrajInfoClass=SB3TrajInfo,
         reset_automatically=True,
         batch_spec=batch_spec,
         parallel=parallel,
-        full_size=config["algo"]["replay_length"],
+        full_size=replay_length,
     )
     obs_space, action_space = metadata.obs_space, metadata.action_space
     assert isinstance(obs_space, spaces.Box)
@@ -90,7 +89,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         model=model,
         distribution=distribution,
         device=device,
-        learning_starts=config["algo"]["learning_starts"],
+        learning_starts=config["algo"]["random_explore_steps"],
     )
 
     sampler = BasicSampler(
@@ -98,8 +97,6 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         envs=cages,
         agent=agent,
         sample_tree=sample_tree,
-        max_steps_decorrelate=config["max_steps_decorrelate"],
-        get_bootstrap_value=False,
     )
 
     replay_buffer_tree = build_replay_buffer_tree(sample_tree)
@@ -112,7 +109,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
     replay_buffer = ReplayBuffer(
         tree=replay_buffer_tree,
         sampler_batch_spec=batch_spec,
-        size_T=config["algo"]["replay_length"],
+        size_T=replay_length,
         replay_batch_size=config["algo"]["batch_size"],
         newest_n_samples_invalid=0,
         oldest_n_samples_invalid=1,
@@ -148,9 +145,9 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         sample_tree=sample_tree,
         agent=agent,
         CageCls=type(cages[0]),
-        EnvClass=build_cartpole,
-        env_kwargs=config["env"],
-        TrajInfoClass=TrajInfo,
+        EnvClass=build_env,
+        env_kwargs={},
+        TrajInfoClass=SB3EvalTrajInfo,
         **config["eval_sampler"],
     )
 
@@ -161,6 +158,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         algorithm=algorithm,
         batch_spec=batch_spec,
         eval_sampler=eval_sampler,
+        logger_algo_prefix="train",
         **config["runner"],
     )
 
@@ -179,40 +177,3 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         for cage in cages:
             cage.close()
         sample_tree.close()
-
-
-@hydra.main(version_base=None, config_path="conf", config_name="train_sac")
-def main(config: DictConfig) -> None:
-    run = wandb.init(
-        anonymous="must",  # for this example, send to wandb dummy account
-        project="parllel examples",
-        tags=["continuous cartpole", "sac"],
-        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
-        sync_tensorboard=True,  # auto-upload any values logged to tensorboard
-        save_code=True,  # save script used to start training, git commit, and patch
-    )
-
-    logger.init(
-        wandb_run=run,
-        # this log_dir is used if wandb is disabled (using `wandb disabled`)
-        log_dir=HydraConfig.get().runtime.output_dir,
-        tensorboard=True,
-        output_files={
-            "txt": "log.txt",
-            # "csv": "progress.csv",
-        },
-        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
-        model_save_path="model.pt",
-        # verbosity=Verbosity.DEBUG,
-    )
-
-    with build(config) as runner:
-        runner.run()
-
-    logger.close()
-    run.finish()
-
-
-if __name__ == "__main__":
-    mp.set_start_method("fork")
-    main()
