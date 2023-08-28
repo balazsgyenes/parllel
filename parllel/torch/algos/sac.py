@@ -174,10 +174,6 @@ class SAC(Algorithm):
         # unfreeze Q models for next training iteration
         self.agent.freeze_q_models(False)
 
-        self.algo_log_info["mean_min_q"].append(min_q.detach().mean().item())
-        self.algo_log_info["max_min_q"].append(min_q.detach().max().item())
-        self.algo_log_info["min_min_q"].append(min_q.detach().min().item())
-
 
 def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array]:
     replay_buffer_tree = ArrayDict(
