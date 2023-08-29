@@ -8,3 +8,5 @@ hydra:
     name: cheetah-sac
 
 env_name: HalfCheetah-v4
+video_recorder:
+  env_fps: 20  # TODO: get from env metadata

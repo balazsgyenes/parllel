@@ -12,6 +12,7 @@ from gymnasium import spaces
 from omegaconf import DictConfig
 
 # isort: on
+import parllel.logger as logger
 from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import RLRunner
@@ -19,6 +20,7 @@ from parllel.samplers import BasicSampler
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.algos.sac import SAC, build_replay_buffer_tree
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
+from parllel.transforms.video_recorder import RecordVectorizedVideo
 from parllel.types import BatchSpec
 
 # isort: split
@@ -92,11 +94,21 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         learning_starts=config["algo"]["random_explore_steps"],
     )
 
+    video_recorder = RecordVectorizedVideo(
+        output_dir=log_dir / "videos"
+        if (log_dir := logger.log_dir) is not None
+        else "videos",
+        sample_tree=sample_tree,
+        buffer_key_to_record="env_info.rendering",
+        **config["video_recorder"],
+    )
+
     sampler = BasicSampler(
         batch_spec=batch_spec,
         envs=cages,
         agent=agent,
         sample_tree=sample_tree,
+        batch_transform=video_recorder,
     )
 
     replay_buffer_tree = build_replay_buffer_tree(sample_tree)

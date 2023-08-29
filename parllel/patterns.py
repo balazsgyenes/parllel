@@ -54,6 +54,8 @@ def build_cages_and_sample_tree(
     if isinstance(keys_to_skip, str):
         keys_to_skip = (keys_to_skip,)
 
+    env_kwargs = {"render_mode": "rgb_array"} | {**env_kwargs}
+
     cage_kwargs = dict(
         EnvClass=EnvClass,
         env_kwargs=env_kwargs,
@@ -63,6 +65,7 @@ def build_cages_and_sample_tree(
 
     # create example env
     example_cage = CageCls(**cage_kwargs)
+    example_cage.render = True
 
     # get example output from env
     example_cage.random_step_async()
@@ -187,6 +190,8 @@ def build_cages_and_sample_tree(
 
     # create cages to manage environments
     cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
+    for cage in cages:
+        cage.render = True
 
     logger.info("Environments instantiated.")
 
