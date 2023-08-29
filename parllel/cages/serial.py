@@ -55,6 +55,7 @@ class SerialCage(Cage):
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
+        out_reset_info: ArrayTree[Array] | None = None,
     ) -> None:
         next_obs, reward, terminated, truncated, env_info = self._step_env(action)
         obs = next_obs
@@ -63,48 +64,36 @@ class SerialCage(Cage):
             if self.reset_automatically:
                 # reset immediately and overwrite last observation and info
                 obs, reset_info = self._reset_env()
-                if not self.ignore_reset_info:
-                    env_info = reset_info
+                if out_reset_info is not None:
+                    out_reset_info[...] = reset_info
             else:
                 # store done state
                 self._needs_reset = True
 
-        try:
-            out_next_obs[...] = next_obs
-            out_obs[...] = obs
-            out_reward[...] = reward
-            out_terminated[...] = terminated
-            out_truncated[...] = truncated
-            out_info[...] = env_info
-        except TypeError as e:
-            outs = (
-                out_next_obs,
-                out_obs,
-                out_reward,
-                out_terminated,
-                out_truncated,
-                out_info,
-            )
-            # TODO: make out arguments optional
-            if any(out is None for out in outs):
-                if not all(out is None for out in outs):
-                    # if user passed a combination of None and Array, it's probably a mistake
-                    raise ValueError(
-                        f"Missing {outs.index(None) + 1}nth output argument!"
-                    )
+        out_pairs = (
+            (out_next_obs, next_obs),
+            (out_obs, obs),
+            (out_reward, reward),
+            (out_terminated, terminated),
+            (out_truncated, truncated),
+            (out_info, env_info),
+        )
 
-                # return step result if user passed no output args at all
-                self._step_result = (
-                    next_obs,
-                    obs,
-                    reward,
-                    terminated,
-                    truncated,
-                    env_info,
-                )
-            else:
-                # otherwise this was an unexpected error
-                raise e
+        if pairs_to_write := [
+            (out, result) for out, result in out_pairs if out is not None
+        ]:
+            for out, result in pairs_to_write:
+                out[...] = result
+        else:
+            # return step result if user passed no output args at all
+            self._step_result = (
+                next_obs,
+                obs,
+                reward,
+                terminated,
+                truncated,
+                env_info,
+            )
 
     def await_step(self) -> EnvStepType | EnvRandomStepType | EnvResetType | None:
         result = self._step_result
@@ -126,6 +115,7 @@ class SerialCage(Cage):
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
+        out_reset_info: ArrayTree[Array] | None = None,
     ) -> None:
         (
             action,
@@ -140,48 +130,35 @@ class SerialCage(Cage):
         if terminated or truncated:
             # reset immediately and overwrite last observation
             obs, reset_info = self._reset_env()
-            if not self.ignore_reset_info:
-                env_info = reset_info
+            if out_reset_info is not None:
+                out_reset_info[...] = reset_info
 
-        try:
-            out_action[...] = action
-            out_next_obs[...] = next_obs
-            out_obs[...] = obs
-            out_reward[...] = reward
-            out_terminated[...] = terminated
-            out_truncated[...] = truncated
-            out_info[...] = env_info
-        except TypeError as e:
-            # TODO: make out arguments optional
-            outs = (
-                out_action,
-                out_next_obs,
-                out_obs,
-                out_reward,
-                out_terminated,
-                out_truncated,
-                out_info,
+        out_pairs = (
+            (out_action, action),
+            (out_next_obs, next_obs),
+            (out_obs, obs),
+            (out_reward, reward),
+            (out_terminated, terminated),
+            (out_truncated, truncated),
+            (out_info, env_info),
+        )
+
+        if pairs_to_write := [
+            (out, result) for out, result in out_pairs if out is not None
+        ]:
+            for out, result in pairs_to_write:
+                out[...] = result
+        else:
+            # return step result if user passed no output args at all
+            self._step_result = (
+                action,
+                next_obs,
+                obs,
+                reward,
+                terminated,
+                truncated,
+                env_info,
             )
-            if any(out is None for out in outs):
-                if not all(out is None for out in outs):
-                    # if user passed a combination of None and Array, it's probably a mistake
-                    raise ValueError(
-                        f"Missing {outs.index(None) + 1}nth output argument!"
-                    )
-
-                # return step result if user passed no output args at all
-                self._step_result = (
-                    action,
-                    next_obs,
-                    obs,
-                    reward,
-                    terminated,
-                    truncated,
-                    env_info,
-                )
-            else:
-                # otherwise this was an unexpected error
-                raise e
 
     def reset_async(
         self,
@@ -192,24 +169,13 @@ class SerialCage(Cage):
         reset_obs, reset_info = self._reset_env()
         self._needs_reset = False
 
-        try:
+        if out_obs is not None:
             out_obs[...] = reset_obs
-            if not self.ignore_reset_info:
-                out_info[...] = reset_info
-        except TypeError as e:
-            outs = (out_obs, out_info)
-            if any(out is None for out in outs):
-                if not all(out is None for out in outs):
-                    # if user passed a combination of None and Array, it's probably a mistake
-                    raise ValueError(
-                        f"Missing {outs.index(None) + 1}nth output argument!"
-                    )
-
-                # return step result if user passed no output args at all
-                self._step_result = (reset_obs, reset_info)
-            else:
-                # otherwise this was an unexpected error
-                raise e
+        if out_info is not None:
+            out_info[...] = reset_info
+        if out_obs is None and out_info is None:
+            # return step result if user passed no output args at all
+            self._step_result = (reset_obs, reset_info)
 
     def close(self) -> None:
         self._close_env()

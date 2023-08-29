@@ -157,7 +157,6 @@ class RecurrentSampler(Sampler):
             # overwrite next first observation with reset observation
             env.reset_async(
                 out_obs=observation[self.batch_spec.T, b],
-                out_info=env_info[self.batch_spec.T - 1, b],
             )
 
         self.agent.reset_one([b for b, env in envs_need_reset])

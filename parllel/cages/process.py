@@ -1,3 +1,4 @@
+# fmt: off
 from __future__ import annotations
 
 import enum
@@ -13,6 +14,7 @@ from .collections import (EnvInfoType, EnvRandomStepType, EnvResetType,
 from .traj_info import TrajInfo
 
 
+# fmt: on
 class Command(enum.Enum):
     """Commands for communicating with the subprocess"""
 
@@ -48,6 +50,7 @@ class ProcessCage(Cage, mp.Process):
     returned by env.reset() gets ignored. If False, the dict is treated the
     same way as info dicts returned by env.step() calls
     """
+
     # TODO: add spaces and needs_reset properties
 
     def __init__(
@@ -85,20 +88,24 @@ class ProcessCage(Cage, mp.Process):
         self,
         action: ArrayTree[Array],
         *,
+        out_next_obs: ArrayTree[Array] | None = None,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
+        out_reset_info: ArrayTree[Array] | None = None,
     ) -> None:
         assert not self.waiting
         args = (
             action,
+            out_next_obs,
             out_obs,
             out_reward,
             out_terminated,
             out_truncated,
             out_info,
+            out_reset_info,
         )
         self._parent_pipe.send(Message(Command.step, args))
         self.waiting = True
@@ -124,20 +131,24 @@ class ProcessCage(Cage, mp.Process):
         self,
         *,
         out_action: ArrayTree[Array] | None = None,
+        out_next_obs: ArrayTree[Array] | None = None,
         out_obs: ArrayTree[Array] | None = None,
         out_reward: ArrayTree[Array] | None = None,
         out_terminated: Array | None = None,
         out_truncated: Array | None = None,
         out_info: ArrayTree[Array] | None = None,
+        out_reset_info: ArrayTree[Array] | None = None,
     ) -> None:
         assert not self.waiting
         args = (
             out_action,
+            out_next_obs,
             out_obs,
             out_reward,
             out_terminated,
             out_truncated,
             out_info,
+            out_reset_info,
         )
         self._parent_pipe.send(Message(Command.random_step, args))
         self.waiting = True
@@ -178,50 +189,58 @@ class ProcessCage(Cage, mp.Process):
             data: Any = message.data
 
             if command == Command.step:
+                assert not self.needs_reset
                 (
                     action,
+                    out_next_obs,
                     out_obs,
                     out_reward,
                     out_terminated,
                     out_truncated,
                     out_info,
+                    out_reset_info,
                 ) = data
-                obs, reward, terminated, truncated, env_info = self._step_env(
+                next_obs, reward, terminated, truncated, env_info = self._step_env(
                     action
                 )
+                obs = next_obs
 
-                if (done := terminated or truncated):
+                if done := terminated or truncated:
                     if self.reset_automatically:
                         # reset immediately and overwrite last observation
                         obs, reset_info = self._reset_env()
-                        if not self.ignore_reset_info:
-                            env_info = reset_info
+                        if out_reset_info is not None:
+                            out_reset_info[...] = reset_info
                     else:
                         # store done state
                         self._needs_reset = True
 
-                try:
-                    out_obs[...] = obs
-                    out_reward[...] = reward
-                    out_terminated[...] = terminated
-                    out_truncated[...] = truncated
-                    out_info[...] = env_info
-                except TypeError as e:
-                    outs = data[1:]
-                    if any(out is None for out in outs):
-                        if not all(out is None for out in outs):
-                            # if user passed a combination of None and Array, it's probably a mistake
-                            raise ValueError(
-                                f"Missing {outs.index(None) + 1}nth output argument!"
-                            )
+                out_pairs = (
+                    (out_next_obs, next_obs),
+                    (out_obs, obs),
+                    (out_reward, reward),
+                    (out_terminated, terminated),
+                    (out_truncated, truncated),
+                    (out_info, env_info),
+                )
 
-                        # return step result if user passed no output args at all
-                        self._child_pipe.send(
-                            (obs, reward, terminated, truncated, env_info)
+                if pairs_to_write := [
+                    (out, result) for out, result in out_pairs if out is not None
+                ]:
+                    for out, result in pairs_to_write:
+                        out[...] = result
+                else:
+                    # return step result if user passed no output args at all
+                    self._child_pipe.send(
+                        (
+                            next_obs,
+                            obs,
+                            reward,
+                            terminated,
+                            truncated,
+                            env_info,
                         )
-                    else:
-                        # otherwise this was an unexpected error
-                        raise e
+                    )
 
                 self._child_pipe.send(self.needs_reset)
 
@@ -237,79 +256,82 @@ class ProcessCage(Cage, mp.Process):
                 self._child_pipe.send(trajs)
 
             elif command == Command.random_step:
+                assert not self.needs_reset
                 (
                     out_action,
+                    out_next_obs,
                     out_obs,
                     out_reward,
                     out_terminated,
                     out_truncated,
                     out_info,
+                    out_reset_info,
                 ) = data
                 (
                     action,
-                    obs,
+                    next_obs,
                     reward,
                     terminated,
                     truncated,
                     env_info,
                 ) = self._random_step_env()
+                obs = next_obs
 
-                try:
-                    out_action[...] = action
-                    out_obs[...] = obs
-                    out_reward[...] = reward
-                    out_terminated[...] = terminated
-                    out_truncated[...] = truncated
-                    out_info[...] = env_info
-                except TypeError as e:
-                    outs = data
-                    if any(out is None for out in outs):
-                        if not all(out is None for out in outs):
-                            # if user passed a combination of None and Array, it's probably a mistake
-                            raise ValueError(
-                                f"Missing {outs.index(None) + 1}nth output argument!"
-                            )
+                if terminated or truncated:
+                    # reset immediately and overwrite last observation
+                    obs, reset_info = self._reset_env()
+                    if out_reset_info is not None:
+                        out_reset_info[...] = reset_info
 
-                        # return step result if user passed no output args at all
-                        self._child_pipe.send(
-                            (action, obs, reward, terminated, truncated, env_info)
+                out_pairs = (
+                    (out_action, action),
+                    (out_next_obs, next_obs),
+                    (out_obs, obs),
+                    (out_reward, reward),
+                    (out_terminated, terminated),
+                    (out_truncated, truncated),
+                    (out_info, env_info),
+                )
+
+                if pairs_to_write := [
+                    (out, result) for out, result in out_pairs if out is not None
+                ]:
+                    for out, result in pairs_to_write:
+                        out[...] = result
+                else:
+                    # return step result if user passed no output args at all
+                    self._child_pipe.send(
+                        (
+                            action,
+                            next_obs,
+                            obs,
+                            reward,
+                            terminated,
+                            truncated,
+                            env_info,
                         )
-                    else:
-                        # otherwise this was an unexpected error
-                        raise e
+                    )
 
-                # needs_reset should always be False unless random_step is
-                # called on an env that already needs reset
-                self._child_pipe.send(self.needs_reset)
+                # needs_reset should always be False because we reset if done
+                self._child_pipe.send(False)
 
             elif command == Command.reset_async:
                 out_obs, out_info = data
                 if _reset_obs is not None and _reset_info is not None:
-                    # reset has already been done in the background
+                    # reset was already carried out in the background
                     reset_obs, reset_info = _reset_obs, _reset_info
                     _reset_obs, _reset_info = None, None
                 else:
-                    # unexpected reset requested
+                    # reset requested when environment was not done
                     reset_obs, reset_info = self._reset_env()
 
-                try:
+                if out_obs is not None:
                     out_obs[...] = reset_obs
-                    if not self.ignore_reset_info:
-                        out_info[...] = reset_info
-                except TypeError as e:
-                    outs = (out_obs, out_info)
-                    if any(out is None for out in outs):
-                        if not all(out is None for out in outs):
-                            # if user passed a combination of None and Array, it's probably a mistake
-                            raise ValueError(
-                                f"Missing {outs.index(None) + 1}nth output argument!"
-                            )
-
-                        # return step result if user passed no output args at all
-                        self._child_pipe.send((reset_obs, reset_info))
-                    else:
-                        # otherwise this was an unexpected error
-                        raise e
+                if out_info is not None:
+                    out_info[...] = reset_info
+                if out_obs is None and out_info is None:
+                    # return step result if user passed no output args at all
+                    self._child_pipe.send((reset_obs, reset_info))
 
                 self._needs_reset = False
                 self._child_pipe.send(self.needs_reset)

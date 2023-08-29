@@ -64,7 +64,6 @@ class Sampler(ABC):
             # be rotated to the beginning
             env.reset_async(
                 out_obs=observation[self.batch_spec.T, b],
-                out_info=env_info[self.batch_spec.T, b],
             )
 
         # wait for envs to finish reset
