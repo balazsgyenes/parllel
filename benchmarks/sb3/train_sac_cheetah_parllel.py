@@ -4,6 +4,7 @@ import multiprocessing as mp
 # isort: off
 import hydra
 import wandb
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 # isort: on
@@ -26,6 +27,7 @@ def main(config: DictConfig) -> None:
 
     logger.init(
         wandb_run=run,
+        log_dir=HydraConfig.get().runtime.output_dir,
         tensorboard=True,
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
     )
