@@ -164,12 +164,11 @@ class MessageWriter:
     `logger.warn`.
     """
 
-    def write_message(self, sequence: Sequence) -> None:
+    def write_message(self, message: str) -> None:
         """
         Write a message to the log file.
 
-        :param sequence:
-        # TODO: update these parameters and type hints
+        :param message: string message to print
         """
         raise NotImplementedError
 
@@ -261,13 +260,8 @@ class TxtFileWriter(KeyValueWriter, MessageWriter, LogWriter, name="txt"):
             string = string[: self.max_length - 3] + "..."
         return string
 
-    def write_message(self, sequence: Sequence) -> None:
-        sequence = list(sequence)
-        for i, elem in enumerate(sequence):
-            self.file.write(elem)
-            if i < len(sequence) - 1:  # add space unless this is the last one
-                self.file.write(" ")
-        self.file.write("\n")
+    def write_message(self, message: str) -> None:
+        self.file.write(message + "\n")
         self.file.flush()
 
     def close(self) -> None:

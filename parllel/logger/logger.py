@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from gymnasium.utils import colorize
 
 try:
     import wandb
@@ -360,7 +361,7 @@ class Logger:
             #         policy="now",
             #     )
 
-    def log(self, *args, level: Verbosity = Verbosity.INFO) -> None:
+    def log(self, msg: str, level: Verbosity = Verbosity.INFO) -> None:
         """
         Write the sequence of args, with no separators,
         to the console and output files (if you've configured an output file).
@@ -374,9 +375,9 @@ class Logger:
         if self.verbosity >= level:
             for writer in self.writers.values():
                 if isinstance(writer, MessageWriter):
-                    writer.write_message(map(str, args))
+                    writer.write_message(msg)
 
-    def debug(self, *args) -> None:
+    def debug(self, msg: str, *args) -> None:
         """
         Write the sequence of args, with no separators,
         to the console and output files (if you've configured an output file).
@@ -384,9 +385,9 @@ class Logger:
 
         :param args: log the arguments
         """
-        self.log(*args, level=Verbosity.DEBUG)
+        self.log(msg % args, level=Verbosity.DEBUG)
 
-    def info(self, *args) -> None:
+    def info(self, msg: str, *args) -> None:
         """
         Write the sequence of args, with no separators,
         to the console and output files (if you've configured an output file).
@@ -394,9 +395,9 @@ class Logger:
 
         :param args: log the arguments
         """
-        self.log(*args, level=Verbosity.INFO)
+        self.log(msg % args, level=Verbosity.INFO)
 
-    def warn(self, *args) -> None:
+    def warn(self, msg: str, *args) -> None:
         """
         Write the sequence of args, with no separators,
         to the console and output files (if you've configured an output file).
@@ -404,10 +405,10 @@ class Logger:
 
         :param args: log the arguments
         """
-        self.log("WARNING:", *args, level=Verbosity.WARN)
+        self.log(colorize(f"WARNING: {msg % args}", "yellow"), level=Verbosity.WARN)
         # TODO: throw warning, maybe with warnings module
 
-    def error(self, *args) -> None:
+    def error(self, msg: str, *args) -> None:
         """
         Write the sequence of args, with no separators,
         to the console and output files (if you've configured an output file).
@@ -415,8 +416,7 @@ class Logger:
 
         :param args: log the arguments
         """
-        self.log("ERROR:", *args, level=Verbosity.ERROR)
-        # TODO: throw runtime exception here?
+        self.log(colorize(f"ERROR: {msg % args}", "red"), level=Verbosity.ERROR)
 
     def set_verbosity(self, verbosity: Verbosity) -> None:
         """

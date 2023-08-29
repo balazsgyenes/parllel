@@ -29,7 +29,6 @@ def main(config: DictConfig) -> None:
         wandb_run=run,
         log_dir=HydraConfig.get().runtime.output_dir,
         tensorboard=True,
-        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
     )
 
     with build(config) as runner:
