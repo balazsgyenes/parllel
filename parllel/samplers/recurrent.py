@@ -20,7 +20,7 @@ class RecurrentSampler(Sampler):
         envs: Sequence[Cage],
         agent: Agent,
         sample_tree: ArrayDict[Array],
-        max_steps_decorrelate: int | None = None,
+        max_steps_decorrelate: int | None = 0,
         get_initial_rnn_state: bool = True,
         get_bootstrap_value: bool = False,
         obs_transform: StepTransform | None = None,

@@ -24,7 +24,7 @@ class BasicSampler(Sampler):
         envs: Sequence[Cage],
         agent: Agent,
         sample_tree: ArrayDict[Array],
-        max_steps_decorrelate: int | None = None,
+        max_steps_decorrelate: int | None = 0,
         get_bootstrap_value: bool = False,
         obs_transform: StepTransform | None = None,
         batch_transform: BatchTransform | None = None,

@@ -43,15 +43,11 @@ class EvalSampler(Sampler):
 
     def collect_batch(self, elapsed_steps: int) -> list[TrajInfo]:
         # get references to sample tree elements
-        action = self.sample_tree["action"]
-        agent_info = self.sample_tree["agent_info"]
-        next_observation = self.sample_tree["next_observation"]
-        observation = self.sample_tree["observation"]
-        reward = self.sample_tree["reward"]
-        done = self.sample_tree["done"]
-        terminated = self.sample_tree["terminated"]
-        truncated = self.sample_tree["truncated"]
-        env_info = self.sample_tree["env_info"]
+        action = self.sample_tree["action"][0]
+        observation = self.sample_tree["observation"][0]
+        done = self.sample_tree["done"][0]
+        terminated = self.sample_tree["terminated"][0]
+        truncated = self.sample_tree["truncated"][0]
         sample_tree = self.sample_tree
 
         # set agent to eval mode, preventing sampler states from being overwritten
@@ -68,23 +64,20 @@ class EvalSampler(Sampler):
         n_completed_trajs = 0
 
         # main sampling loop
-        for t in range(self.max_traj_length):
+        for _ in range(self.max_traj_length):
             # apply any transforms to the observation before the agent steps
             if self.obs_transform is not None:
                 sample_tree = self.obs_transform(sample_tree, 0)
 
             # agent observes environment and outputs actions
-            action[...], agent_info[...] = self.agent.step(observation[0])
+            action[...], _ = self.agent.step(observation)
 
             for b, env in enumerate(self.envs):
                 env.step_async(
-                    action[0, b],
-                    out_next_obs=next_observation[0, b],
-                    out_obs=observation[0, b],
-                    out_reward=reward[0, b],
-                    out_terminated=terminated[0, b],
-                    out_truncated=truncated[0, b],
-                    out_info=env_info[0, b],
+                    action[b],
+                    out_obs=observation[b],
+                    out_terminated=terminated[b],
+                    out_truncated=truncated[b],
                 )
 
             for b, env in enumerate(self.envs):

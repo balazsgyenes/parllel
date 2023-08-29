@@ -406,14 +406,10 @@ def build_eval_sampler(
     # first, collect only the keys needed for evaluation
     eval_tree_keys = [
         "action",
-        "agent_info",
-        "next_observation",
         "observation",
-        "reward",
         "terminated",
         "truncated",
         "done",
-        "env_info",
     ]
     eval_tree_example = ArrayDict(
         {key: sample_tree[key] for key in eval_tree_keys},
