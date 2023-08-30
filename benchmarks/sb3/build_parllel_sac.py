@@ -132,8 +132,19 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
 
     if config["algo"]["learning_rate_type"] == "linear":
         lr_schedulers = [
-            torch.optim.lr_scheduler.LinearLR(pi_optimizer),
-            torch.optim.lr_scheduler.LinearLR(q_optimizer),
+            torch.optim.lr_scheduler.LinearLR(
+                pi_optimizer,
+                start_factor=1.0,
+                end_factor=0.0,
+                # TODO: adjust total iters for delayed learning start
+                total_iters=max(1, int(config["runner"]["n_steps"] // batch_spec.size)),
+            ),
+            torch.optim.lr_scheduler.LinearLR(
+                q_optimizer,
+                start_factor=1.0,
+                end_factor=0.0,
+                total_iters=max(1, int(config["runner"]["n_steps"] // batch_spec.size)),
+            ),
         ]
     else:
         lr_schedulers = None

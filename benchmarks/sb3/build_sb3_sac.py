@@ -36,6 +36,17 @@ def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, BaseCallback]]:
         resolve=True,
         throw_on_missing=True,
     )
+
+    if isinstance(lr := algo_config["learning_rate"], str):
+        schedule, initial_value = lr.split("_")
+        assert schedule == "lin"
+        initial_value = float(initial_value)
+
+        def linear_schedule(progress_remaining: float) -> float:
+            return progress_remaining * initial_value
+
+        algo_config["learning_rate"] = linear_schedule
+
     model = SAC(
         "MlpPolicy",
         env,
