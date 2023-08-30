@@ -8,3 +8,5 @@ hydra:
     name: hopper-sac
 
 env_name: Hopper-v4
+algo:
+  learning_rate_type: linear

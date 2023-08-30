@@ -139,28 +139,27 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         batch_transform=batch_transform,
     )
 
-    optimizers = {
-        "pi": torch.optim.Adam(
-            agent.model["pi"].parameters(),
-            lr=config["algo"]["learning_rate"],
-            **config.get("optimizer", {}),
+    q_optimizer = torch.optim.Adam(
+        itertools.chain(
+            agent.model["q1"].parameters(),
+            agent.model["q2"].parameters(),
         ),
-        "q": torch.optim.Adam(
-            itertools.chain(
-                agent.model["q1"].parameters(),
-                agent.model["q2"].parameters(),
-            ),
-            lr=config["algo"]["learning_rate"],
-            **config.get("optimizer", {}),
-        ),
-    }
+        lr=config["algo"]["learning_rate"],
+        **config.get("optimizer", {}),
+    )
+    pi_optimizer = torch.optim.Adam(
+        agent.model["pi"].parameters(),
+        lr=config["algo"]["learning_rate"],
+        **config.get("optimizer", {}),
+    )
 
     # create algorithm
     algorithm = SAC(
         batch_spec=batch_spec,
         agent=agent,
         replay_buffer=replay_buffer,
-        optimizers=optimizers,
+        q_optimizer=q_optimizer,
+        pi_optimizer=pi_optimizer,
         **config["algo"],
     )
 

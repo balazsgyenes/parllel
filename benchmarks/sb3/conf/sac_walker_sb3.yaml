@@ -11,3 +11,5 @@ hydra:
 # https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/sac.yml#L104
 log_interval_episodes: 100  # each episode is up to 1000 steps
 env_name: Walker2d-v4
+algo:
+  learning_rate: lin_7.3e-4

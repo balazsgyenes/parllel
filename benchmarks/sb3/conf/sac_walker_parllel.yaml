@@ -8,3 +8,5 @@ hydra:
     name: walker2d-sac
 
 env_name: Walker2d-v4
+algo:
+  learning_rate_type: linear
