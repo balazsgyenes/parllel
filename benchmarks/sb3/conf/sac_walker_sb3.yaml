@@ -1,0 +1,13 @@
+defaults:
+  - sac_sb3
+  - logdirs
+  - _self_
+
+hydra:
+  job:
+    name: walker2d-sac
+
+# hyperparameters for Walker2d are here:
+# https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/sac.yml#L104
+log_interval_episodes: 100  # each episode is up to 1000 steps
+env_name: Walker2d-v4
