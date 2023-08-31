@@ -58,6 +58,7 @@ def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, BaseCallback]]:
     eval_env = DummyVecEnv([make_env for _ in range(config["n_envs"])])
     eval_callback = EvalCallback(
         eval_env,
+        n_eval_episodes=config["n_eval_episodes"],
         eval_freq=config["eval_interval_steps"],
         deterministic=config["deterministic_eval_mode"],
     )

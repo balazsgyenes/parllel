@@ -2,7 +2,8 @@ framework: sb3
 n_envs: 8  # rl-baselines3-zoo uses only 1 parallel environment
 deterministic_eval_mode: False  # rl-baselines3-zoo uses non-deterministic eval only for Atari and "minigrid" environments
 n_steps: 1.e+6
-eval_interval_steps: 50000
+eval_interval_steps: 50000  # from SB3: https://stable-baselines3.readthedocs.io/en/master/modules/sac.html#how-to-replicate-the-results
+n_eval_episodes: 10  # from SB3: https://stable-baselines3.readthedocs.io/en/master/modules/sac.html#how-to-replicate-the-results
 algo:  # taken from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/sac.yml
   learning_rate: 7.3e-4
   buffer_size: 300000
@@ -15,5 +16,5 @@ algo:  # taken from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hype
   learning_starts: 10000
   use_sde: False  # need to disable, as parllel doesn't support this
   policy_kwargs:
-    log_std_init: -3
+    # log_std_init: -3  # has no effect when use_sde=False
     net_arch: [400, 300]
