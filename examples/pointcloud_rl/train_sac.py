@@ -43,7 +43,8 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    env_kwargs = {"actions": "continuous"} | {**config["env"]}
+    env_kwargs = OmegaConf.to_container(config["env"], throw_on_missing=True)
+    env_kwargs["actions"] = "continuous"
     cages, sample_tree, metadata = build_cages_and_sample_tree(
         EnvClass=DummyEnv,
         env_kwargs=env_kwargs,

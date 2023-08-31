@@ -54,7 +54,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
 
     cages, sample_tree, metadata = build_cages_and_sample_tree(
         EnvClass=EnvClass,
-        env_kwargs=config["env"],
+        env_kwargs=OmegaConf.to_container(config["env"], throw_on_missing=True),
         TrajInfoClass=TrajInfo,
         reset_automatically=False,
         batch_spec=batch_spec,
@@ -209,7 +209,7 @@ def main(config: DictConfig) -> None:
             "txt": "log.txt",
             # "csv": "progress.csv",
         },
-        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
+        config=OmegaConf.to_container(config, throw_on_missing=True),
         model_save_path="model.pt",
         # verbosity=Verbosity.DEBUG,
     )

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import functools
 import itertools
+from operator import getitem
 from os import PathLike
 from pathlib import Path
 from typing import Iterator, Mapping, TypeVar
@@ -28,15 +30,14 @@ class RecordVectorizedVideo(BatchTransform):
         output_dir: str | PathLike,
         sample_tree: ArrayDict[Array],
         buffer_key_to_record: str,  # e.g. "observation" or "env_info.rendering"
-        record_every_n_steps: int,
         video_length: int,
         env_fps: int = 30,
+        n_environments: int | None = None,
         tiled_height: int | None = None,
         tiled_width: int | None = None,
-        torch_order: bool = False,
+        torch_order: bool = False,  # TODO: replace with channel spec
     ) -> None:
         self.output_dir = Path(output_dir)
-        self.record_every = int(record_every_n_steps)
         self.length = int(video_length)
         self.keys = buffer_key_to_record.split(".")
         self.env_fps = env_fps
@@ -45,29 +46,40 @@ class RecordVectorizedVideo(BatchTransform):
         self.output_dir.mkdir(parents=True)
 
         images = dict_get_nested(sample_tree, self.keys)
-        batch_T, batch_B, n_channels, height, width = images.shape
-        self.batch_B = n_images = batch_B
-        self.batch_size = batch_T * batch_B
+        if len(images.shape) != 5:
+            # TODO: maybe specify error message based on user-given data order
+            raise ValueError(
+                f"Expected images to be 5-dimensional (batch_T, batch_B, and 3 image dimensions), not {len(images.shape)}-dimensional."
+            )
+
+        batch_B = batch_B = images.shape[1]
+        if n_environments is not None:
+            if n_environments > batch_B:
+                raise ValueError(
+                    f"Number of requested environment ({n_environments}) greater than number of environments available ({batch_B})."
+                )
+
+            self.n_images = n_environments
+        else:
+            self.n_images = images.shape[1]
 
         if tiled_height is not None and tiled_width is not None:
             tiled_height, tiled_width = int(tiled_height), int(tiled_width)
-            if tiled_height * tiled_width < n_images:
+            if tiled_height * tiled_width < self.n_images:
                 raise ValueError(
                     f"Tiled height and width {tiled_height}x{tiled_width} are "
-                    f"too small to allocate space for {n_images} images."
+                    f"too small to allocate space for {self.n_images} images."
                 )
             self.tiled_height, self.tiled_width = tiled_height, tiled_width
         else:
-            self.tiled_height, self.tiled_width = self.find_tiling(n_images)
+            self.tiled_height, self.tiled_width = self.find_tiling(self.n_images)
             logger.debug(
                 f"Automatically chose a tiling of {self.tiled_height}x"
                 f"{self.tiled_width} for vectorized video recording."
             )
 
-        self.total_t = 0  # used for naming video files
-        # force first batch to be recorded
-        self.steps_since_last_recording = self.record_every
         self.recording = False
+        self.recorded_frames = []
 
     @staticmethod
     def find_tiling(n_images: int) -> tuple[int, int]:
@@ -98,89 +110,73 @@ class RecordVectorizedVideo(BatchTransform):
         tiled_width = int(np.ceil(float(n_images) / tiled_height))
         return (tiled_height, tiled_width)
 
+    def start_recording(self, video_name_suffix: str, delay_t: int = 0) -> None:
+        self.recording = True
+        self.delay_t = delay_t
+        self.video_name_suffix = video_name_suffix
+        logger.debug(f"Started recording video of policy.")
+
     def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
-        # check if we should start recording
-        if not self.recording:
-            if self.steps_since_last_recording + self.batch_size >= self.record_every:
-                self._start_recording()
-
         if self.recording:
-            self._record_batch(sample_tree)
+            images_batch = dict_get_nested(sample_tree, self.keys)
+            valid_batch = sample_tree.get("valid", None)
 
-        # update counters after processing batch
-        self.total_t += self.batch_size
-        self.steps_since_last_recording += self.batch_size
+            # convert to numpy arrays
+            images_batch = np.asarray(images_batch)
+            images_batch = images_batch[:, : self.n_images]
+            if valid_batch is not None:
+                valid_batch = np.asarray(valid_batch)
+                valid_batch = valid_batch[:, : self.n_images]
+
+            # if this is the start of recording, delay start to arrive at exact
+            # desired start point
+            if len(self.recorded_frames) == 0:
+                images_batch = images_batch[self.delay_t :]
+                if valid_batch is not None:
+                    valid_batch = valid_batch[self.delay_t :]
+
+            # loop through time, saving images from each step to file
+            for images, valid in zip_with_valid(images_batch, valid_batch):
+                tiled_image = tile_images(
+                    images=images,
+                    valid=valid,
+                    tiled_height=self.tiled_height,
+                    tiled_width=self.tiled_width,
+                )
+                self.recorded_frames.append(tiled_image)
+
+                if len(self.recorded_frames) >= self.length:
+                    self.stop_recording()
+                    break
+
+                # if all environments are done, continue recording from next batch
+                if valid is not None and not np.any(valid):
+                    break
 
         return sample_tree
 
-    def _start_recording(self) -> None:
-        # calculate exact time point where recording should start
-        offset_steps = max(0, self.record_every - self.steps_since_last_recording)
-        self.offset_t = offset_steps // self.batch_B
-        start_total_t = self.total_t + offset_steps
-
-        self.path = self.output_dir / f"policy_step_{start_total_t}.mp4"
-        logger.log(f"Started recording video of policy to {self.path}")
-
-        self.recorded_frames = []
-        self.steps_since_last_recording -= self.record_every
-        self.recording = True
-
-    def _record_batch(self, sample_tree: ArrayDict[Array]) -> None:
-        images_batch = dict_get_nested(sample_tree, self.keys)
-        valid_batch = sample_tree.get("valid", None)
-
-        # convert to numpy arrays
-        images_batch = np.asarray(images_batch)
-        if valid_batch is not None:
-            valid_batch = np.asarray(valid_batch)
-
-        # if this is the start of recording, delay start to arrive at exact
-        # desired start point
-        if len(self.recorded_frames) == 0:
-            images_batch = images_batch[self.offset_t :]
-            if valid_batch is not None:
-                valid_batch = valid_batch[self.offset_t :]
-
-        # loop through time, saving images from each step to file
-        for images, valid in zip_with_valid(images_batch, valid_batch):
-            tiled_image = tile_images(
-                images=images,
-                valid=valid,
-                tiled_height=self.tiled_height,
-                tiled_width=self.tiled_width,
-            )
-            self.recorded_frames.append(tiled_image)
-
-            if len(self.recorded_frames) >= self.length:
-                self._stop_recording()
-                break
-
-            # if all environments are done, continue recording from next batch
-            if valid is not None and not np.any(valid):
-                break
-
-    def _stop_recording(self) -> None:
-        # TODO: use weakref to ensure this gets closed even if training ends
-        # during video recording (user forgets to call close method)
+    def stop_recording(self) -> None:
         clip = ImageSequenceClip(self.recorded_frames, fps=self.env_fps)
-        clip.write_videofile(str(self.path), logger=None)
+        path = self.output_dir / f"policy_step_{self.video_name_suffix}.mp4"
+        clip.write_videofile(str(path), logger=None)
+        logger.info(f"Saved recording video of policy to {path}.")
+
         self.recording = False
-        logger.debug(f"Finished recording video of policy to {self.path}")
+        del self.delay_t
+        del self.video_name_suffix
+        self.recorded_frames.clear()
 
     def close(self) -> None:
+        # TODO: should this be called by a finalizer?
         if self.recording:
-            self._stop_recording()
+            self.stop_recording()
 
 
 ValueType = TypeVar("ValueType")
 
 
-def dict_get_nested(buffer: Mapping[str, ValueType], keys: list[str]) -> ValueType:
-    result = buffer
-    for key in keys:
-        result = result[key]
-    return result
+def dict_get_nested(mapping: Mapping[str, ValueType], keys: list[str]) -> ValueType:
+    return functools.reduce(getitem, keys, mapping)
 
 
 def zip_with_valid(

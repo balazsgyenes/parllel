@@ -31,7 +31,7 @@ eval_sampler:
 runner:
   n_steps: 1.e+6
   log_interval_steps: 50000
-  eval_interval_steps: 50000
+  eval_interval_steps: ${runner.log_interval_steps}
 video_recorder:
-  record_every_n_steps: 5.e+4
+  record_interval_steps: ${runner.log_interval_steps}
   video_length: 250

@@ -9,6 +9,7 @@ from .norm_advantage import NormalizeAdvantage
 from .norm_obs import NormalizeObservations
 from .norm_rewards import NormalizeRewards
 from .transform import BatchTransform, Compose, StepTransform, Transform
+from .vectorized_video import RecordVectorizedVideo
 
 __all__ = [
     "EstimateAdvantage",
@@ -21,4 +22,5 @@ __all__ = [
     "Compose",
     "StepTransform",
     "Transform",
+    "RecordVectorizedVideo",
 ]

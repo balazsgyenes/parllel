@@ -42,7 +42,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
 
     cages, sample_tree, metadata = build_cages_and_sample_tree(
         EnvClass=build_cartpole,
-        env_kwargs=config["env"],
+        env_kwargs=OmegaConf.to_container(config["env"], throw_on_missing=True),
         TrajInfoClass=TrajInfo,
         reset_automatically=True,
         batch_spec=batch_spec,
@@ -148,7 +148,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         agent=agent,
         CageCls=type(cages[0]),
         EnvClass=build_cartpole,
-        env_kwargs=config["env"],
+        env_kwargs=OmegaConf.to_container(config["env"], throw_on_missing=True),
         TrajInfoClass=TrajInfo,
         **config["eval_sampler"],
     )

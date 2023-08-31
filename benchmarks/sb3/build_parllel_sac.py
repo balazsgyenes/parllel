@@ -13,6 +13,7 @@ from omegaconf import DictConfig
 
 # isort: on
 import parllel.logger as logger
+from parllel.callbacks import RecordingSchedule
 from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import RLRunner
@@ -20,7 +21,7 @@ from parllel.samplers import BasicSampler
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.algos.sac import SAC, build_replay_buffer_tree
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
-from parllel.transforms.video_recorder import RecordVectorizedVideo
+from parllel.transforms import RecordVectorizedVideo
 from parllel.types import BatchSpec
 
 # isort: split
@@ -39,6 +40,8 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         config["batch_B"],
     )
 
+    video_config = config.get("video_recorder")
+
     replay_length = int(config["algo"]["replay_size"]) // batch_spec.B
     replay_length = (replay_length // batch_spec.T) * batch_spec.T
     cages, sample_tree, metadata = build_cages_and_sample_tree(
@@ -49,6 +52,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         batch_spec=batch_spec,
         parallel=parallel,
         full_size=replay_length,
+        render_mode="rgb_array" if video_config is not None else None,
     )
     obs_space, action_space = metadata.obs_space, metadata.action_space
     assert isinstance(obs_space, spaces.Box)
@@ -94,14 +98,19 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         learning_starts=config["algo"]["random_explore_steps"],
     )
 
-    video_recorder = RecordVectorizedVideo(
-        output_dir=log_dir / "videos"
-        if (log_dir := logger.log_dir) is not None
-        else "videos",
-        sample_tree=sample_tree,
-        buffer_key_to_record="env_info.rendering",
-        **config["video_recorder"],
-    )
+    if video_config is not None:
+        output_dir = (
+            log_dir / "videos" if (log_dir := logger.log_dir) is not None else "videos"
+        )
+        video_recorder = RecordVectorizedVideo(
+            output_dir=output_dir,
+            sample_tree=sample_tree,
+            buffer_key_to_record="env_info.rendering",
+            video_length=video_config["video_length"],
+            env_fps=video_config["env_fps"],  # TODO: get from env metadata
+        )
+    else:
+        video_recorder = None
 
     sampler = BasicSampler(
         batch_spec=batch_spec,
@@ -182,6 +191,20 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         **config["eval_sampler"],
     )
 
+    if video_config is not None:
+        assert video_recorder is not None
+        callbacks = [
+            RecordingSchedule(
+                video_recorder_transform=video_recorder,
+                cages=cages,
+                record_interval_steps=video_config["record_interval_steps"],
+                video_length=video_config["video_length"],
+                batch_spec=batch_spec,
+            )
+        ]
+    else:
+        callbacks = []
+
     # create runner
     runner = RLRunner(
         sampler=sampler,
@@ -189,6 +212,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         algorithm=algorithm,
         batch_spec=batch_spec,
         eval_sampler=eval_sampler,
+        callbacks=callbacks,
         logger_algo_prefix="train",
         **config["runner"],
     )

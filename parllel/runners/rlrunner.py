@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from typing import Sequence
+
 from tqdm import tqdm
 
 import parllel.logger as logger
 from parllel.agents import Agent
 from parllel.algorithm import Algorithm
+from parllel.callbacks import Callback
 from parllel.samplers import EvalSampler, Sampler
 from parllel.types import BatchSpec
 
@@ -22,6 +25,7 @@ class RLRunner(Runner):
         log_interval_steps: int,
         eval_sampler: EvalSampler | None = None,
         eval_interval_steps: int | None = None,
+        callbacks: Sequence[Callback] | None = None,
         logger_rollout_prefix: str = "rollout",
         logger_eval_prefix: str = "eval",
         logger_algo_prefix: str = "algo",
@@ -29,11 +33,12 @@ class RLRunner(Runner):
         super().__init__()
 
         self.sampler = sampler
-        self.eval_sampler = eval_sampler
         self.agent = agent
         self.algorithm = algorithm
         self.batch_spec = batch_spec
         self.n_steps = int(n_steps)
+        self.eval_sampler = eval_sampler
+        self.callbacks = list(callbacks) if callbacks is not None else []
         self.logger_rollout_prefix = logger_rollout_prefix
         self.logger_eval_prefix = logger_eval_prefix
         self.logger_algo_prefix = logger_algo_prefix
@@ -60,6 +65,9 @@ class RLRunner(Runner):
 
         for itr in range(self.n_iterations):
             elapsed_steps = itr * batch_size
+
+            for callback in self.callbacks:
+                callback(elapsed_steps)
 
             if self.eval_sampler is not None and itr % self.eval_interval_iters == 0:
                 self.evaluate_agent(elapsed_steps)
@@ -107,4 +115,4 @@ class RLRunner(Runner):
         logger.info(f"{type(self).__name__}: Evaluating agent...")
         eval_trajs = self.eval_sampler.collect_batch(elapsed_steps)
         self.record_completed_trajectories(eval_trajs, prefix=self.logger_eval_prefix)
-        logger.debug(f"{type(self).__name__}: Finished evaluating agent.")
+        logger.info(f"{type(self).__name__}: Finished evaluating agent.")

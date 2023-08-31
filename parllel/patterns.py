@@ -1,9 +1,8 @@
 # fmt: off
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, MutableMapping, Sequence
 
 import gymnasium as gym
 import numpy as np
@@ -36,13 +35,14 @@ class Metadata:
 
 def build_cages_and_sample_tree(
     EnvClass: Callable,
-    env_kwargs: Mapping[str, Any],
+    env_kwargs: MutableMapping[str, Any],
     TrajInfoClass: Callable,
     reset_automatically: bool,
     batch_spec: BatchSpec,
     parallel: bool,
     full_size: int | None = None,
     keys_to_skip: str | Sequence[str] = (),
+    render_mode: str | None = None,
 ) -> tuple[list[Cage], ArrayDict[Array], Metadata]:
     if parallel:
         CageCls = ProcessCage
@@ -54,7 +54,8 @@ def build_cages_and_sample_tree(
     if isinstance(keys_to_skip, str):
         keys_to_skip = (keys_to_skip,)
 
-    env_kwargs = {"render_mode": "rgb_array"} | {**env_kwargs}
+    if render_mode is not None:
+        env_kwargs["render_mode"] = render_mode
 
     cage_kwargs = dict(
         EnvClass=EnvClass,
@@ -65,7 +66,8 @@ def build_cages_and_sample_tree(
 
     # create example env
     example_cage = CageCls(**cage_kwargs)
-    example_cage.render = True
+    if render_mode is not None:
+        example_cage.render = True
 
     # get example output from env
     example_cage.random_step_async()
@@ -190,8 +192,6 @@ def build_cages_and_sample_tree(
 
     # create cages to manage environments
     cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
-    for cage in cages:
-        cage.render = True
 
     logger.info("Environments instantiated.")
 
