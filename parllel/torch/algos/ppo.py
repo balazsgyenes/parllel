@@ -236,12 +236,12 @@ def build_loss_sample_tree(
 
     # move these to the top level for convenience
     # anything else in agent_info is agent-specific state
-    loss_sample_tree["old_value"] = loss_sample_tree["agent_info"].pop("value")
-    loss_sample_tree["old_dist_params"] = loss_sample_tree["agent_info"].pop(
-        "dist_params"
-    )
+    agent_info = loss_sample_tree["agent_info"]
+    loss_sample_tree["old_value"] = agent_info.pop("value")
+    loss_sample_tree["old_dist_params"] = agent_info.pop("dist_params")
 
     if "valid" in sample_tree:
+        # assume agent/model is recurrent
         loss_sample_tree["valid"] = sample_tree["valid"]
         assert "initial_rnn_state" in sample_tree
         loss_sample_tree["initial_rnn_state"] = sample_tree["initial_rnn_state"]

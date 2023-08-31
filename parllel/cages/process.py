@@ -46,9 +46,6 @@ class ProcessCage(Cage, mp.Process):
     immediately when done is True, replacing the returned observation with the
     reset observation. If False, environment is not reset and the
     `needs_reset` flag is set to True.
-    :param ignore_reset_info (bool): If True (default), the info dictionary
-    returned by env.reset() gets ignored. If False, the dict is treated the
-    same way as info dicts returned by env.step() calls
     """
 
     # TODO: add spaces and needs_reset properties
@@ -59,7 +56,6 @@ class ProcessCage(Cage, mp.Process):
         env_kwargs: dict[str, Any],
         TrajInfoClass: Callable,
         reset_automatically: bool = False,
-        ignore_reset_info: bool = True,
     ) -> None:
         mp.Process.__init__(self)
 
@@ -68,7 +64,6 @@ class ProcessCage(Cage, mp.Process):
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
             reset_automatically=reset_automatically,
-            ignore_reset_info=ignore_reset_info,
         )
 
         # pipe is used for communication between main and child processes

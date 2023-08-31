@@ -26,9 +26,6 @@ class Cage(ABC):
     immediately when done is True, replacing the returned observation with the
     reset observation. If False, environment is not reset and the
     `needs_reset` flag is set to True.
-    ;param ignore_reset_info (bool): If True (default), the info dictionary
-    returned by env.reset() gets ignored. If False, the dict is treated the
-    same way as info dicts returned by env.step() calls
     """
 
     def __init__(
@@ -37,13 +34,11 @@ class Cage(ABC):
         env_kwargs: Mapping[str, Any],
         TrajInfoClass: Callable,
         reset_automatically: bool = True,
-        ignore_reset_info: bool = True,
     ) -> None:
         self.EnvClass = EnvClass
         self.env_kwargs = env_kwargs
         self.TrajInfoClass = TrajInfoClass
         self.reset_automatically = reset_automatically
-        self.ignore_reset_info = ignore_reset_info
 
         self._needs_reset: bool = False
         self._render: bool = False
