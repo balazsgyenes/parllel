@@ -20,7 +20,7 @@ class Sampler(ABC):
         envs: Sequence[Cage],
         agent: Agent,
         sample_tree: ArrayDict[Array],
-        max_steps_decorrelate: int | None = None,
+        max_steps_decorrelate: int | None = 0,
     ) -> None:
         self.batch_spec = batch_spec
 
@@ -46,7 +46,7 @@ class Sampler(ABC):
         """Prepare environments, agents and sample tree for sampling."""
         self.reset_envs()
         if self.max_steps_decorrelate > 0:
-            self.decorrelate_environments()
+            self.decorrelate_environments(self.max_steps_decorrelate)
         self.reset_agent()
 
     def reset_envs(self) -> None:
@@ -58,13 +58,11 @@ class Sampler(ABC):
         self.sample_tree.reset()
         logger.info(f"{type(self).__name__}: Resetting all environments.")
         observation = self.sample_tree["observation"]
-        env_info = self.sample_tree["env_info"]
         for b, env in enumerate(self.envs):
             # save reset observation to the end of sample tree, since it will
             # be rotated to the beginning
             env.reset_async(
                 out_obs=observation[self.batch_spec.T, b],
-                out_info=env_info[self.batch_spec.T, b],
             )
 
         # wait for envs to finish reset
@@ -82,11 +80,11 @@ class Sampler(ABC):
     def seed(self, seed) -> None:
         self.rng = random.default_rng(seed)
 
-    def decorrelate_environments(self) -> None:
+    def decorrelate_environments(self, max_steps: int) -> None:
         """Randomly step environments so they are not all synced up."""
         logger.info(
             f"{type(self).__name__}: Decorrelating environments with up to "
-            f"{self.max_steps_decorrelate} random steps each."
+            f"{max_steps} random steps each."
         )
         # get references to sample tree elements
         action = self.sample_tree["action"]
@@ -101,13 +99,13 @@ class Sampler(ABC):
         # get random number of steps between 0 and max for each env
         n_random_steps = self.rng.integers(
             low=0,
-            high=self.max_steps_decorrelate,
+            high=max_steps,
             size=len(self.envs),
             dtype=np.int32,
         )
 
         env_to_step = list(enumerate(self.envs))
-        for t in range(self.max_steps_decorrelate):
+        for t in range(max_steps):
             # filter out any environments that don't need to be stepped anymore
             env_to_step = [(b, env) for b, env in env_to_step if t <= n_random_steps[b]]
 

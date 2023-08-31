@@ -1,0 +1,34 @@
+framework: parllel
+parallel: False  # for fast environments, no speedup with parallel processes
+batch_T: 8  # corresponds to "raw" train_freq in SB3
+batch_B: 8
+device: null
+pi_model:
+  hidden_sizes: [400, 300]  # from rl-baselines3-zoo
+  hidden_nonlinearity: ReLU  # from Haarnoja et al.
+q_model:
+  hidden_sizes: [400, 300]  # from rl-baselines3-zoo
+  hidden_nonlinearity: ReLU  # from Haarnoja et al.
+distribution:
+  deterministic_eval_mode: False  # from rl-baselines3-zoo
+algo:
+  learning_rate: 7.3e-4  # from rl-baselines3-zoo
+  learning_rate_type: constant
+  replay_size: 300000  # from rl-baselines3-zoo
+  batch_size: 256  # from Haarnoja et al.
+  ent_coeff: 0.005  # cannot use auto, as parllel doesn't support this
+  discount: 0.98  # from rl-baselines3-zoo
+  target_update_tau: 0.02  # from rl-baselines3-zoo
+  replay_ratio: 32  # rl-baselines3-zoo does 8 gradient updates with batch size 256 per 8 env steps, equivalent to replay_ratio 256. reduced here to make training faster
+  learning_starts: 10000  # from rl-baselines3-zoo
+  random_explore_steps: 10000  # from rl-baselines3-zoo
+  target_update_interval: 1  # default for SB3, also matches Haarnoja et al.
+  clip_grad_norm: null
+eval_sampler:
+  max_traj_length: 2000
+  max_trajectories: 40
+  n_eval_envs: 16
+runner:
+  n_steps: 1.e+6
+  log_interval_steps: 50000
+  eval_interval_steps: 50000

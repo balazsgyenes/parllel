@@ -8,10 +8,15 @@ from parllel.cages import Cage, MultiAgentTrajInfo, SerialCage, TrajInfo
 from parllel.samplers.recurrent import RecurrentSampler
 from parllel.samplers.tests.dummy_agent import DummyAgent
 from parllel.samplers.tests.dummy_env import DummyEnv
-from parllel.samplers.tests.test_basic import (N_BATCHES, action_space,
-                                               batch_spec, get_bootstrap,
-                                               max_decorrelation_steps,
-                                               multireward, observation_space)
+from parllel.samplers.tests.test_basic import (
+    N_BATCHES,
+    action_space,
+    batch_spec,
+    get_bootstrap,
+    max_decorrelation_steps,
+    multireward,
+    observation_space,
+)
 from parllel.tree.utils import assert_dict_equal
 
 
@@ -76,7 +81,7 @@ def sample_tree(
 ):
     # get example output from env
     envs[0].random_step_async()
-    action, obs, reward, terminated, truncated, info = envs[0].await_step()
+    action, next_obs, obs, reward, terminated, truncated, info = envs[0].await_step()
     agent_info = agent.get_agent_info()
 
     sample_tree: ArrayDict[Array] = ArrayDict()
@@ -205,9 +210,7 @@ class TestRecurrentSampler:
 
         for i, batch in enumerate(batches):
             # verify rnn_states
-            assert_dict_equal(
-                batch["initial_rnn_state"], agent.initial_rnn_states[i]
-            )
+            assert_dict_equal(batch["initial_rnn_state"], agent.initial_rnn_states[i])
             # remove because it cannot be indexed in time
             batch.pop("initial_rnn_state")
 
@@ -232,7 +235,7 @@ class TestRecurrentSampler:
             done_envs = np.any(batch["done"], axis=0)
             assert np.array_equal(agent.resets[time_slice][batch_spec.T - 1], done_envs)
             # check that the agent was only reset at the end of the batch
-            assert not np.any(agent.resets[time_slice][:batch_spec.T - 1])
+            assert not np.any(agent.resets[time_slice][: batch_spec.T - 1])
 
             # check that agent state is 0 at beginning of next batch for those
             # environments that were done during this batch
@@ -258,18 +261,19 @@ class TestRecurrentSampler:
 
                 # verify that the env saw the correct action at each step
                 assert_dict_equal(
-                    dict_map(np.asarray, env._env.samples["env_info"]["action"][time_slice])[
-                        b_valid
-                    ],
+                    dict_map(
+                        np.asarray, env._env.samples["env_info"]["action"][time_slice]
+                    )[b_valid],
                     dict_map(np.asarray, batch["action"][:, b])[b_valid],
                     f"batch{(i+1)}_action",
                 )
 
                 # verify that the agent saw the correct observation at each step
                 assert_dict_equal(
-                    dict_map(np.asarray, agent.samples["agent_info"]["observation"][time_slice, b])[
-                        b_valid
-                    ],
+                    dict_map(
+                        np.asarray,
+                        agent.samples["agent_info"]["observation"][time_slice, b],
+                    )[b_valid],
                     dict_map(np.asarray, batch["observation"][:, b])[b_valid],
                     f"batch{(i+1)}_observation",
                 )

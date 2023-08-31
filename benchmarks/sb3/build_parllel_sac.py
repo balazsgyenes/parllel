@@ -116,28 +116,47 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         batch_transform=lambda tree: tree.to(device=device),
     )
 
-    optimizers = {
-        "pi": torch.optim.Adam(
-            agent.model["pi"].parameters(),
-            lr=config["algo"]["learning_rate"],
-            **config.get("optimizer", {}),
+    q_optimizer = torch.optim.Adam(
+        itertools.chain(
+            agent.model["q1"].parameters(),
+            agent.model["q2"].parameters(),
         ),
-        "q": torch.optim.Adam(
-            itertools.chain(
-                agent.model["q1"].parameters(),
-                agent.model["q2"].parameters(),
+        lr=config["algo"]["learning_rate"],
+        **config.get("optimizer", {}),
+    )
+    pi_optimizer = torch.optim.Adam(
+        agent.model["pi"].parameters(),
+        lr=config["algo"]["learning_rate"],
+        **config.get("optimizer", {}),
+    )
+
+    if config["algo"]["learning_rate_type"] == "linear":
+        lr_schedulers = [
+            torch.optim.lr_scheduler.LinearLR(
+                pi_optimizer,
+                start_factor=1.0,
+                end_factor=0.0,
+                # TODO: adjust total iters for delayed learning start
+                total_iters=max(1, int(config["runner"]["n_steps"] // batch_spec.size)),
             ),
-            lr=config["algo"]["learning_rate"],
-            **config.get("optimizer", {}),
-        ),
-    }
+            torch.optim.lr_scheduler.LinearLR(
+                q_optimizer,
+                start_factor=1.0,
+                end_factor=0.0,
+                total_iters=max(1, int(config["runner"]["n_steps"] // batch_spec.size)),
+            ),
+        ]
+    else:
+        lr_schedulers = None
 
     # create algorithm
     algorithm = SAC(
         batch_spec=batch_spec,
         agent=agent,
         replay_buffer=replay_buffer,
-        optimizers=optimizers,
+        q_optimizer=q_optimizer,
+        pi_optimizer=pi_optimizer,
+        learning_rate_schedulers=lr_schedulers,
         **config["algo"],
     )
 

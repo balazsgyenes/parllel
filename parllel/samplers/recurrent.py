@@ -20,7 +20,7 @@ class RecurrentSampler(Sampler):
         envs: Sequence[Cage],
         agent: Agent,
         sample_tree: ArrayDict[Array],
-        max_steps_decorrelate: int | None = None,
+        max_steps_decorrelate: int | None = 0,
         get_initial_rnn_state: bool = True,
         get_bootstrap_value: bool = False,
         obs_transform: StepTransform | None = None,
@@ -157,7 +157,6 @@ class RecurrentSampler(Sampler):
             # overwrite next first observation with reset observation
             env.reset_async(
                 out_obs=observation[self.batch_spec.T, b],
-                out_info=env_info[self.batch_spec.T - 1, b],
             )
 
         self.agent.reset_one([b for b, env in envs_need_reset])

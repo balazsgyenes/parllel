@@ -13,7 +13,7 @@ import parllel.logger as logger
 from parllel import Array, ArrayDict
 from parllel.algorithm import Algorithm
 from parllel.replays import BatchedDataLoader
-from parllel.torch.agents.pg import PgPrediction, PgAgent
+from parllel.torch.agents.pg import PgAgent, PgPrediction
 from parllel.torch.utils import explained_variance, valid_mean
 
 
@@ -34,13 +34,13 @@ class PPO(Algorithm):
         agent: PgAgent,
         dataloader: BatchedDataLoader[ArrayDict[Tensor]],
         optimizer: Optimizer,
-        learning_rate_scheduler: _LRScheduler | None,
+        ratio_clip: float,
         value_loss_coeff: float,
         entropy_loss_coeff: float,
-        clip_grad_norm: float | None,
         epochs: int,
-        ratio_clip: float,
-        value_clipping_mode: Literal["none", "ratio", "delta", "delta_max"],
+        clip_grad_norm: float | None = None,
+        learning_rate_scheduler: _LRScheduler | None = None,
+        value_clipping_mode: Literal["ratio", "delta", "delta_max"] | None = None,
         value_clip: float | None = None,
         kl_divergence_limit: float = np.inf,
         **kwargs,  # ignore additional arguments
@@ -49,17 +49,18 @@ class PPO(Algorithm):
         self.agent = agent
         self.dataloader = dataloader
         self.optimizer = optimizer
-        self.lr_scheduler = learning_rate_scheduler
+        self.ratio_clip = ratio_clip
         self.value_loss_coeff = value_loss_coeff
         self.entropy_loss_coeff = entropy_loss_coeff
-        self.clip_grad_norm = clip_grad_norm
         self.epochs = epochs
-        self.ratio_clip = ratio_clip
+        self.clip_grad_norm = clip_grad_norm
+        self.lr_scheduler = learning_rate_scheduler
         self.value_clipping_mode = value_clipping_mode
         self.kl_divergence_limit = kl_divergence_limit
 
         if self.value_clipping_mode in ("ratio", "delta", "delta_max"):
-            assert value_clip is not None
+            if value_clip is None:
+                raise ValueError("Must specify value clip.")
             self.value_clip = value_clip
 
         self.update_counter = 0
@@ -138,7 +139,7 @@ class PPO(Algorithm):
         surrogate = torch.min(surr_1, surr_2)
         pi_loss = -valid_mean(surrogate, valid)
 
-        if self.value_clipping_mode == "none":
+        if self.value_clipping_mode is None:
             # No clipping
             value_error = 0.5 * (value - batch["return_"]) ** 2
         elif self.value_clipping_mode == "ratio":
@@ -235,10 +236,12 @@ def build_loss_sample_tree(
 
     # move these to the top level for convenience
     # anything else in agent_info is agent-specific state
-    loss_sample_tree["old_value"] = loss_sample_tree["agent_info"].pop("value")
-    loss_sample_tree["old_dist_params"] = loss_sample_tree["agent_info"].pop("dist_params")
-    
+    agent_info = loss_sample_tree["agent_info"]
+    loss_sample_tree["old_value"] = agent_info.pop("value")
+    loss_sample_tree["old_dist_params"] = agent_info.pop("dist_params")
+
     if "valid" in sample_tree:
+        # assume agent/model is recurrent
         loss_sample_tree["valid"] = sample_tree["valid"]
         assert "initial_rnn_state" in sample_tree
         loss_sample_tree["initial_rnn_state"] = sample_tree["initial_rnn_state"]

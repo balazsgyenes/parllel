@@ -136,12 +136,17 @@ def sample_tree(
 ):
     # get example output from env
     envs[0].random_step_async()
-    action, obs, reward, terminated, truncated, info = envs[0].await_step()
+    action, next_obs, obs, reward, terminated, truncated, info = envs[0].await_step()
     agent_info = agent.get_agent_info()
 
     sample_tree: ArrayDict[Array] = ArrayDict()
 
     # allocate sample tree based on examples
+    sample_tree["next_observation"] = dict_map(
+        Array.from_numpy,
+        next_obs,
+        batch_shape=tuple(batch_spec),
+    )
     sample_tree["observation"] = dict_map(
         Array.from_numpy,
         obs,

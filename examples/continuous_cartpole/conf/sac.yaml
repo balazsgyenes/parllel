@@ -1,10 +1,9 @@
 discount: 0.99
-replay_length: 10000
 learning_starts: 0
 replay_ratio: 256
-batch_size: 256
 target_update_tau: 0.005
 target_update_interval: 1
 ent_coeff: 1.e-5
-clip_grad_norm: 1.e+9
+batch_size: 256
 learning_rate: 0.001
+replay_length: 10000

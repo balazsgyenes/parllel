@@ -15,11 +15,11 @@ from build_parllel_sac import build
 
 
 # fmt: on
-@hydra.main(version_base=None, config_path="conf", config_name="sac_cheetah_parllel")
+@hydra.main(version_base=None, config_path="conf", config_name="sac_walker_parllel")
 def main(config: DictConfig) -> None:
     run = wandb.init(
         project="parllel",
-        tags=["sac", "halfcheetah"],
+        tags=["sac", "walker"],
         config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
         sync_tensorboard=True,  # auto-upload any values logged to tensorboard
         save_code=True,  # save script used to start training, git commit, and patch

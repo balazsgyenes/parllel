@@ -66,7 +66,15 @@ def build_cages_and_sample_tree(
 
     # get example output from env
     example_cage.random_step_async()
-    action, obs, reward, terminated, truncated, info = example_cage.await_step()
+    (
+        action,
+        next_obs,
+        obs,
+        reward,
+        terminated,
+        truncated,
+        info,
+    ) = example_cage.await_step()
 
     example_cage.close()
 
@@ -79,6 +87,14 @@ def build_cages_and_sample_tree(
 
     if {"obs", "observation"} & set(keys_to_skip) == set():
         # allocate sample tree based on examples
+        logger.debug("Allocating next observations...")
+        sample_tree["next_observation"] = dict_map(
+            Array.from_numpy,
+            next_obs,
+            batch_shape=tuple(batch_spec),
+            storage=storage,
+            full_size=full_size,
+        )
         logger.debug("Allocating observations...")
         sample_tree["observation"] = dict_map(
             Array.from_numpy,
@@ -111,6 +127,7 @@ def build_cages_and_sample_tree(
             dtype=bool,
             feature_shape=(),
             storage=storage,
+            full_size=full_size,  # used for SAC replay buffer
         )
 
     if "truncated" not in keys_to_skip:
@@ -135,7 +152,6 @@ def build_cages_and_sample_tree(
             feature_shape=(),
             storage=storage,
             padding=1,
-            full_size=full_size,  # used for SAC replay buffer
         )
 
     if "env_info" not in keys_to_skip:
@@ -390,13 +406,10 @@ def build_eval_sampler(
     # first, collect only the keys needed for evaluation
     eval_tree_keys = [
         "action",
-        "agent_info",
         "observation",
-        "reward",
         "terminated",
         "truncated",
         "done",
-        "env_info",
     ]
     eval_tree_example = ArrayDict(
         {key: sample_tree[key] for key in eval_tree_keys},

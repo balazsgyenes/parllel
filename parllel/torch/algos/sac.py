@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Mapping
+from typing import Sequence
 
 import torch
 from torch import Tensor
 from torch.nn.utils.clip_grad import clip_grad_norm_
+from torch.optim.lr_scheduler import LRScheduler
 
 import parllel.logger as logger
 from parllel import Array, ArrayDict
@@ -24,7 +25,8 @@ class SAC(Algorithm):
         batch_spec: BatchSpec,
         agent: SacAgent,
         replay_buffer: ReplayBuffer[ArrayDict[Tensor]],
-        optimizers: Mapping[str, torch.optim.Optimizer],
+        q_optimizer: torch.optim.Optimizer,
+        pi_optimizer: torch.optim.Optimizer,
         discount: float,
         learning_starts: int,
         replay_ratio: int,  # data_consumption / data_generation
@@ -32,18 +34,21 @@ class SAC(Algorithm):
         target_update_interval: int,  # 1000 for hard update, 1 for soft.
         ent_coeff: float,
         clip_grad_norm: float | None = None,
+        learning_rate_schedulers: Sequence[LRScheduler] | None = None,
         **kwargs,  # ignore additional arguments
     ):
         """Save input arguments."""
         self.agent = agent
         self.replay_buffer = replay_buffer
-        self.optimizers = optimizers
+        self.q_optimizer = q_optimizer
+        self.pi_optimizer = pi_optimizer
         self.discount = discount
         self.learning_starts = int(learning_starts)
         self.replay_ratio = replay_ratio
         self.target_update_tau = target_update_tau
         self.target_update_interval = target_update_interval
         self.clip_grad_norm = clip_grad_norm
+        self.lr_schedulers = learning_rate_schedulers
 
         replay_batch_size = self.replay_buffer.replay_batch_size
         self.updates_per_optimize = int(
@@ -94,7 +99,15 @@ class SAC(Algorithm):
             if self.update_counter % self.target_update_interval == 0:
                 self.agent.update_target(self.target_update_tau)
 
-            self.algo_log_info["n_updates"] = self.update_counter
+        if self.lr_schedulers is not None:
+            for lr_scheduler in self.lr_schedulers:
+                lr_scheduler.step()
+            # fmt: off
+            self.algo_log_info["pi_learning_rate"] = self.pi_optimizer.param_groups[0]["lr"]
+            self.algo_log_info["q_learning_rate"] = self.q_optimizer.param_groups[0]["lr"]
+            # fmt: on
+
+        self.algo_log_info["n_updates"] = self.update_counter
 
         return self.algo_log_info
 
@@ -122,13 +135,13 @@ class SAC(Algorithm):
             target_q1, target_q2 = self.agent.target_q(next_observation, next_action)
         min_target_q = torch.min(target_q1, target_q2)
         next_q = min_target_q - self._alpha * next_log_prob
-        y = samples["reward"] + self.discount * ~samples["done"] * next_q
+        y = samples["reward"] + self.discount * ~samples["terminated"] * next_q
         q1, q2 = self.agent.q(observation.detach(), samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
         self.algo_log_info["critic_loss"].append(q_loss.item())
 
         # update Q model parameters according to Q loss
-        self.optimizers["q"].zero_grad()
+        self.q_optimizer.zero_grad()
         q_loss.backward()
 
         if self.clip_grad_norm is not None:
@@ -143,7 +156,7 @@ class SAC(Algorithm):
             self.algo_log_info["q1_grad_norm"].append(q1_grad_norm.item())
             self.algo_log_info["q2_grad_norm"].append(q2_grad_norm.item())
 
-        self.optimizers["q"].step()
+        self.q_optimizer.step()
 
         # freeze Q models while optimizing policy model
         self.agent.freeze_q_models(True)
@@ -159,7 +172,7 @@ class SAC(Algorithm):
         self.algo_log_info["actor_loss"].append(pi_loss.item())
 
         # update Pi model parameters according to pi loss
-        self.optimizers["pi"].zero_grad()
+        self.pi_optimizer.zero_grad()
         pi_loss.backward()
 
         if self.clip_grad_norm is not None:
@@ -169,7 +182,7 @@ class SAC(Algorithm):
             )
             self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
 
-        self.optimizers["pi"].step()
+        self.pi_optimizer.step()
 
         # unfreeze Q models for next training iteration
         self.agent.freeze_q_models(False)
@@ -181,8 +194,8 @@ def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array
             "observation": sample_buffer["observation"].full,
             "action": sample_buffer["action"].full,
             "reward": sample_buffer["reward"].full,
-            "done": sample_buffer["done"].full,
-            "next_observation": sample_buffer["observation"].full.next,
+            "terminated": sample_buffer["terminated"].full,
+            "next_observation": sample_buffer["next_observation"].full,
         }
     )
     return replay_buffer_tree
