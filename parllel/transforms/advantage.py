@@ -5,7 +5,7 @@ from numba import njit
 
 from parllel import Array, ArrayDict
 
-from .transform import BatchTransform
+from .transform import Transform
 
 
 @njit(fastmath=True)
@@ -57,7 +57,7 @@ def compute_gae_advantage(
     return_[...] = advantage + value
 
 
-class EstimateAdvantage(BatchTransform):
+class EstimateAdvantage(Transform):
     """Adds an estimate of the advantage function for each sample under
     `advantage`. Advantage is estimated either using the empirical
     discounted return minus the agent's value estimate (if `gae_lambda==1.0`)
@@ -88,15 +88,19 @@ class EstimateAdvantage(BatchTransform):
         else:
             self.estimator = compute_gae_advantage
 
-    def __call__(self, batch_samples: ArrayDict[Array]) -> ArrayDict[Array]:
+    def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
+        advantage = sample_tree["advantage"]
+        assert isinstance(advantage, Array)
+        assert len(advantage.batch_shape) == 2
+
         self.estimator(
-            np.asarray(batch_samples["reward"]),
-            np.asarray(batch_samples["agent_info"]["value"]),
-            np.asarray(batch_samples["done"]),
-            np.asarray(batch_samples["bootstrap_value"]),
+            np.asarray(sample_tree["reward"]),
+            np.asarray(sample_tree["agent_info"]["value"]),
+            np.asarray(sample_tree["done"]),
+            np.asarray(sample_tree["bootstrap_value"]),
             self.discount,
             self.gae_lambda,
-            np.asarray(batch_samples["advantage"]),
-            np.asarray(batch_samples["return_"]),
+            np.asarray(advantage),
+            np.asarray(sample_tree["return_"]),
         )
-        return batch_samples
+        return sample_tree

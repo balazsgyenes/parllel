@@ -7,7 +7,7 @@ import numpy as np
 from parllel import Array, ArrayDict
 from parllel.agents import Agent
 from parllel.cages import Cage, TrajInfo
-from parllel.transforms import StepTransform, Transform
+from parllel.transforms import Transform
 from parllel.types import BatchSpec
 
 from .sampler import Sampler
@@ -21,7 +21,7 @@ class EvalSampler(Sampler):
         envs: Sequence[Cage],
         agent: Agent,
         sample_tree: ArrayDict[Array],
-        obs_transform: StepTransform | Transform | None = None,
+        step_transforms: Sequence[Transform] | None = None,
     ) -> None:
         for cage in envs:
             if not cage.reset_automatically:
@@ -39,7 +39,7 @@ class EvalSampler(Sampler):
 
         self.max_traj_length = max_traj_length
         self.max_trajectories = max_trajectories
-        self.obs_transform = obs_transform
+        self.step_transforms = step_transforms if step_transforms is not None else []
 
     def collect_batch(self, elapsed_steps: int) -> list[TrajInfo]:
         # get references to sample tree elements
@@ -66,8 +66,9 @@ class EvalSampler(Sampler):
         # main sampling loop
         for _ in range(self.max_traj_length):
             # apply any transforms to the observation before the agent steps
-            if self.obs_transform is not None:
-                sample_tree = self.obs_transform(sample_tree, 0)
+            for transform in self.step_transforms:
+                # apply in-place to avoid redundant array write operation
+                transform(sample_tree[0])
 
             # agent observes environment and outputs actions
             action[...], _ = self.agent.step(observation)

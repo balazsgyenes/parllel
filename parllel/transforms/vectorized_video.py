@@ -21,10 +21,10 @@ except ImportError as e:
 import parllel.logger as logger
 from parllel import Array, ArrayDict
 
-from .transform import BatchTransform
+from .transform import Transform
 
 
-class RecordVectorizedVideo(BatchTransform):
+class RecordVectorizedVideo(Transform):
     def __init__(
         self,
         output_dir: str | PathLike,
@@ -119,14 +119,28 @@ class RecordVectorizedVideo(BatchTransform):
     def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
         if self.recording:
             images_batch = dict_get_nested(sample_tree, self.keys)
+            assert isinstance(images_batch, Array)
+            assert (n_batch_dims := len(images_batch.batch_shape)) in (1, 2)
             valid_batch = sample_tree.get("valid", None)
 
             # convert to numpy arrays
             images_batch = np.asarray(images_batch)
-            images_batch = images_batch[:, : self.n_images]
             if valid_batch is not None:
                 valid_batch = np.asarray(valid_batch)
-                valid_batch = valid_batch[:, : self.n_images]
+
+            # ensure 2 batch dimensions and get only requested number of images per time step
+            if n_batch_dims == 2:
+                images_loc = (slice(None), slice(self.n_images))
+            elif n_batch_dims == 1:
+                images_loc = (np.newaxis, slice(self.n_images))
+                assert self.delay_t == 0
+            else:
+                raise ValueError(
+                    f"Received images with {n_batch_dims} batch dimensions."
+                )
+            images_batch = images_batch[images_loc]
+            if valid_batch is not None:
+                valid_batch = valid_batch[images_loc]
 
             # if this is the start of recording, delay start to arrive at exact
             # desired start point

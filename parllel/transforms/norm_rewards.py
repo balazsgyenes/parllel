@@ -8,7 +8,7 @@ from numba import njit
 from parllel import Array, ArrayDict
 
 from .running_mean_std import RunningMeanStd
-from .transform import BatchTransform
+from .transform import Transform
 
 EPSILON = 1e-6
 
@@ -33,7 +33,7 @@ def compute_past_discount_return(
         return_[t] = reward[t] + return_[t - 1] * discount * not_done[t - 1]
 
 
-class NormalizeRewards(BatchTransform):
+class NormalizeRewards(Transform):
     """Normalizes rewards by dividing by the standard deviation of past
     discounted returns. As a side-effect, adds past_return to the samples
     buffer for the discounted returns gained by the agent up to the current
@@ -84,12 +84,15 @@ class NormalizeRewards(BatchTransform):
             self.return_statistics = RunningMeanStd(shape=())
 
     def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
-        reward = np.asarray(sample_tree["reward"])
+        reward = sample_tree["reward"]
+        assert isinstance(reward, Array)
+        assert len(reward.batch_shape) in (1, 2)
+        reward = np.asarray(reward)
         past_return = sample_tree["past_return"]
-        previous_past_return = np.asarray(past_return[past_return.first - 1])
+        previous_past_return = np.asarray(past_return[-1])
         past_return = np.asarray(past_return)
         done = sample_tree["done"]
-        previous_done = np.asarray(done[done.first - 1])
+        previous_done = np.asarray(done[-1])
         done = np.asarray(done)
 
         compute_past_discount_return(

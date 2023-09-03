@@ -12,10 +12,10 @@ from parllel import Array, ArrayDict, ArrayOrMapping, ArrayTree, dict_map
 from parllel.agents import Agent
 from parllel.cages import Cage, ProcessCage, SerialCage
 from parllel.samplers import EvalSampler
-from parllel.transforms import (ClipRewards, Compose, EstimateAdvantage,
+from parllel.transforms import (ClipRewards, EstimateAdvantage,
                                 EstimateMultiAgentAdvantage,
                                 NormalizeAdvantage, NormalizeObservations,
-                                NormalizeRewards, StepTransform, Transform)
+                                NormalizeRewards, Transform)
 from parllel.types import BatchSpec
 
 # fmt: on
@@ -398,12 +398,12 @@ def build_eval_sampler(
     agent: Agent,
     CageCls: type[Cage],
     EnvClass: Callable,
-    env_kwargs: Mapping[str, Any],
+    env_kwargs: MutableMapping[str, Any],
     TrajInfoClass: Callable,
     n_eval_envs: int,
     max_traj_length: int,
     max_trajectories: int,
-    step_transforms: list[StepTransform] | None = None,
+    step_transforms: Sequence[Transform] | None = None,
 ) -> tuple[EvalSampler, ArrayDict[Array]]:
     logger.debug("Allocating eval sample tree...")
 
@@ -430,16 +430,13 @@ def build_eval_sampler(
     )
     eval_envs = [CageCls(**eval_cage_kwargs) for _ in range(n_eval_envs)]
 
-    if step_transforms is not None:
-        step_transforms = Compose(step_transforms)
-
     eval_sampler = EvalSampler(
         max_traj_length=max_traj_length,
         max_trajectories=max_trajectories,
         envs=eval_envs,
         agent=agent,
         sample_tree=eval_sample_tree,
-        obs_transform=step_transforms,
+        step_transforms=step_transforms,
     )
 
     return eval_sampler, eval_sample_tree

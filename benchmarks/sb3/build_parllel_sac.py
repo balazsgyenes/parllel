@@ -117,7 +117,6 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         envs=cages,
         agent=agent,
         sample_tree=sample_tree,
-        batch_transform=video_recorder,
     )
 
     replay_buffer_tree = build_replay_buffer_tree(sample_tree)

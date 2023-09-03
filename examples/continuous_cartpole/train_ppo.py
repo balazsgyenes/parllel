@@ -25,7 +25,6 @@ from parllel.samplers import BasicSampler
 from parllel.torch.agents.gaussian import GaussianPgAgent
 from parllel.torch.algos.ppo import PPO, build_loss_sample_tree
 from parllel.torch.distributions import Gaussian
-from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
 # isort: split
@@ -119,8 +118,8 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         sample_tree=sample_tree,
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=True,
-        obs_transform=Compose(step_transforms),
-        batch_transform=Compose(batch_transforms),
+        step_transforms=step_transforms,
+        batch_transforms=batch_transforms,
     )
 
     loss_sample_tree = build_loss_sample_tree(sample_tree)
