@@ -66,9 +66,6 @@ class RLRunner(Runner):
         for itr in range(self.n_iterations):
             elapsed_steps = itr * batch_size
 
-            for callback in self.callbacks:
-                callback(elapsed_steps)
-
             if self.eval_sampler is not None and itr % self.eval_interval_iters == 0:
                 self.evaluate_agent(elapsed_steps)
 
@@ -79,7 +76,11 @@ class RLRunner(Runner):
                 self.log_progress(elapsed_steps, itr)
 
             logger.debug(f"{type(self).__name__}: Collecting batch #{itr + 1}...")
+            for callback in self.callbacks:
+                callback.pre_sampling(elapsed_steps)
             batch_samples, completed_trajs = self.sampler.collect_batch(elapsed_steps)
+            for callback in self.callbacks:
+                callback.post_sampling(elapsed_steps)
             self.record_completed_trajectories(
                 completed_trajs,
                 prefix=self.logger_rollout_prefix,
@@ -89,10 +90,14 @@ class RLRunner(Runner):
             )
 
             logger.debug(f"{type(self).__name__}: Optimizing agent...")
+            for callback in self.callbacks:
+                callback.pre_optimization(elapsed_steps)
             algo_info = self.algorithm.optimize_agent(
                 elapsed_steps,
                 batch_samples,
             )
+            for callback in self.callbacks:
+                callback.post_optimization(elapsed_steps)
             self.record_algo_info(algo_info, prefix=self.logger_algo_prefix)
             logger.debug(f"{type(self).__name__}: Finished optimizing agent.")
 
@@ -113,6 +118,10 @@ class RLRunner(Runner):
     def evaluate_agent(self, elapsed_steps: int) -> None:
         assert self.eval_sampler is not None
         logger.info(f"{type(self).__name__}: Evaluating agent...")
+        for callback in self.callbacks:
+            callback.pre_evaluation(elapsed_steps)
         eval_trajs = self.eval_sampler.collect_batch(elapsed_steps)
+        for callback in self.callbacks:
+            callback.post_evaluation(elapsed_steps)
         self.record_completed_trajectories(eval_trajs, prefix=self.logger_eval_prefix)
         logger.info(f"{type(self).__name__}: Finished evaluating agent.")

@@ -44,10 +44,13 @@ class EvalSampler(Sampler):
     def collect_batch(self, elapsed_steps: int) -> list[TrajInfo]:
         # get references to sample tree elements
         action = self.sample_tree["action"][0]
+        agent_info = self.sample_tree["agent_info"][0]
         observation = self.sample_tree["observation"][0]
+        reward = self.sample_tree["reward"][0]
         done = self.sample_tree["done"][0]
         terminated = self.sample_tree["terminated"][0]
         truncated = self.sample_tree["truncated"][0]
+        env_info = self.sample_tree["env_info"][0]
         sample_tree = self.sample_tree
 
         # set agent to eval mode, preventing sampler states from being overwritten
@@ -71,14 +74,16 @@ class EvalSampler(Sampler):
                 transform(sample_tree[0])
 
             # agent observes environment and outputs actions
-            action[...], _ = self.agent.step(observation)
+            action[...], agent_info[...] = self.agent.step(observation)
 
             for b, env in enumerate(self.envs):
                 env.step_async(
                     action[b],
                     out_obs=observation[b],
+                    out_reward=reward[b],
                     out_terminated=terminated[b],
                     out_truncated=truncated[b],
+                    out_info=env_info[b],
                 )
 
             for b, env in enumerate(self.envs):

@@ -98,20 +98,6 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         learning_starts=config["algo"]["random_explore_steps"],
     )
 
-    if video_config is not None:
-        output_dir = (
-            log_dir / "videos" if (log_dir := logger.log_dir) is not None else "videos"
-        )
-        video_recorder = RecordVectorizedVideo(
-            output_dir=output_dir,
-            sample_tree=sample_tree,
-            buffer_key_to_record="env_info.rendering",
-            video_length=video_config["video_length"],
-            env_fps=video_config["env_fps"],  # TODO: get from env metadata
-        )
-    else:
-        video_recorder = None
-
     sampler = BasicSampler(
         batch_spec=batch_spec,
         envs=cages,
@@ -180,13 +166,31 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         **config["algo"],
     )
 
+    if video_config is not None:
+        output_dir = (
+            log_dir / "videos" if (log_dir := logger.log_dir) is not None else "videos"
+        )
+        video_recorder = RecordVectorizedVideo(
+            output_dir=output_dir,
+            # TODO: this should be the eval sample tree
+            sample_tree=sample_tree,
+            buffer_key_to_record="env_info.rendering",
+            video_length=video_config["video_length"],
+            env_fps=video_config["env_fps"],  # TODO: get from env metadata
+        )
+        step_transforms = [video_recorder]
+    else:
+        video_recorder = None
+        step_transforms = None
+
     eval_sampler, eval_sample_tree = build_eval_sampler(
         sample_tree=sample_tree,
         agent=agent,
         CageCls=type(cages[0]),
         EnvClass=build_env,
-        env_kwargs={},
+        env_kwargs={"render_mode": "rgb_array"} if video_recorder is not None else {},
         TrajInfoClass=SB3EvalTrajInfo,
+        step_transforms=step_transforms,
         **config["eval_sampler"],
     )
 
@@ -195,14 +199,12 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         callbacks = [
             RecordingSchedule(
                 video_recorder_transform=video_recorder,
-                cages=cages,
-                record_interval_steps=video_config["record_interval_steps"],
-                video_length=video_config["video_length"],
-                batch_spec=batch_spec,
+                cages=eval_sampler.envs,
+                trigger="on_eval",
             )
         ]
     else:
-        callbacks = []
+        callbacks = None
 
     # create runner
     runner = RLRunner(

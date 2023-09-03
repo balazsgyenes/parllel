@@ -22,6 +22,8 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
     This class is heavily inspired by torch's TensorDict.
     """
 
+    # TODO: consider adding a method to get nested item
+    # TODO: consider adding a method to get a subset of keys as a new ArrayDict
     def __init__(
         self,
         items: ArrayOrMapping | Iterable[tuple[str, ArrayOrMapping]] | None = None,
