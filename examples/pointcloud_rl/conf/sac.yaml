@@ -6,4 +6,4 @@ target_update_interval: 1
 ent_coeff: 1.e-5
 batch_size: 256
 learning_rate: 0.001
-replay_length: 10000
+replay_length: 100000

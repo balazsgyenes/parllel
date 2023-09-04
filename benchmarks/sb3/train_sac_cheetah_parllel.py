@@ -1,6 +1,3 @@
-# fmt: off
-import multiprocessing as mp
-
 # isort: off
 import hydra
 import wandb
@@ -14,7 +11,6 @@ import parllel.logger as logger
 from build_parllel_sac import build
 
 
-# fmt: on
 @hydra.main(version_base=None, config_path="conf", config_name="sac_cheetah_parllel")
 def main(config: DictConfig) -> None:
     run = wandb.init(
@@ -39,5 +35,4 @@ def main(config: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    mp.set_start_method("forkserver")
     main()

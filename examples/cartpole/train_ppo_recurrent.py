@@ -1,4 +1,3 @@
-# fmt: off
 import multiprocessing as mp
 from contextlib import contextmanager
 from typing import Iterator
@@ -15,11 +14,18 @@ from omegaconf import DictConfig, OmegaConf
 import parllel.logger as logger
 from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
-from parllel.patterns import (add_advantage_estimation, add_agent_info,
-                              add_bootstrap_value, add_initial_rnn_state,
-                              add_obs_normalization, add_reward_clipping,
-                              add_reward_normalization, add_valid,
-                              build_cages_and_sample_tree)
+from parllel.patterns import (
+    add_advantage_estimation,
+    add_agent_info,
+    add_bootstrap_value,
+    add_initial_rnn_state,
+    add_obs_normalization,
+    add_reward_clipping,
+    add_reward_normalization,
+    add_valid,
+    build_cages,
+    build_sample_tree,
+)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import RLRunner
 from parllel.samplers import RecurrentSampler
@@ -35,7 +41,6 @@ from models.lstm_model import CartPoleLstmPgModel
 # from hera_gym.wrappers import add_human_render_wrapper, add_subprocess_wrapper
 
 
-# fmt: on
 @contextmanager
 def build(config: DictConfig) -> Iterator[RLRunner]:
     parallel = config["parallel"]
@@ -51,11 +56,17 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
     #         EnvClass = add_subprocess_wrapper(EnvClass)
     #     EnvClass = add_human_render_wrapper(EnvClass)
 
-    cages, sample_tree, metadata = build_cages_and_sample_tree(
+    cages, metadata = build_cages(
         EnvClass=EnvClass,
+        n_envs=batch_spec.B,
         env_kwargs=OmegaConf.to_container(config["env"], throw_on_missing=True),
         TrajInfoClass=TrajInfo,
         reset_automatically=False,
+        parallel=parallel,
+    )
+
+    sample_tree, metadata = build_sample_tree(
+        env_metadata=metadata,
         batch_spec=batch_spec,
         parallel=parallel,
     )

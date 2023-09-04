@@ -10,5 +10,3 @@ hydra:
 env_name: Hopper-v4
 algo:
   learning_rate_type: linear
-video_recorder:
-  env_fps: 125  # TODO: get from env metadata

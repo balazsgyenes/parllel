@@ -1,4 +1,3 @@
-# fmt: off
 import itertools
 from contextlib import contextmanager
 from functools import partial
@@ -14,10 +13,11 @@ from omegaconf import DictConfig
 # isort: on
 import parllel.logger as logger
 from parllel.callbacks import RecordingSchedule
-from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
+from parllel.patterns import build_cages, build_sample_tree
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import RLRunner
 from parllel.samplers import BasicSampler
+from parllel.samplers.eval import EvalSampler
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.algos.sac import SAC, build_replay_buffer_tree
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
@@ -29,30 +29,38 @@ from common.traj_infos import SB3EvalTrajInfo, SB3TrajInfo
 from models.sac_q_and_pi import PiMlpModel, QMlpModel
 
 
-# fmt: on
 @contextmanager
 def build(config: DictConfig) -> Iterator[RLRunner]:
     build_env = partial(gym.make, config["env_name"])
-
     parallel = config["parallel"]
     batch_spec = BatchSpec(
         config["batch_T"],
         config["batch_B"],
     )
 
-    video_config = config.get("video_recorder")
+    # create all environments before initializing pytorch models
+    cages, metadata = build_cages(
+        EnvClass=build_env,
+        n_envs=batch_spec.B,
+        TrajInfoClass=SB3TrajInfo,
+        parallel=parallel,
+    )
+    video_config = config.get("video")
+    eval_cages, eval_metadata = build_cages(
+        EnvClass=build_env,
+        n_envs=config["eval"]["n_eval_envs"],
+        TrajInfoClass=SB3EvalTrajInfo,
+        parallel=parallel,
+        render_mode="rgb_array" if video_config is not None else None,
+    )
 
     replay_length = int(config["algo"]["replay_size"]) // batch_spec.B
     replay_length = (replay_length // batch_spec.T) * batch_spec.T
-    cages, sample_tree, metadata = build_cages_and_sample_tree(
-        EnvClass=build_env,
-        env_kwargs={},
-        TrajInfoClass=SB3TrajInfo,
-        reset_automatically=True,
+    sample_tree, metadata = build_sample_tree(
+        env_metadata=metadata,
         batch_spec=batch_spec,
         parallel=parallel,
         full_size=replay_length,
-        render_mode="rgb_array" if video_config is not None else None,
     )
     obs_space, action_space = metadata.obs_space, metadata.action_space
     assert isinstance(obs_space, spaces.Box)
@@ -97,6 +105,8 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         device=device,
         learning_starts=config["algo"]["random_explore_steps"],
     )
+
+    # SAC requires no agent_info, so no need to add to sample_tree
 
     sampler = BasicSampler(
         batch_spec=batch_spec,
@@ -166,36 +176,40 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         **config["algo"],
     )
 
+    # env_info is different between sampling envs and eval envs, so build eval sample tree from
+    # scratch
+    eval_sample_tree, eval_metadata = build_sample_tree(
+        env_metadata=eval_metadata,
+        batch_spec=BatchSpec(1, config["eval"]["n_eval_envs"]),
+        parallel=parallel,
+    )
+
     if video_config is not None:
         output_dir = (
             log_dir / "videos" if (log_dir := logger.log_dir) is not None else "videos"
         )
         video_recorder = RecordVectorizedVideo(
             output_dir=output_dir,
-            # TODO: this should be the eval sample tree
-            sample_tree=sample_tree,
+            sample_tree=eval_sample_tree,
             buffer_key_to_record="env_info.rendering",
-            video_length=video_config["video_length"],
-            env_fps=video_config["env_fps"],  # TODO: get from env metadata
+            env_fps=eval_metadata.gym_metadata["render_fps"],
+            **video_config,
         )
-        step_transforms = [video_recorder]
+        eval_transforms = [video_recorder]
     else:
         video_recorder = None
-        step_transforms = None
+        eval_transforms = None
 
-    eval_sampler, eval_sample_tree = build_eval_sampler(
-        sample_tree=sample_tree,
+    eval_sampler = EvalSampler(
+        max_traj_length=config["eval"]["max_traj_length"],
+        max_trajectories=config["eval"]["max_trajectories"],
+        envs=eval_cages,
         agent=agent,
-        CageCls=type(cages[0]),
-        EnvClass=build_env,
-        env_kwargs={"render_mode": "rgb_array"} if video_recorder is not None else {},
-        TrajInfoClass=SB3EvalTrajInfo,
-        step_transforms=step_transforms,
-        **config["eval_sampler"],
+        sample_tree=eval_sample_tree,
+        step_transforms=eval_transforms,
     )
 
-    if video_config is not None:
-        assert video_recorder is not None
+    if video_recorder is not None:
         callbacks = [
             RecordingSchedule(
                 video_recorder_transform=video_recorder,
@@ -222,7 +236,6 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         yield runner
 
     finally:
-        eval_cages = eval_sampler.envs
         eval_sampler.close()
         for cage in eval_cages:
             cage.close()

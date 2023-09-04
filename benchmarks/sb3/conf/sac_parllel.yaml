@@ -24,7 +24,7 @@ algo:
   random_explore_steps: 10000  # from rl-baselines3-zoo
   target_update_interval: 1  # default for SB3, also matches Haarnoja et al.
   clip_grad_norm: null
-eval_sampler:
+eval:
   max_traj_length: 2000
   max_trajectories: 40
   n_eval_envs: 16
@@ -32,6 +32,8 @@ runner:
   n_steps: 1.e+6
   log_interval_steps: 50000
   eval_interval_steps: ${runner.log_interval_steps}
-video_recorder:
-  record_interval_steps: ${runner.log_interval_steps}
+video:
   video_length: 250
+  n_envs: 3
+  tiled_height: 1
+  tiled_width: 3

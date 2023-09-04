@@ -32,7 +32,7 @@ class RecordVectorizedVideo(Transform):
         buffer_key_to_record: str,  # e.g. "observation" or "env_info.rendering"
         video_length: int,
         env_fps: int = 30,
-        n_environments: int | None = None,
+        n_envs: int | None = None,
         tiled_height: int | None = None,
         tiled_width: int | None = None,
         torch_order: bool = False,  # TODO: replace with channel spec
@@ -53,13 +53,13 @@ class RecordVectorizedVideo(Transform):
             )
 
         batch_B = batch_B = images.shape[1]
-        if n_environments is not None:
-            if n_environments > batch_B:
+        if n_envs is not None:
+            if n_envs > batch_B:
                 raise ValueError(
-                    f"Number of requested environment ({n_environments}) greater than number of environments available ({batch_B})."
+                    f"Number of requested environment ({n_envs}) greater than number of environments available ({batch_B})."
                 )
 
-            self.n_images = n_environments
+            self.n_images = n_envs
         else:
             self.n_images = images.shape[1]
 
@@ -173,7 +173,7 @@ class RecordVectorizedVideo(Transform):
         clip = ImageSequenceClip(self.recorded_frames, fps=self.env_fps)
         path = self.output_dir / f"policy_step_{self.video_name_suffix}.mp4"
         clip.write_videofile(str(path), logger=None)
-        logger.info(f"Saved recording video of policy to {path}.")
+        logger.info(f"Saved video of policy to {path}.")
 
         self.recording = False
         del self.delay_t

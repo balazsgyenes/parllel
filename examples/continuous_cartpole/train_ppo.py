@@ -1,4 +1,3 @@
-# fmt: off
 import multiprocessing as mp
 from contextlib import contextmanager
 from typing import Iterator
@@ -15,10 +14,16 @@ from omegaconf import DictConfig, OmegaConf
 import parllel.logger as logger
 from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
-from parllel.patterns import (add_advantage_estimation, add_agent_info,
-                              add_bootstrap_value, add_obs_normalization,
-                              add_reward_clipping, add_reward_normalization,
-                              build_cages_and_sample_tree)
+from parllel.patterns import (
+    add_advantage_estimation,
+    add_agent_info,
+    add_bootstrap_value,
+    add_obs_normalization,
+    add_reward_clipping,
+    add_reward_normalization,
+    build_cages,
+    build_sample_tree,
+)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import RLRunner
 from parllel.samplers import BasicSampler
@@ -32,7 +37,6 @@ from envs.continuous_cartpole import build_cartpole
 from models.pg_model import GaussianCartPoleFfPgModel
 
 
-# fmt: on
 @contextmanager
 def build(config: DictConfig) -> Iterator[RLRunner]:
     parallel = config["parallel"]
@@ -42,11 +46,16 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    cages, sample_tree, metadata = build_cages_and_sample_tree(
+    cages, metadata = build_cages(
         EnvClass=build_cartpole,
+        n_envs=batch_spec.B,
         env_kwargs=OmegaConf.to_container(config["env"], throw_on_missing=True),
         TrajInfoClass=TrajInfo,
-        reset_automatically=True,
+        parallel=parallel,
+    )
+
+    sample_tree, metadata = build_sample_tree(
+        env_metadata=metadata,
         batch_spec=batch_spec,
         parallel=parallel,
     )

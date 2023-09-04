@@ -1,4 +1,3 @@
-# fmt: off
 import itertools
 import multiprocessing as mp
 from contextlib import contextmanager
@@ -16,10 +15,10 @@ from omegaconf import DictConfig, OmegaConf
 import parllel.logger as logger
 from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
-from parllel.patterns import build_cages_and_sample_tree, build_eval_sampler
+from parllel.patterns import build_cages, build_eval_sample_tree, build_sample_tree
 from parllel.replays.replay import ReplayBuffer
 from parllel.runners import RLRunner
-from parllel.samplers import BasicSampler
+from parllel.samplers import BasicSampler, EvalSampler
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.algos.sac import SAC, build_replay_buffer_tree
 from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
@@ -30,7 +29,6 @@ from envs.continuous_cartpole import build_cartpole
 from models.sac_q_and_pi import PiMlpModel, QMlpModel
 
 
-# fmt: on
 @contextmanager
 def build(config: DictConfig) -> Iterator[RLRunner]:
     parallel = config["parallel"]
@@ -40,14 +38,29 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    cages, sample_tree, metadata = build_cages_and_sample_tree(
+    # create all environments before initializing pytorch models
+    cages, metadata = build_cages(
         EnvClass=build_cartpole,
+        n_envs=batch_spec.B,
         env_kwargs=OmegaConf.to_container(config["env"], throw_on_missing=True),
         TrajInfoClass=TrajInfo,
-        reset_automatically=True,
+        parallel=parallel,
+    )
+    eval_cages, _ = build_cages(
+        EnvClass=build_cartpole,
+        n_envs=config["eval"]["n_eval_envs"],
+        env_kwargs=OmegaConf.to_container(config["env"], throw_on_missing=True),
+        TrajInfoClass=TrajInfo,
+        parallel=parallel,
+    )
+
+    replay_length = int(config["algo"]["replay_size"]) // batch_spec.B
+    replay_length = (replay_length // batch_spec.T) * batch_spec.T
+    sample_tree, metadata = build_sample_tree(
+        env_metadata=metadata,
         batch_spec=batch_spec,
         parallel=parallel,
-        full_size=config["algo"]["replay_length"],
+        full_size=replay_length,
     )
     obs_space, action_space = metadata.obs_space, metadata.action_space
     assert isinstance(obs_space, spaces.Box)
@@ -93,13 +106,13 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         learning_starts=config["algo"]["learning_starts"],
     )
 
+    # SAC requires no agent_info, so no need to add to sample_tree
+
     sampler = BasicSampler(
         batch_spec=batch_spec,
         envs=cages,
         agent=agent,
         sample_tree=sample_tree,
-        max_steps_decorrelate=config["max_steps_decorrelate"],
-        get_bootstrap_value=False,
     )
 
     replay_buffer_tree = build_replay_buffer_tree(sample_tree)
@@ -112,7 +125,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
     replay_buffer = ReplayBuffer(
         tree=replay_buffer_tree,
         sampler_batch_spec=batch_spec,
-        size_T=config["algo"]["replay_length"],
+        size_T=replay_length,
         replay_batch_size=config["algo"]["batch_size"],
         newest_n_samples_invalid=0,
         oldest_n_samples_invalid=1,
@@ -143,14 +156,17 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         **config["algo"],
     )
 
-    eval_sampler, eval_sample_tree = build_eval_sampler(
+    eval_sample_tree = build_eval_sample_tree(
         sample_tree=sample_tree,
+        n_eval_envs=config["eval"]["n_eval_envs"],
+    )
+
+    eval_sampler = EvalSampler(
+        max_traj_length=config["eval"]["max_traj_length"],
+        max_trajectories=config["eval"]["max_trajectories"],
+        envs=eval_cages,
         agent=agent,
-        CageCls=type(cages[0]),
-        EnvClass=build_cartpole,
-        env_kwargs=OmegaConf.to_container(config["env"], throw_on_missing=True),
-        TrajInfoClass=TrajInfo,
-        **config["eval_sampler"],
+        sample_tree=eval_sample_tree,
     )
 
     # create runner
@@ -167,7 +183,6 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         yield runner
 
     finally:
-        eval_cages = eval_sampler.envs
         eval_sampler.close()
         for cage in eval_cages:
             cage.close()

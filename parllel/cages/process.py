@@ -1,4 +1,3 @@
-# fmt: off
 from __future__ import annotations
 
 import enum
@@ -9,19 +8,27 @@ from typing import Any, Callable
 from parllel import Array, ArrayTree
 
 from .cage import Cage
-from .collections import (EnvInfoType, EnvRandomStepType, EnvResetType,
-                          EnvSpaces, EnvStepType, ObsType)
+from .collections import (
+    EnvInfoType,
+    EnvRandomStepType,
+    EnvResetType,
+    EnvSpaces,
+    EnvStepType,
+    ObsType,
+)
 from .traj_info import TrajInfo
 
 
-# fmt: on
 class Command(enum.Enum):
     """Commands for communicating with the subprocess"""
 
-    step = 2
-    collect_completed_trajs = 4
-    random_step = 5
-    reset_async = 6
+    step = 0
+    collect_completed_trajs = 1
+    random_step = 2
+    reset_async = 3
+    get_attr = 4
+    set_attr = 5
+    set_render = 6
     close = 7
 
 
@@ -157,6 +164,17 @@ class ProcessCage(Cage, mp.Process):
         assert not self.waiting
         self._parent_pipe.send(Message(Command.reset_async, (out_obs, out_info)))
         self.waiting = True
+
+    @Cage.render.setter
+    def render(self, value: bool) -> None:
+        self._parent_pipe.send(Message(Command.set_render, value))
+
+    def get_attr(self, name: str) -> Any:
+        self._parent_pipe.send(Message(Command.get_attr, name))
+        return self._parent_pipe.recv()
+
+    def set_attr(self, name: str, value: Any) -> None:
+        self._parent_pipe.send(Message(Command.set_attr, (name, value)))
 
     def close(self) -> None:
         assert not self.waiting
@@ -330,6 +348,16 @@ class ProcessCage(Cage, mp.Process):
 
                 self._needs_reset = False
                 self._child_pipe.send(self.needs_reset)
+
+            elif command == Command.set_render:
+                self._render = data
+
+            elif command == Command.get_attr:
+                self._child_pipe.send(getattr(self._env, data))
+
+            elif command == Command.set_attr:
+                name, value = data
+                setattr(self._env, name, value)
 
             elif command == Command.close:
                 self._close_env()  # close env object

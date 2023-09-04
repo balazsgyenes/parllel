@@ -1,4 +1,3 @@
-# fmt: off
 import multiprocessing as mp
 from contextlib import contextmanager
 from typing import Iterator
@@ -16,10 +15,15 @@ import parllel.logger as logger
 from parllel import Array, ArrayDict, dict_map
 from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
-from parllel.patterns import (add_advantage_estimation, add_agent_info,
-                              add_bootstrap_value, add_reward_clipping,
-                              add_reward_normalization,
-                              build_cages_and_sample_tree)
+from parllel.patterns import (
+    add_advantage_estimation,
+    add_agent_info,
+    add_bootstrap_value,
+    add_reward_clipping,
+    add_reward_normalization,
+    build_cages,
+    build_sample_tree,
+)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import RLRunner
 from parllel.samplers import BasicSampler
@@ -34,7 +38,6 @@ from models.pointnet_pg_model import PointNetPgModel
 from pointcloud import PointCloudSpace
 
 
-# fmt: on
 @contextmanager
 def build(config: DictConfig) -> Iterator[RLRunner]:
     parallel = config["parallel"]
@@ -46,11 +49,16 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
 
     env_kwargs = OmegaConf.to_container(config["env"], throw_on_missing=True)
     env_kwargs["actions"] = "discrete"
-    cages, sample_tree, metadata = build_cages_and_sample_tree(
+    cages, metadata = build_cages(
         EnvClass=DummyEnv,
+        n_envs=batch_spec.B,
         env_kwargs=env_kwargs,
         TrajInfoClass=TrajInfo,
-        reset_automatically=True,
+        parallel=parallel,
+    )
+
+    sample_tree, metadata = build_sample_tree(
+        env_metadata=metadata,
         batch_spec=batch_spec,
         parallel=parallel,
         keys_to_skip="observation",  # we will allocate this ourselves
@@ -69,7 +77,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         padding=1,
     )
     sample_tree["observation"][0] = obs_space.sample()
-    example_obs_batch = sample_tree["observation"][0]
+    metadata.example_obs_batch = sample_tree["observation"][0]
 
     # instantiate model
     model = PointNetPgModel(
@@ -86,12 +94,12 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
     agent = CategoricalPgAgent(
         model=model,
         distribution=distribution,
-        example_obs=example_obs_batch,
+        example_obs=metadata.example_obs_batch,
         device=device,
     )
 
     # add agent info, which stores value predictions
-    sample_tree = add_agent_info(sample_tree, agent, example_obs_batch)
+    sample_tree = add_agent_info(sample_tree, agent, metadata.example_obs_batch)
 
     # for advantage estimation, we need to estimate the value of the last
     # state in the batch
