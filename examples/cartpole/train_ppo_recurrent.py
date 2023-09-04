@@ -193,10 +193,10 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
 
     finally:
         sampler.close()
+        sample_tree.close()
         agent.close()
         for cage in cages:
             cage.close()
-        sample_tree.close()
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo_recurrent")
@@ -232,5 +232,5 @@ def main(config: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    mp.set_start_method("fork")
+    mp.set_start_method("forkserver")
     main()

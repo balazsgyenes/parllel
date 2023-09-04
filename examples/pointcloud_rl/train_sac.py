@@ -66,7 +66,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         batch_spec=batch_spec,
         parallel=parallel,
         full_size=replay_length,
-        keys_to_skip="observation",  # we will allocate this ourselves
+        keys_to_skip=("obs", "next_obs"),  # we will allocate this ourselves
     )
     obs_space, action_space = metadata.obs_space, metadata.action_space
     assert isinstance(obs_space, PointCloudSpace)
@@ -81,6 +81,10 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         storage="shared" if parallel else "local",
         padding=1,
         full_size=config["algo"]["replay_length"],
+    )
+    sample_tree["next_observation"] = sample_tree["observation"].new_array(
+        padding=0,
+        inherit_full_size=True,
     )
     sample_tree["observation"][0] = obs_space.sample()
     metadata.example_obs_batch = sample_tree["observation"][0]
@@ -207,15 +211,14 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
 
     finally:
         eval_sampler.close()
+        eval_sample_tree.close()
+        sampler.close()
+        sample_tree.close()
+        agent.close()
         for cage in eval_cages:
             cage.close()
-        eval_sample_tree.close()
-
-        sampler.close()
-        agent.close()
         for cage in cages:
             cage.close()
-        sample_tree.close()
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_sac")
@@ -251,5 +254,5 @@ def main(config: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    mp.set_start_method("fork")
+    mp.set_start_method("forkserver")
     main()

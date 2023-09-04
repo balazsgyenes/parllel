@@ -55,8 +55,6 @@ class ProcessCage(Cage, mp.Process):
     `needs_reset` flag is set to True.
     """
 
-    # TODO: add spaces and needs_reset properties
-
     def __init__(
         self,
         EnvClass: Callable,

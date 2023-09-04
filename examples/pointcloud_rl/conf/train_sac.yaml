@@ -7,9 +7,9 @@ hydra:
   job:
     name: pointcloudrl-sac
   run:
-    dir: outputs/${hydra.job.name}/${framework}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
-    dir: multirun/${hydra.job.name}/${framework}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: multirun/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
 
 parallel: True
 batch_T: 8

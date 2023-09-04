@@ -237,12 +237,11 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
 
     finally:
         eval_sampler.close()
+        eval_sample_tree.close()
+        sampler.close()
+        sample_tree.close()
+        agent.close()
         for cage in eval_cages:
             cage.close()
-        eval_sample_tree.close()
-
-        sampler.close()
-        agent.close()
         for cage in cages:
             cage.close()
-        sample_tree.close()
