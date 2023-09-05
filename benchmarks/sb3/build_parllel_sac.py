@@ -193,6 +193,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
             sample_tree=eval_sample_tree,
             buffer_key_to_record="env_info.rendering",
             env_fps=eval_metadata.gym_metadata["render_fps"],
+            use_wandb=True,
             **video_config,
         )
         eval_transforms = [video_recorder]

@@ -18,6 +18,13 @@ except ImportError as e:
         "moviepy is not installed, run `pip install moviepy`"
     ) from e
 
+try:
+    import wandb
+
+    has_wandb = True
+except ImportError:
+    has_wandb = False
+
 import parllel.logger as logger
 from parllel import Array, ArrayDict
 
@@ -36,12 +43,14 @@ class RecordVectorizedVideo(Transform):
         tiled_height: int | None = None,
         tiled_width: int | None = None,
         torch_order: bool = False,  # TODO: replace with channel spec
+        use_wandb: bool = False,  # TODO: replace with wandb logwriter
     ) -> None:
         self.output_dir = Path(output_dir)
         self.length = int(video_length)
         self.keys = buffer_key_to_record.split(".")
         self.env_fps = env_fps
         self.torch_order = torch_order
+        self.use_wandb = use_wandb
 
         self.output_dir.mkdir(parents=True)
 
@@ -170,10 +179,15 @@ class RecordVectorizedVideo(Transform):
         return sample_tree
 
     def stop_recording(self) -> None:
+        # TODO: replace this with call to logger, which handles outputs
         clip = ImageSequenceClip(self.recorded_frames, fps=self.env_fps)
         path = self.output_dir / f"policy_step_{self.video_name_suffix}.mp4"
         clip.write_videofile(str(path), logger=None)
         logger.info(f"Saved video of policy to {path}.")
+
+        if has_wandb and self.use_wandb and wandb.run is not None:
+            # NOTE: this will add an extra step in the log
+            wandb.log({"video": wandb.Video(str(path), fps=self.env_fps, format="mp4")})
 
         self.recording = False
         del self.delay_t
