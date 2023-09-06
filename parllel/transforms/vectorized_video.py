@@ -11,20 +11,6 @@ import gymnasium as gym
 import numba
 import numpy as np
 
-try:
-    from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
-except ImportError as e:
-    raise gym.error.DependencyNotInstalled(
-        "moviepy is not installed, run `pip install moviepy`"
-    ) from e
-
-try:
-    import wandb
-
-    has_wandb = True
-except ImportError:
-    has_wandb = False
-
 import parllel.logger as logger
 from parllel import Array, ArrayDict
 
@@ -51,6 +37,21 @@ class RecordVectorizedVideo(Transform):
         self.env_fps = env_fps
         self.torch_order = torch_order
         self.use_wandb = use_wandb
+
+        try:
+            import moviepy
+        except ImportError as e:
+            raise gym.error.DependencyNotInstalled(
+                "moviepy is not installed, run `pip install moviepy`"
+            ) from e
+
+        if self.use_wandb:
+            try:
+                import wandb
+            except ImportError as e:
+                raise gym.error.DependencyNotInstalled(
+                    "wandb is not installed, run `pip install wandb`"
+                ) from e
 
         self.output_dir.mkdir(parents=True)
 
@@ -137,26 +138,27 @@ class RecordVectorizedVideo(Transform):
             if valid_batch is not None:
                 valid_batch = np.asarray(valid_batch)
 
-            # ensure 2 batch dimensions and get only requested number of images per time step
+            # ensure 2 batch dimensions and index time and batch accordingly
+            b_loc = slice(self.n_images)
             if n_batch_dims == 2:
-                images_loc = (slice(None), slice(self.n_images))
+                # if this is the start of recording, delay start to arrive at exact desired start
+                # point
+                t_loc = (
+                    slice(self.delay_t, None)
+                    if len(self.recorded_frames) == 0
+                    else slice(None)
+                )
             elif n_batch_dims == 1:
-                images_loc = (np.newaxis, slice(self.n_images))
                 assert self.delay_t == 0
+                # add leading singleton time dimension
+                t_loc = np.newaxis
             else:
                 raise ValueError(
                     f"Received images with {n_batch_dims} batch dimensions."
                 )
-            images_batch = images_batch[images_loc]
+            images_batch = images_batch[t_loc, b_loc]
             if valid_batch is not None:
-                valid_batch = valid_batch[images_loc]
-
-            # if this is the start of recording, delay start to arrive at exact
-            # desired start point
-            if len(self.recorded_frames) == 0:
-                images_batch = images_batch[self.delay_t :]
-                if valid_batch is not None:
-                    valid_batch = valid_batch[self.delay_t :]
+                valid_batch = valid_batch[t_loc, b_loc]
 
             # loop through time, saving images from each step to file
             for images, valid in zip_with_valid(images_batch, valid_batch):
@@ -180,14 +182,21 @@ class RecordVectorizedVideo(Transform):
 
     def stop_recording(self) -> None:
         # TODO: replace this with call to logger, which handles outputs
+        from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
+
         clip = ImageSequenceClip(self.recorded_frames, fps=self.env_fps)
         path = self.output_dir / f"policy_step_{self.video_name_suffix}.mp4"
         clip.write_videofile(str(path), logger=None)
         logger.info(f"Saved video of policy to {path}.")
 
-        if has_wandb and self.use_wandb and wandb.run is not None:
-            # NOTE: this will add an extra step in the log
-            wandb.log({"video": wandb.Video(str(path), fps=self.env_fps, format="mp4")})
+        if self.use_wandb:
+            import wandb
+
+            if wandb.run is not None:
+                # NOTE: this will add an extra step in the log
+                wandb.log(
+                    {"video": wandb.Video(str(path), fps=self.env_fps, format="mp4")}
+                )
 
         self.recording = False
         del self.delay_t
