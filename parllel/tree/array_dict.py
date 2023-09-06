@@ -7,7 +7,7 @@ from typing import Any, Callable, Generic, Iterable, Iterator, TypeVar
 
 import numpy as np
 
-from parllel.tree import ArrayLike, ArrayTree, ArrayType, ArrayOrMapping
+from parllel.tree import ArrayLike, ArrayOrMapping, ArrayTree, ArrayType
 
 _T = TypeVar("_T")
 
@@ -22,6 +22,8 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
     This class is heavily inspired by torch's TensorDict.
     """
 
+    # TODO: consider adding a method to get nested item
+    # TODO: consider adding a method to get a subset of keys as a new ArrayDict
     def __init__(
         self,
         items: ArrayOrMapping | Iterable[tuple[str, ArrayOrMapping]] | None = None,
@@ -68,14 +70,18 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
 
         if isinstance(value, Mapping):  # i.e. dict, ArrayDict, etc.
             getter = getitem
+            fields = self._dict.keys() & value.keys()  # only common keys
         elif dataclasses.is_dataclass(value):
             getter = getattr
+            fields = self._dict.keys() & set(dataclasses.fields(value))
         else:
             # don't index into scalars, just assign the same scalar to all
             # fields
             getter = lambda obj, field: obj
+            fields = self._dict.keys()
 
-        for field, arr in self._dict.items():
+        for field in fields:
+            arr = self._dict[field]
             subvalue = getter(value, field)
             try:
                 arr[key] = subvalue

@@ -1,4 +1,3 @@
-# fmt: off
 import multiprocessing as mp
 from contextlib import contextmanager
 from typing import Iterator
@@ -15,17 +14,22 @@ from omegaconf import DictConfig, OmegaConf
 import parllel.logger as logger
 from parllel.cages import TrajInfo
 from parllel.logger import Verbosity
-from parllel.patterns import (add_advantage_estimation, add_agent_info,
-                              add_bootstrap_value, add_obs_normalization,
-                              add_reward_clipping, add_reward_normalization,
-                              build_cages_and_sample_tree)
+from parllel.patterns import (
+    add_advantage_estimation,
+    add_agent_info,
+    add_bootstrap_value,
+    add_obs_normalization,
+    add_reward_clipping,
+    add_reward_normalization,
+    build_cages,
+    build_sample_tree,
+)
 from parllel.replays import BatchedDataLoader
 from parllel.runners import RLRunner
 from parllel.samplers import BasicSampler
 from parllel.torch.agents.categorical import CategoricalPgAgent
 from parllel.torch.algos.ppo import PPO, build_loss_sample_tree
 from parllel.torch.distributions import Categorical
-from parllel.transforms import Compose
 from parllel.types import BatchSpec
 
 # isort: split
@@ -33,7 +37,6 @@ from envs.cartpole import build_cartpole
 from models.model import CartPoleFfPgModel
 
 
-# fmt: on
 @contextmanager
 def build(config: DictConfig) -> Iterator[RLRunner]:
     parallel = config["parallel"]
@@ -43,11 +46,16 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
     )
     TrajInfo.set_discount(config["algo"]["discount"])
 
-    cages, sample_tree, metadata = build_cages_and_sample_tree(
+    cages, metadata = build_cages(
         EnvClass=build_cartpole,
-        env_kwargs=config["env"],
+        n_envs=batch_spec.B,
+        env_kwargs=OmegaConf.to_container(config["env"], throw_on_missing=True),
         TrajInfoClass=TrajInfo,
-        reset_automatically=True,
+        parallel=parallel,
+    )
+
+    sample_tree, metadata = build_sample_tree(
+        env_metadata=metadata,
         batch_spec=batch_spec,
         parallel=parallel,
     )
@@ -119,8 +127,8 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         sample_tree=sample_tree,
         max_steps_decorrelate=config["max_steps_decorrelate"],
         get_bootstrap_value=True,
-        obs_transform=Compose(step_transforms),
-        batch_transform=Compose(batch_transforms),
+        step_transforms=step_transforms,
+        batch_transforms=batch_transforms,
     )
 
     loss_sample_tree = build_loss_sample_tree(sample_tree)
@@ -162,10 +170,10 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
 
     finally:
         sampler.close()
+        sample_tree.close()
         agent.close()
         for cage in cages:
             cage.close()
-        sample_tree.close()
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo")
@@ -201,5 +209,5 @@ def main(config: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    mp.set_start_method("fork")
+    mp.set_start_method("forkserver")
     main()

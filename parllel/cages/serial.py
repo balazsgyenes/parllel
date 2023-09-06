@@ -172,5 +172,11 @@ class SerialCage(Cage):
             # return step result if user passed no output args at all
             self._step_result = (reset_obs, reset_info)
 
+    def get_attr(self, name: str) -> Any:
+        return getattr(self._env, name)
+
+    def set_attr(self, name: str, value: Any) -> None:
+        return setattr(self._env, name, value)
+
     def close(self) -> None:
         self._close_env()

@@ -1,9 +1,7 @@
-# fmt: off
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, MutableMapping, Sequence
 
 import gymnasium as gym
 import numpy as np
@@ -11,48 +9,48 @@ import numpy as np
 import parllel.logger as logger
 from parllel import Array, ArrayDict, ArrayOrMapping, ArrayTree, dict_map
 from parllel.agents import Agent
-from parllel.cages import Cage, ProcessCage, SerialCage
-from parllel.samplers import EvalSampler
-from parllel.transforms import (ClipRewards, Compose, EstimateAdvantage,
-                                EstimateMultiAgentAdvantage,
-                                NormalizeAdvantage, NormalizeObservations,
-                                NormalizeRewards, StepTransform, Transform)
+from parllel.cages import Cage, ProcessCage, SerialCage, TrajInfo
+from parllel.transforms import (
+    ClipRewards,
+    EstimateAdvantage,
+    EstimateMultiAgentAdvantage,
+    NormalizeAdvantage,
+    NormalizeObservations,
+    NormalizeRewards,
+    Transform,
+)
 from parllel.types import BatchSpec
-
-# fmt: on
 
 
 @dataclass
-class Metadata:
+class EnvMetadata:
     obs_space: gym.Space
     action_space: gym.Space
     example_obs: ArrayOrMapping[np.ndarray]
     example_action: ArrayOrMapping[np.ndarray]
     example_reward: ArrayOrMapping[np.ndarray]
     example_info: ArrayOrMapping[np.ndarray]
+    gym_metadata: dict[str, Any]
     example_obs_batch: ArrayTree[np.ndarray] | None = None
     example_action_batch: ArrayTree[np.ndarray] | None = None
 
 
-def build_cages_and_sample_tree(
+def build_cages(
     EnvClass: Callable,
-    env_kwargs: Mapping[str, Any],
-    TrajInfoClass: Callable,
-    reset_automatically: bool,
-    batch_spec: BatchSpec,
-    parallel: bool,
-    full_size: int | None = None,
-    keys_to_skip: str | Sequence[str] = (),
-) -> tuple[list[Cage], ArrayDict[Array], Metadata]:
-    if parallel:
-        CageCls = ProcessCage
-        storage = "shared"
-    else:
-        CageCls = SerialCage
-        storage = "local"
+    n_envs: int,
+    env_kwargs: MutableMapping[str, Any] | None = None,
+    TrajInfoClass: Callable | None = None,
+    reset_automatically: bool = True,
+    parallel: bool = False,
+    render_mode: str | None = None,
+) -> tuple[Sequence[Cage], EnvMetadata]:
+    env_kwargs = env_kwargs if env_kwargs is not None else {}
+    TrajInfoClass = TrajInfoClass if TrajInfoClass is not None else TrajInfo
 
-    if isinstance(keys_to_skip, str):
-        keys_to_skip = (keys_to_skip,)
+    CageCls = ProcessCage if parallel else SerialCage
+
+    if render_mode is not None:
+        env_kwargs["render_mode"] = render_mode
 
     cage_kwargs = dict(
         EnvClass=EnvClass,
@@ -61,10 +59,18 @@ def build_cages_and_sample_tree(
         reset_automatically=reset_automatically,
     )
 
-    # create example env
-    example_cage = CageCls(**cage_kwargs)
+    logger.info(f"Instantiating {n_envs} environments...")
+
+    # create cages to manage environments
+    cages = [CageCls(**cage_kwargs) for _ in range(n_envs)]
+
+    logger.info("Environments instantiated.")
+
+    example_cage = cages[0]
 
     # get example output from env
+    if render_mode is not None:
+        example_cage.render = True
     example_cage.random_step_async()
     (
         action,
@@ -75,8 +81,37 @@ def build_cages_and_sample_tree(
         truncated,
         info,
     ) = example_cage.await_step()
+    example_cage.render = False
 
-    example_cage.close()
+    # get obs and action spaces for metadata
+    spaces = example_cage.spaces
+    obs_space, action_space = spaces.observation, spaces.action
+    gym_metadata = example_cage.get_attr("metadata")
+
+    metadata = EnvMetadata(
+        obs_space=obs_space,
+        action_space=action_space,
+        example_obs=obs,
+        example_action=action,
+        example_reward=reward,
+        example_info=info,
+        gym_metadata=gym_metadata,
+    )
+
+    return cages, metadata
+
+
+def build_sample_tree(
+    env_metadata: EnvMetadata,
+    batch_spec: BatchSpec,
+    parallel: bool = False,
+    full_size: int | None = None,
+    keys_to_skip: str | Sequence[str] = (),
+) -> tuple[ArrayDict[Array], EnvMetadata]:
+    storage = "shared" if parallel else "local"
+
+    if isinstance(keys_to_skip, str):
+        keys_to_skip = (keys_to_skip,)
 
     if full_size is not None:
         logger.debug(f"Allocating replay buffer of size {batch_spec.B * full_size}...")
@@ -85,23 +120,31 @@ def build_cages_and_sample_tree(
 
     sample_tree: ArrayDict[Array] = ArrayDict()
 
+    # allocate sample tree based on examples
     if {"obs", "observation"} & set(keys_to_skip) == set():
-        # allocate sample tree based on examples
-        logger.debug("Allocating next observations...")
-        sample_tree["next_observation"] = dict_map(
-            Array.from_numpy,
-            next_obs,
-            batch_shape=tuple(batch_spec),
-            storage=storage,
-            full_size=full_size,
-        )
         logger.debug("Allocating observations...")
         sample_tree["observation"] = dict_map(
             Array.from_numpy,
-            obs,
+            env_metadata.example_obs,
             batch_shape=tuple(batch_spec),
             storage=storage,
-            padding=1,
+            padding=1,  # store observation for next batch in padding
+            full_size=full_size,
+        )
+
+        # get example batch of observations for metadata
+        # write sample into the sample_tree and read it back out. This ensures the example is in a
+        # standard form (i.e. if using JaggedArray or LazyFramesArray)
+        sample_tree["observation"][0] = env_metadata.obs_space.sample()
+        env_metadata.example_obs_batch = sample_tree["observation"][0]
+
+    if {"next_obs", "next_observation"} & set(keys_to_skip) == set():
+        logger.debug("Allocating next observations...")
+        sample_tree["next_observation"] = dict_map(
+            Array.from_numpy,
+            env_metadata.example_obs,
+            batch_shape=tuple(batch_spec),
+            storage=storage,
             full_size=full_size,
         )
 
@@ -111,7 +154,7 @@ def build_cages_and_sample_tree(
         # force to be correct shape and type
         sample_tree["reward"] = dict_map(
             Array.from_numpy,
-            reward,
+            env_metadata.example_reward,
             batch_shape=tuple(batch_spec),
             dtype=np.float32,
             feature_shape=(),
@@ -122,18 +165,18 @@ def build_cages_and_sample_tree(
     if "terminated" not in keys_to_skip:
         logger.debug("Allocating terminated...")
         sample_tree["terminated"] = Array.from_numpy(
-            terminated,
+            True,
             batch_shape=tuple(batch_spec),
             dtype=bool,
             feature_shape=(),
             storage=storage,
-            full_size=full_size,  # used for SAC replay buffer
+            full_size=full_size,  # only terminated is used for SAC replay buffer
         )
 
     if "truncated" not in keys_to_skip:
         logger.debug("Allocating truncated...")
         sample_tree["truncated"] = Array.from_numpy(
-            truncated,
+            True,
             batch_shape=tuple(batch_spec),
             dtype=bool,
             feature_shape=(),
@@ -146,7 +189,7 @@ def build_cages_and_sample_tree(
         # TODO: ideally, we only would add padding if we know we want reward
         # normalization, but how to do this?
         sample_tree["done"] = Array.from_numpy(
-            terminated,
+            True,
             batch_shape=tuple(batch_spec),
             dtype=bool,
             feature_shape=(),
@@ -158,7 +201,7 @@ def build_cages_and_sample_tree(
         logger.debug("Allocating env_info...")
         sample_tree["env_info"] = dict_map(
             Array.from_numpy,
-            info,
+            env_metadata.example_info,
             batch_shape=tuple(batch_spec),
             storage=storage,
         )
@@ -170,12 +213,18 @@ def build_cages_and_sample_tree(
         # force actions to be 32 bits only if they are floats
         sample_tree["action"] = dict_map(
             Array.from_numpy,
-            action,
+            env_metadata.example_action,
             batch_shape=tuple(batch_spec),
             force_32bit="float",
             storage=storage,
             full_size=full_size,
         )
+
+        # get example batch of actions for metadata
+        # write sample into the sample_tree and read it back out. This ensures the example is in a
+        # standard form (i.e. if using JaggedArray or LazyFramesArray)
+        sample_tree["action"][0] = env_metadata.action_space.sample()
+        env_metadata.example_action_batch = sample_tree["action"][0]
 
     if "agent_info" not in keys_to_skip:
         logger.debug("Allocating agent_info...")
@@ -183,43 +232,34 @@ def build_cages_and_sample_tree(
         # user is free to set a different value later
         sample_tree["agent_info"] = ArrayDict()
 
-    logger.info(f"Instantiating {batch_spec.B} environments...")
+    return sample_tree, env_metadata
 
-    # create cages to manage environments
-    cages = [CageCls(**cage_kwargs) for _ in range(batch_spec.B)]
 
-    logger.info("Environments instantiated.")
+def build_eval_sample_tree(
+    sample_tree: ArrayDict[Array],
+    n_eval_envs: int,
+) -> ArrayDict[Array]:
+    logger.debug("Allocating eval sample tree...")
 
-    # get obs and action spaces for metadata
-    spaces = cages[0].spaces
-    obs_space, action_space = spaces.observation, spaces.action
-
-    # get example obs and actions for metadata
-    # write sample into the sample_tree and read it back out. This ensures the example is in a standard form (i.e. if using JaggedArray or LazyFramesArray)
-    if "observation" in sample_tree:
-        sample_tree["observation"][0] = obs_space.sample()
-        obs_batch = sample_tree["observation"][0]
-    else:
-        obs_batch = None
-
-    if "action" in sample_tree:
-        sample_tree["action"][0] = action_space.sample()
-        action_batch = sample_tree["action"][0]
-    else:
-        action_batch = None
-
-    metadata = Metadata(
-        obs_space=obs_space,
-        action_space=action_space,
-        example_obs_batch=obs_batch,
-        example_action_batch=action_batch,
-        example_obs=obs,
-        example_action=action,
-        example_reward=reward,
-        example_info=info,
+    # allocate a sample tree with space for a single time step
+    # first, collect only the keys needed for evaluation
+    eval_tree_keys = [
+        "action",
+        "agent_info",
+        "observation",
+        "reward",
+        "terminated",
+        "truncated",
+        "done",
+        "env_info",
+    ]
+    eval_tree_example = ArrayDict(
+        {key: sample_tree[key] for key in eval_tree_keys},
     )
+    # create a new tree with leading dimensions (1, B_eval)
+    eval_sample_tree = eval_tree_example.new_array(batch_shape=(1, n_eval_envs))
 
-    return cages, sample_tree, metadata
+    return eval_sample_tree
 
 
 def add_agent_info(
@@ -386,55 +426,3 @@ def add_reward_clipping(
         )
     )
     return sample_tree, transforms
-
-
-def build_eval_sampler(
-    sample_tree: ArrayDict[Array],
-    agent: Agent,
-    CageCls: type[Cage],
-    EnvClass: Callable,
-    env_kwargs: Mapping[str, Any],
-    TrajInfoClass: Callable,
-    n_eval_envs: int,
-    max_traj_length: int,
-    max_trajectories: int,
-    step_transforms: list[StepTransform] | None = None,
-) -> tuple[EvalSampler, ArrayDict[Array]]:
-    logger.debug("Allocating eval sample tree...")
-
-    # allocate a sample tree with space for a single time step
-    # first, collect only the keys needed for evaluation
-    eval_tree_keys = [
-        "action",
-        "observation",
-        "terminated",
-        "truncated",
-        "done",
-    ]
-    eval_tree_example = ArrayDict(
-        {key: sample_tree[key] for key in eval_tree_keys},
-    )
-    # create a new tree with leading dimensions (1, B_eval)
-    eval_sample_tree = eval_tree_example.new_array(batch_shape=(1, n_eval_envs))
-
-    eval_cage_kwargs = dict(
-        EnvClass=EnvClass,
-        env_kwargs=env_kwargs,
-        TrajInfoClass=TrajInfoClass,
-        reset_automatically=True,
-    )
-    eval_envs = [CageCls(**eval_cage_kwargs) for _ in range(n_eval_envs)]
-
-    if step_transforms is not None:
-        step_transforms = Compose(step_transforms)
-
-    eval_sampler = EvalSampler(
-        max_traj_length=max_traj_length,
-        max_trajectories=max_trajectories,
-        envs=eval_envs,
-        agent=agent,
-        sample_tree=eval_sample_tree,
-        obs_transform=step_transforms,
-    )
-
-    return eval_sampler, eval_sample_tree

@@ -7,7 +7,7 @@ import numpy as np
 from parllel import Array, ArrayDict
 from parllel.agents import Agent
 from parllel.cages import Cage, TrajInfo
-from parllel.transforms import BatchTransform, StepTransform
+from parllel.transforms import Transform
 from parllel.types import BatchSpec
 
 from .sampler import Sampler
@@ -23,8 +23,8 @@ class RecurrentSampler(Sampler):
         max_steps_decorrelate: int | None = 0,
         get_initial_rnn_state: bool = True,
         get_bootstrap_value: bool = False,
-        obs_transform: StepTransform | None = None,
-        batch_transform: BatchTransform | None = None,
+        step_transforms: Sequence[Transform] | None = None,
+        batch_transforms: Sequence[Transform] | None = None,
     ) -> None:
         """Generates samples for training recurrent agents."""
         super().__init__(
@@ -67,8 +67,8 @@ class RecurrentSampler(Sampler):
             )
         self.get_bootstrap_value = get_bootstrap_value
 
-        self.obs_transform = obs_transform
-        self.batch_transform = batch_transform
+        self.step_transforms = step_transforms if step_transforms is not None else []
+        self.batch_transforms = batch_transforms if batch_transforms is not None else []
 
         # prepare cages for sampling
         self.reset()
@@ -116,8 +116,9 @@ class RecurrentSampler(Sampler):
                 break
 
             # apply any transforms to the observation before the agent steps
-            if self.obs_transform is not None:
-                self.batch_samples = self.obs_transform(sample_tree, t)
+            for transform in self.step_transforms:
+                # apply in-place to avoid redundant array write operation
+                transform(sample_tree[t])
 
             # agent observes environment and outputs actions
             action[t], agent_info[t] = self.agent.step(observation[t])
@@ -170,7 +171,7 @@ class RecurrentSampler(Sampler):
         ]
 
         # apply user-defined transforms
-        if self.batch_transform is not None:
-            sample_tree = self.batch_transform(sample_tree)
+        for transform in self.batch_transforms:
+            sample_tree = transform(sample_tree)
 
         return sample_tree, completed_trajectories

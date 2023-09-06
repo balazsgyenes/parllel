@@ -4,10 +4,10 @@ import numpy as np
 
 from parllel import Array, ArrayDict
 
-from .transform import BatchTransform
+from .transform import Transform
 
 
-class ClipRewards(BatchTransform):
+class ClipRewards(Transform):
     """Clips rewards between maximum and minimum values. If either bound is not
     given, rewards are not clipped from that direction.
 
@@ -28,9 +28,11 @@ class ClipRewards(BatchTransform):
         if not (reward_min is not None or reward_max is not None):
             raise ValueError("Must provide either reward_min or reward_max")
 
-    def __call__(self, batch_samples: ArrayDict[Array]) -> ArrayDict[Array]:
-        reward = np.asarray(batch_samples["reward"])
+    def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
+        reward = sample_tree["reward"]
+        assert isinstance(reward, Array)
+        reward_np = np.asarray(reward)
 
-        reward[:] = np.clip(reward, self.reward_min, self.reward_max)
+        reward[:] = np.clip(reward_np, self.reward_min, self.reward_max)
 
-        return batch_samples
+        return sample_tree

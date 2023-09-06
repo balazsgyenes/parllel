@@ -8,7 +8,8 @@ from .multi_advantage import EstimateMultiAgentAdvantage
 from .norm_advantage import NormalizeAdvantage
 from .norm_obs import NormalizeObservations
 from .norm_rewards import NormalizeRewards
-from .transform import BatchTransform, Compose, StepTransform, Transform
+from .transform import Transform
+from .vectorized_video import RecordVectorizedVideo
 
 __all__ = [
     "EstimateAdvantage",
@@ -17,8 +18,6 @@ __all__ = [
     "NormalizeAdvantage",
     "NormalizeObservations",
     "NormalizeRewards",
-    "BatchTransform",
-    "Compose",
-    "StepTransform",
     "Transform",
+    "RecordVectorizedVideo",
 ]

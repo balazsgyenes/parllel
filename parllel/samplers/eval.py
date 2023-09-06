@@ -7,7 +7,7 @@ import numpy as np
 from parllel import Array, ArrayDict
 from parllel.agents import Agent
 from parllel.cages import Cage, TrajInfo
-from parllel.transforms import StepTransform, Transform
+from parllel.transforms import Transform
 from parllel.types import BatchSpec
 
 from .sampler import Sampler
@@ -21,7 +21,7 @@ class EvalSampler(Sampler):
         envs: Sequence[Cage],
         agent: Agent,
         sample_tree: ArrayDict[Array],
-        obs_transform: StepTransform | Transform | None = None,
+        step_transforms: Sequence[Transform] | None = None,
     ) -> None:
         for cage in envs:
             if not cage.reset_automatically:
@@ -39,15 +39,18 @@ class EvalSampler(Sampler):
 
         self.max_traj_length = max_traj_length
         self.max_trajectories = max_trajectories
-        self.obs_transform = obs_transform
+        self.step_transforms = step_transforms if step_transforms is not None else []
 
     def collect_batch(self, elapsed_steps: int) -> list[TrajInfo]:
         # get references to sample tree elements
         action = self.sample_tree["action"][0]
+        agent_info = self.sample_tree["agent_info"][0]
         observation = self.sample_tree["observation"][0]
+        reward = self.sample_tree["reward"][0]
         done = self.sample_tree["done"][0]
         terminated = self.sample_tree["terminated"][0]
         truncated = self.sample_tree["truncated"][0]
+        env_info = self.sample_tree["env_info"][0]
         sample_tree = self.sample_tree
 
         # set agent to eval mode, preventing sampler states from being overwritten
@@ -66,18 +69,21 @@ class EvalSampler(Sampler):
         # main sampling loop
         for _ in range(self.max_traj_length):
             # apply any transforms to the observation before the agent steps
-            if self.obs_transform is not None:
-                sample_tree = self.obs_transform(sample_tree, 0)
+            for transform in self.step_transforms:
+                # apply in-place to avoid redundant array write operation
+                transform(sample_tree[0])
 
             # agent observes environment and outputs actions
-            action[...], _ = self.agent.step(observation)
+            action[...], agent_info[...] = self.agent.step(observation)
 
             for b, env in enumerate(self.envs):
                 env.step_async(
                     action[b],
                     out_obs=observation[b],
+                    out_reward=reward[b],
                     out_terminated=terminated[b],
                     out_truncated=truncated[b],
+                    out_info=env_info[b],
                 )
 
             for b, env in enumerate(self.envs):

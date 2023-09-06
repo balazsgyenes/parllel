@@ -4,12 +4,12 @@ import numpy as np
 
 from parllel import Array, ArrayDict
 
-from .transform import BatchTransform
+from .transform import Transform
 
 EPSILON = 1e-6
 
 
-class NormalizeAdvantage(BatchTransform):
+class NormalizeAdvantage(Transform):
     """Batch normalizes advantage by subtracting the mean and dividing by the
     standard deviation of the current batch of advantage values.
 
@@ -28,7 +28,10 @@ class NormalizeAdvantage(BatchTransform):
         self.multiagent = np.asarray(sample_tree["advantage"]).ndim > 2
 
     def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
-        advantage = np.asarray(sample_tree["advantage"])
+        advantage = sample_tree["advantage"]
+        assert isinstance(advantage, Array)
+        assert len(advantage.batch_shape) == 2
+        advantage = np.asarray(advantage)
 
         # calculate batch mean and stddev, optionally considering only valid
         valid_advantage = advantage

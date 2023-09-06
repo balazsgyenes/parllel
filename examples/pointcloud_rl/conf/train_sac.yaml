@@ -7,14 +7,13 @@ hydra:
   job:
     name: pointcloudrl-sac
   run:
-    dir: outputs/${hydra.job.name}/${framework}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
-    dir: multirun/${hydra.job.name}/${framework}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: multirun/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
 
 parallel: True
 batch_T: 8
 batch_B: 32
-max_steps_decorrelate: 50
 device: "cpu"
 algo:
   replay_length: 800  # 100 iterations
@@ -27,7 +26,7 @@ q_model:
   hidden_sizes: []
 encoder:
   encoding_size: 1024
-eval_sampler:
+eval:
   max_traj_length: 2000
   max_trajectories: 20
   n_eval_envs: 8

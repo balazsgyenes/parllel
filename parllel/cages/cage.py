@@ -1,4 +1,3 @@
-# fmt: off
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -9,12 +8,10 @@ import numpy as np
 
 from parllel import Array, ArrayLike, ArrayOrMapping, ArrayTree, dict_map
 
-from .collections import (EnvInfoType, EnvRandomStepType, EnvSpaces,
-                          EnvStepType, ObsType)
+from .collections import EnvInfoType, EnvRandomStepType, EnvSpaces, EnvStepType, ObsType
 from .traj_info import TrajInfo
 
 
-# fmt: on
 class Cage(ABC):
     """Cages abstract communication between the sampler and the environments.
 
@@ -188,6 +185,14 @@ class Cage(ABC):
         is written there, otherwise it is returned the next time that
         await_step is called.
         """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_attr(self, name: str) -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_attr(self, name: str, value: Any) -> None:
         raise NotImplementedError
 
     @abstractmethod

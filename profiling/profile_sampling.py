@@ -4,7 +4,7 @@ from typing import Iterator
 
 import gymnasium as gym
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from parllel.cages import TrajInfo
 from parllel.cages.tests.dummy import DummyEnv
@@ -26,7 +26,7 @@ def build(config: DictConfig) -> Iterator[ProfilingSampler]:
     )
     TrajInfo.set_discount(0.99)
 
-    env_config = {**config["env"]}
+    env_config = OmegaConf.to_container(config["env"], throw_on_missing=True)
     EnvClass = env_config.pop("EnvClass")
     EnvClass = globals()[EnvClass]
 

@@ -9,7 +9,7 @@ from parllel import Array, ArrayDict
 from parllel.np_utils import broadcast_left_to_right
 
 from .advantage import compute_discount_return, compute_gae_advantage
-from .transform import BatchTransform
+from .transform import Transform
 
 
 class ProblemType(Enum):
@@ -21,7 +21,7 @@ class ProblemType(Enum):
     markov_game = 3
 
 
-class EstimateMultiAgentAdvantage(BatchTransform):
+class EstimateMultiAgentAdvantage(Transform):
     """Computes per-agent advantage based on a shared reward and agent-specific
     value estimates. This wrapper should be used any time the agent has a
     MultiDistribution, either because it is an EnsembleAgent, or because it
@@ -86,8 +86,12 @@ class EstimateMultiAgentAdvantage(BatchTransform):
         dict reward, dict value (markov game)
         scalar reward, scalar value (central critic, expand advantage)
         """
+        done = sample_tree["done"]
+        assert isinstance(done, Array)
+        assert len(done.batch_shape) == 2
+
         reward = sample_tree["reward"]
-        done = np.asarray(sample_tree["done"])
+        done = np.asarray(done)
         value = np.asarray(sample_tree["agent_info"]["value"])
         bootstrap_value = np.asarray(sample_tree["bootstrap_value"])
         advantage = np.asarray(sample_tree["advantage"])
@@ -98,11 +102,14 @@ class EstimateMultiAgentAdvantage(BatchTransform):
             # bootstrap value. the subagents might not be defined in the same
             # order in the agent as they are in the environment
             action = sample_tree["action"]
+            assert isinstance(reward, ArrayDict)
+            assert isinstance(action, ArrayDict)
             reward = np.stack(
                 (reward[agent_key] for agent_key in action),
                 axis=-1,
             )
         else:
+            assert isinstance(reward, Array)
             reward = np.asarray(reward)
 
         # add T dimension to bootstrap_value so it can be broadcast with

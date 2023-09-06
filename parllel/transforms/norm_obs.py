@@ -7,12 +7,12 @@ import numpy as np
 from parllel import Array, ArrayDict
 
 from .running_mean_std import RunningMeanStd
-from .transform import StepTransform
+from .transform import Transform
 
 EPSILON = 1e-6
 
 
-class NormalizeObservations(StepTransform):
+class NormalizeObservations(Transform):
     """Normalizes the observation by subtracting the mean and dividing by the
     standard deviation.
 
@@ -54,17 +54,21 @@ class NormalizeObservations(StepTransform):
         else:
             self.obs_statistics = RunningMeanStd(shape=obs_shape)
 
-    def __call__(self, sample_tree: ArrayDict[Array], t: int) -> ArrayDict[Array]:
-        step_obs = np.asarray(sample_tree["observation"][t])
+    def __call__(self, sample_tree: ArrayDict[Array]) -> ArrayDict[Array]:
+        step_obs = sample_tree["observation"]
+        assert isinstance(step_obs, Array)
+        assert len(step_obs.batch_shape) == 1
+        step_obs_np = np.asarray(step_obs)
 
         # update statistics of each element of observation
         if self.only_valid:
-            valid = sample_tree["valid"][t]
+            valid = sample_tree["valid"]
             # this fancy indexing operation creates a copy, but that's fine
-            self.obs_statistics.update(step_obs[valid])
-        else:
-            self.obs_statistics.update(step_obs)
+            step_obs_np = step_obs_np[valid]
 
+        self.obs_statistics.update(step_obs_np)
+
+        # this subtraction operation works because mean is an np_array
         step_obs[:] = (step_obs - self.obs_statistics.mean) / (
             np.sqrt(self.obs_statistics.var + EPSILON)
         )
