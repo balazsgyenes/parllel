@@ -214,7 +214,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         callbacks = [
             RecordingSchedule(
                 video_recorder_transform=video_recorder,
-                cages=eval_sampler.envs,
+                cages=eval_cages,
                 trigger="on_eval",
             )
         ]

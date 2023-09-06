@@ -1,0 +1,26 @@
+defaults:
+  - ppo@algo
+  - frozenlake@env
+  - _self_
+
+hydra:
+  job:
+    name: frozenlake-ppo
+  run:
+    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: multirun/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+
+batch_T: 128
+batch_B: 8
+reward_clip_min: -5
+reward_clip_max: 5
+device: cpu
+runner:
+  n_steps: 200000
+  log_interval_steps: 20000
+video:
+  video_length: 50
+  n_envs: 3
+  tiled_height: 1
+  tiled_width: 3
