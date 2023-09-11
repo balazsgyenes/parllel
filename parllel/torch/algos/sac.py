@@ -224,8 +224,6 @@ class SAC(Algorithm):
         # unfreeze Q models for next training iteration
         self.agent.freeze_q_models(False)
 
-        self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
-
 
 def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array]:
     replay_buffer_tree = ArrayDict(
