@@ -172,6 +172,8 @@ class SAC(Algorithm):
         q1, q2 = self.agent.q(observation, samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
         self.algo_log_info["critic_loss"].append(q_loss.item())
+        self.algo_log_info["mean_ent_bonus"].append(entropy_bonus.mean().item())
+        self.algo_log_info["ent_coeff"].append(entropy_coeff.item())
 
         # update Q model parameters according to Q loss
         self.q_optimizer.zero_grad()
@@ -208,6 +210,8 @@ class SAC(Algorithm):
         pi_loss = valid_mean(pi_losses)
         self.algo_log_info["q_min"].append(min_q.min().item())
         self.algo_log_info["q_max"].append(min_q.max().item())
+        self.algo_log_info["target_q_min"].append(min_target_q.min().item())
+        self.algo_log_info["target_q_max"].append(min_target_q.max().item())
 
         # update Pi model parameters according to pi loss
         self.pi_optimizer.zero_grad()
