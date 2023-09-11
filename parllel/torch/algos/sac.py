@@ -33,9 +33,9 @@ class SAC(Algorithm):
         replay_ratio: int,  # data_consumption / data_generation
         target_update_tau: float,  # tau=1 for hard update.
         target_update_interval: int,  # 1000 for hard update, 1 for soft.
+        clip_grad_norm: float,
         ent_coeff: float,
-        clip_grad_norm: float | None = None,
-        learning_rate_schedulers: Sequence[LRScheduler] | None = None,
+        ent_coeff_lr: float | None = None,
         **kwargs,  # ignore additional arguments
     ):
         """Save input arguments."""
