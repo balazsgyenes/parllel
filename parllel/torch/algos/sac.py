@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import Tensor
 from torch.nn.utils.clip_grad import clip_grad_norm_
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import _LRScheduler
 
 import parllel.logger as logger
 from parllel import Array, ArrayDict
@@ -37,7 +37,7 @@ class SAC(Algorithm):
         ent_coeff: float,
         ent_coeff_lr: float | None = None,
         clip_grad_norm: float | None = None,
-        learning_rate_schedulers: Sequence[LRScheduler] | None = None,
+        learning_rate_schedulers: Sequence[_LRScheduler] | None = None,
         **kwargs,  # ignore additional arguments
     ):
         """Save input arguments."""
