@@ -179,13 +179,14 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
         elif isinstance(t_index, np.ndarray):
             graphs = []
             num_elements = []
-            for i, array in enumerate(self.jagged_arrays):
-                mask = array_idx == i
+            for i, a_idx in enumerate(array_idx):
                 new_current_location = tuple(
-                    loc[mask] if isinstance(loc, np.ndarray) else loc
+                    int(loc[i]) if isinstance(loc, np.ndarray) else loc
                     for loc in current_location
                 )
-                new_graphs, new_nums = array[new_current_location].to_list()
+                new_graphs, new_nums = self.jagged_arrays[a_idx][
+                    new_current_location
+                ].to_list()
                 graphs.extend(new_graphs)
                 num_elements.extend(new_nums)
 
