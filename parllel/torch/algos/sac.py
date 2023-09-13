@@ -208,6 +208,8 @@ class SAC(Algorithm):
         pi_losses = entropy_coeff * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
 
+        self.algo_log_info["actor_loss"].append(pi_loss.item())
+
         # update Pi model parameters according to pi loss
         self.pi_optimizer.zero_grad()
         pi_loss.backward()
