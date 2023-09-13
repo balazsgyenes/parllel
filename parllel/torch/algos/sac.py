@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
-from itertools import chain
+from typing import Sequence
 
 import numpy as np
 import torch
 from torch import Tensor
 from torch.nn.utils.clip_grad import clip_grad_norm_
-from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.lr_scheduler import LRScheduler
 
 import parllel.logger as logger
 from parllel import Array, ArrayDict
@@ -34,10 +33,10 @@ class SAC(Algorithm):
         replay_ratio: int,  # data_consumption / data_generation
         target_update_tau: float,  # tau=1 for hard update.
         target_update_interval: int,  # 1000 for hard update, 1 for soft.
-        clip_grad_norm: float,
         ent_coeff: float,
+        ent_coeff_lr: float | None = None,
         clip_grad_norm: float | None = None,
-        learning_rate_schedulers: Sequence[_LRScheduler] | None = None,
+        learning_rate_schedulers: Sequence[LRScheduler] | None = None,
         **kwargs,  # ignore additional arguments
     ):
         """Save input arguments."""
@@ -203,10 +202,6 @@ class SAC(Algorithm):
         min_q = torch.min(q1, q2)
         pi_losses = entropy_coeff * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
-        self.algo_log_info["q_min"].append(min_q.min().item())
-        self.algo_log_info["q_max"].append(min_q.max().item())
-        self.algo_log_info["target_q_min"].append(min_target_q.min().item())
-        self.algo_log_info["target_q_max"].append(min_target_q.max().item())
 
         # update Pi model parameters according to pi loss
         self.pi_optimizer.zero_grad()
