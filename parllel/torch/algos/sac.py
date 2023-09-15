@@ -173,6 +173,8 @@ class SAC(Algorithm):
         self.algo_log_info["critic_loss"].append(q_loss.item())
         self.algo_log_info["mean_ent_bonus"].append(entropy_bonus.mean().item())
         self.algo_log_info["ent_coeff"].append(entropy_coeff.item())
+        self.algo_log_info["max_reward"].append(samples["reward"].max().item())
+        self.algo_log_info["min_reward"].append(samples["reward"].min().item())
 
         # update Q model parameters according to Q loss
         self.q_optimizer.zero_grad()
@@ -215,6 +217,8 @@ class SAC(Algorithm):
                 self.clip_grad_norm,
             )
             self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
+
+        self.algo_log_info["actor_loss"].append(pi_loss.item())
 
         self.pi_optimizer.step()
 
