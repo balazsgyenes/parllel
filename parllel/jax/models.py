@@ -29,14 +29,14 @@ class ActorCriticModel(nn.Module):
             x = nn.Dense(features=size)(x)
             x = nn.relu(x)
 
-        probs = nn.Dense(features=self.action_dim)(x)
+        probs = nn.Dense(features=self.action_dim)(x).squeeze()
         # log_std = nn.Dense(features=self.action_dim)
 
         x = input
         for size in self.critic_hidden_sizes:
             x = nn.Dense(features=size)(x)
             x = nn.relu(x)
-        value = nn.Dense(features=1)(x)
+        value = nn.Dense(features=1)(x).squeeze()
 
         dist_params = DistParams(probs=probs)
         return ModelOutputs(dist_params=dist_params, value=value)

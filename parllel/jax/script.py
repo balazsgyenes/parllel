@@ -35,9 +35,10 @@ def add_agent_info(
     state,
     sample_tree: ArrayDict[Array],
     example_obs_batch: ArrayTree,
+    key: jax.random.PRNGKey,
 ) -> ArrayDict[Array]:
     # get example output from agent
-    _, agent_info = agent.step(state.apply_fn, state.params, example_obs_batch)
+    _, agent_info = agent.step(state.apply_fn, state.params, example_obs_batch, key)
 
     batch_shape = sample_tree["done"].batch_shape
 
@@ -94,11 +95,13 @@ def build(config):
 
     init_shape = jnp.ones((1, *obs_space.shape))
     key = jax.random.PRNGKey(0)
-    initial_params = model.init(key, init_shape)["params"]
+    key, subkey = jax.random.split(key)
+    initial_params = model.init(subkey, init_shape)["params"]
 
     state = create_train_state(initial_params, model, 0.001)
 
-    sample_tree = add_agent_info(state, sample_tree, metadata.example_obs_batch)
+    key, subkey = jax.random.split(key)
+    sample_tree = add_agent_info(state, sample_tree, metadata.example_obs_batch, subkey)
     sample_tree = add_bootstrap_value(sample_tree)
 
     # add several helpful transforms
@@ -131,11 +134,13 @@ def build(config):
         gae_lambda=config["algo"]["gae_lambda"],
         normalize=config["algo"]["normalize_advantage"],
     )
+    key, subkey = jax.random.split(key)
     sampler = JaxSampler(
         batch_spec,
         cages,
         agent,
         sample_tree,
+        key=subkey,
         max_steps_decorrelate=10,
         obs_transform=Compose(step_transforms),  # type: ignore
         batch_transform=Compose(batch_transforms),  # type: ignore
@@ -150,7 +155,7 @@ def build(config):
         tree=loss_sample_tree,
         sampler_batch_spec=batch_spec,
         n_batches=4,
-        pre_batches_transform=lambda tree: jax.device_put(tree),
+        # pre_batches_transform=lambda tree: jax.device_put(tree.to_ndarray()),
     )
     algorithm = PPO(state=state, dataloader=dataloader, **config["algo"])
 
@@ -168,7 +173,6 @@ def build(config):
 
 @hydra.main(version_base=None, config_path="conf", config_name="train_ppo")
 def main(config: DictConfig) -> None:
-    mp.set_start_method("fork")
 
     # run = wandb.init(
     #     anonymous="must",  # for this example, send to wandb dummy account

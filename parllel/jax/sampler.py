@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable, Sequence
 
 import flax
+import jax
 import numpy as np
 from flax.training.train_state import TrainState
 
@@ -12,6 +13,8 @@ from parllel.cages import Cage, TrajInfo
 from parllel.samplers.sampler import Sampler
 from parllel.transforms import BatchTransform, StepTransform
 from parllel.types import BatchSpec
+
+import jax
 
 
 class JaxSampler(Sampler):
@@ -25,6 +28,7 @@ class JaxSampler(Sampler):
         envs: Sequence[Cage],
         agent,
         sample_tree: ArrayDict[Array],
+        key: jax.random.PRNGKey,
         max_steps_decorrelate: int | None = None,
         get_bootstrap_value: bool = False,
         obs_transform: StepTransform | None = None,
@@ -54,6 +58,7 @@ class JaxSampler(Sampler):
         self.obs_transform = obs_transform
         self.batch_transform = batch_transform
         self.agent = agent
+        self.key = key
 
         # prepare cages and agent for sampling
         self.reset()
@@ -86,9 +91,10 @@ class JaxSampler(Sampler):
             if self.obs_transform is not None:
                 sample_tree = self.obs_transform(sample_tree, t)
 
+            self.key, subkey = jax.random.split(self.key)
             # agent observes environment and outputs actions
             action[t], agent_info[t] = self.agent.step(
-                state.apply_fn, state.params, observation[t]
+                state.apply_fn, state.params, observation[t], subkey
             )
 
             for b, env in enumerate(self.envs):

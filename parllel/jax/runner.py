@@ -7,6 +7,7 @@ from parllel.jax import agent
 from parllel.runners.runner import Runner
 from parllel.samplers import EvalSampler, Sampler
 from parllel.types import BatchSpec
+import jax
 
 
 class JaxRunner(Runner):
@@ -58,7 +59,7 @@ class JaxRunner(Runner):
                 self.log_progress(elapsed_steps, itr)
 
             batch_samples, completed_trajs = self.sampler.collect_batch(
-                elapsed_steps, state
+                state, elapsed_steps
             )
             self.record_completed_trajectories(
                 completed_trajs,

@@ -33,6 +33,7 @@ def step(
     apply_fn: Callable[..., Any],
     params: flax.core.frozen_dict.FrozenDict,
     observation: Array,
+    key: jax.random.PRNGKey,
 ):
     """
     Forward pass of the network
@@ -45,10 +46,18 @@ def step(
     observation = dict_map(jnp.asarray, observation)
     model_outputs = apply_fn({"params": params}, observation)
     dist_params = model_outputs["dist_params"]
-    action = nn.softmax(dist_params["probs"])
+    logits = dist_params["probs"]
+    # output action directly for now
+    # see https://stats.stackexchange.com/questions/359442/sampling-from-a-categorical-distribution
+    u = jax.random.uniform(key, shape=logits.shape)
+    action = jnp.argmax(logits - jnp.log( -jnp.log(u)), axis=1)
     agent_info = ArrayDict({"dist_params": dist_params})
     agent_info["value"] = model_outputs["value"]
     return action, agent_info
 
+
 def reset():
+    pass
+
+def reset_one(*args):
     pass
