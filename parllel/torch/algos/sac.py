@@ -52,7 +52,7 @@ class SAC(Algorithm):
 
         replay_batch_size = self.replay_buffer.replay_batch_size
         self.updates_per_optimize = int(
-            self.replay_ratio * batch_spec.size / replay_batch_size
+            max(1, self.replay_ratio * batch_spec.size / replay_batch_size)
         )
         logger.info(
             f"{type(self).__name__}: From sampler batch size {batch_spec.size}, "

@@ -7,8 +7,7 @@ from typing import Any, Literal, TypeVar
 
 import numpy as np
 
-from parllel.arrays.indices import (Location, StandardIndex, add_locations,
-                                    init_location)
+from parllel.arrays.indices import Location, StandardIndex, add_locations, init_location
 from parllel.arrays.jagged import JaggedArray
 
 
@@ -177,18 +176,20 @@ class JaggedArrayList(JaggedArray):  # do not register subclass
             return self.jagged_arrays[array_idx][current_location].to_list()  # type: ignore
 
         elif isinstance(t_index, np.ndarray):
-            graphs = []
-            num_elements = []
-            for i, a_idx in enumerate(array_idx):
+            graphs: list[np.ndarray] = [None] * len(t_index)  # type: ignore
+            num_elements: list[int] = [None] * len(t_index)  # type: ignore
+            for i, array in enumerate(self.jagged_arrays):
+                mask = array_idx == i
                 new_current_location = tuple(
-                    int(loc[i]) if isinstance(loc, np.ndarray) else loc
+                    loc[mask] if isinstance(loc, np.ndarray) else loc
                     for loc in current_location
                 )
-                new_graphs, new_nums = self.jagged_arrays[a_idx][
-                    new_current_location
-                ].to_list()
-                graphs.extend(new_graphs)
-                num_elements.extend(new_nums)
+                new_graphs, new_nums = array[new_current_location].to_list()
+                for j, new_graph, new_num in zip(
+                    mask.nonzero()[0], new_graphs, new_nums
+                ):
+                    graphs[j] = new_graph
+                    num_elements[j] = new_num
 
             return graphs, num_elements
         else:
