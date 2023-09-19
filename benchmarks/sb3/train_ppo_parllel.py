@@ -2,14 +2,14 @@ from contextlib import contextmanager
 from functools import partial
 from typing import Iterator
 
-# isort: off
 import gymnasium as gym
+import hydra
 import torch
 import wandb
 from gymnasium import spaces
-from omegaconf import DictConfig
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig, OmegaConf
 
-# isort: on
 import parllel.logger as logger
 from parllel.callbacks import RecordingSchedule
 from parllel.patterns import (
@@ -245,3 +245,30 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
             cage.close()
         for cage in cages:
             cage.close()
+
+
+@hydra.main(version_base=None, config_path="conf")
+def main(config: DictConfig) -> None:
+    run = wandb.init(
+        project="parllel",
+        tags=["ppo", config["env_name"]],
+        config=OmegaConf.to_container(config, resolve=True, throw_on_missing=True),
+        sync_tensorboard=True,  # auto-upload any values logged to tensorboard
+        save_code=True,  # save script used to start training, git commit, and patch
+    )
+
+    logger.init(
+        wandb_run=run,
+        log_dir=HydraConfig.get().runtime.output_dir,
+        tensorboard=True,
+    )
+
+    with build(config) as runner:
+        runner.run()
+
+    logger.close()
+    run.finish()
+
+
+if __name__ == "__main__":
+    main()
