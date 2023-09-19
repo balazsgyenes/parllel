@@ -5,8 +5,9 @@ defaults:
 
 hydra:
   job:
-    name: walker2d-sac
+    name: hopper-sac
 
-env_name: Walker2d-v4
+env_name: Hopper-v4
 algo:
+  learning_rate: 7.3e-4
   learning_rate_type: linear

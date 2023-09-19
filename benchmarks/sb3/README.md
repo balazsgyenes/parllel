@@ -8,9 +8,11 @@ We cannot directly compare against previously published performance metrics for 
 
 ## Running the Benchmarks
 
-Run a benchmarking script once using: `python [script_name]`
+Run a benchmarking script once using: `python train_[algo]_[framework].py --config-name [algo]_[framework]_[env_name]`
 
-Run a benchmarking script with several (e.g. 5) random seeds using: `python [script_name] -m +iteration="range(5)"`
+For example, train SAC on HalfCheetah using parllel using: `python train_sac_parllel.py --config-name sac_parllel_cheetah`
+
+Run a benchmarking script with several (e.g. 5) random seeds using: `python train_[algo]_[framework].py --config-name [algo]_[framework]_[env_name] -m +iteration="range(5)"`
 
 Run all benchmarking scripts with 5 random seeds each using: `bash train_all.sh`
 
