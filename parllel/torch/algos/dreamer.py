@@ -13,11 +13,12 @@ from parllel import Array, ArrayDict
 from parllel.algorithm import AlgoInfoType, Algorithm
 from parllel.replays.replay import ReplayBuffer
 from parllel.torch.agents.sac_agent import SacAgent
+from parllel.torch.objectives import Loss
 from parllel.torch.utils import valid_mean
 from parllel.types.batch_spec import BatchSpec
 
 
-class SAC(Algorithm):
+class Dreamer(Algorithm):
     """Soft actor critic algorithm, training from a replay buffer."""
 
     def __init__(
@@ -25,6 +26,7 @@ class SAC(Algorithm):
         batch_spec: BatchSpec,
         agent: SacAgent,
         replay_buffer: ReplayBuffer[ArrayDict[Tensor]],
+        losses: Sequence[Loss],
         q_optimizer: torch.optim.Optimizer,
         pi_optimizer: torch.optim.Optimizer,
         discount: float,
@@ -52,7 +54,7 @@ class SAC(Algorithm):
 
         replay_batch_size = self.replay_buffer.replay_batch_size
         self.updates_per_optimize = int(
-            max(1, self.replay_ratio * batch_spec.size / replay_batch_size)
+            self.replay_ratio * batch_spec.size / replay_batch_size
         )
         logger.info(
             f"{type(self).__name__}: From sampler batch size {batch_spec.size}, "

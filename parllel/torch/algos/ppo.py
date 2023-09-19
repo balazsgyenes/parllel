@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 
 import parllel.logger as logger
 from parllel import Array, ArrayDict
-from parllel.algorithm import Algorithm
+from parllel.algorithm import AlgoInfoType, Algorithm
 from parllel.replays import BatchedDataLoader
 from parllel.torch.agents.pg import PgAgent, PgPrediction
 from parllel.torch.utils import explained_variance, valid_mean
@@ -71,7 +71,7 @@ class PPO(Algorithm):
         self,
         elapsed_steps: int,
         samples: ArrayDict[Array],
-    ) -> dict[str, int | list[float]]:
+    ) -> AlgoInfoType:
         """
         Train the agent, for multiple epochs over minibatches taken from the
         input samples.  Organizes agent inputs from the training data, and
