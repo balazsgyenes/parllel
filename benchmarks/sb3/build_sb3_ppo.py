@@ -1,21 +1,19 @@
 from contextlib import contextmanager
 from typing import Iterator
 
+import torch.nn
 from omegaconf import DictConfig, OmegaConf, open_dict
-from stable_baselines3 import SAC
+from stable_baselines3 import PPO
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import CallbackList, EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import VecNormalize
 from wandb.integration.sb3 import WandbCallback
 
 
 @contextmanager
 def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, dict]]:
     with open_dict(config):
-        # because rl-baselines3-zoo uses one training environment, train_freq is defined in global steps, not steps per environment
-        config["algo"]["train_freq"] = max(
-            1, config["algo"]["train_freq"] // config["n_envs"]
-        )
         # eval_interval_steps is defined in global steps, not steps per environment
         config["eval_interval_steps"] = max(
             1, config["eval_interval_steps"] // config["n_envs"]
@@ -25,12 +23,18 @@ def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, dict]]:
         env_id=config["env_name"],
         n_envs=config["n_envs"],
     )
+    if config["normalize"]:
+        env = VecNormalize(env, gamma=config["algo"]["gamma"])
 
     algo_config = OmegaConf.to_container(
         config["algo"],
         resolve=True,
         throw_on_missing=True,
     )
+
+    activation_fn = algo_config["policy_kwargs"]["activation_fn"]
+    activation_fn = getattr(torch.nn, activation_fn)
+    algo_config["policy_kwargs"]["activation_fn"] = activation_fn
 
     if isinstance(lr := algo_config["learning_rate"], str):
         schedule, initial_value = lr.split("_")
@@ -42,7 +46,7 @@ def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, dict]]:
 
         algo_config["learning_rate"] = linear_schedule
 
-    model = SAC(
+    model = PPO(
         "MlpPolicy",
         env,
         verbose=1,
@@ -54,6 +58,14 @@ def build(config: DictConfig) -> Iterator[tuple[BaseAlgorithm, dict]]:
         env_id=config["env_name"],
         n_envs=config["n_eval_envs"],
     )
+    if config["normalize"]:
+        eval_env = VecNormalize(
+            eval_env,
+            training=False,
+            norm_reward=False,
+            gamma=config["algo"]["gamma"],
+        )
+
     eval_callback = EvalCallback(
         eval_env,
         n_eval_episodes=config["n_eval_episodes"],

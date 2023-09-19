@@ -1,0 +1,28 @@
+framework: sb3
+n_envs: 16
+n_eval_envs: 1
+n_steps: 2.0e+6
+deterministic_eval_mode: False  # rl-baselines3-zoo uses non-deterministic eval only for Atari and "minigrid" environments
+eval_interval_steps: 50000  # from SB3: https://stable-baselines3.readthedocs.io/en/master/modules/sac.html#how-to-replicate-the-results
+n_eval_episodes: 10  # from SB3: https://stable-baselines3.readthedocs.io/en/master/modules/sac.html#how-to-replicate-the-results
+normalize: True
+algo:  # taken from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/ppo.yml
+  batch_size: 128
+  n_steps: 512
+  gamma: 0.99
+  gae_lambda: 0.9
+  n_epochs: 20
+  ent_coef: 0.0
+  # sde_sample_freq: 4  # parllel doesn't support gSDE
+  max_grad_norm: 0.5
+  vf_coef: 0.5
+  learning_rate: 3.0e-5
+  # use_sde: True  # parllel doesn't support gSDE
+  clip_range: 0.4
+  policy_kwargs:
+    log_std_init: -2
+    ortho_init: False
+    activation_fn: ReLU
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]

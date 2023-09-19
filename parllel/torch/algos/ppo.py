@@ -6,8 +6,9 @@ from typing import Any, Literal
 import numpy as np
 import torch
 from torch import Tensor
+from torch.nn.utils.clip_grad import clip_grad_norm_
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.lr_scheduler import LRScheduler
 
 import parllel.logger as logger
 from parllel import Array, ArrayDict
@@ -39,7 +40,7 @@ class PPO(Algorithm):
         entropy_loss_coeff: float,
         epochs: int,
         clip_grad_norm: float | None = None,
-        learning_rate_scheduler: _LRScheduler | None = None,
+        learning_rate_scheduler: LRScheduler | None = None,
         value_clipping_mode: Literal["ratio", "delta", "delta_max"] | None = None,
         value_clip: float | None = None,
         kl_divergence_limit: float = np.inf,
@@ -92,7 +93,7 @@ class PPO(Algorithm):
                 loss.backward()
                 if self.clip_grad_norm is not None:
                     # TODO: compute and log grad_norm even if not clipping
-                    grad_norm = torch.nn.utils.clip_grad_norm_(
+                    grad_norm = clip_grad_norm_(
                         self.agent.model.parameters(),
                         self.clip_grad_norm,
                     )
@@ -198,7 +199,7 @@ class PPO(Algorithm):
                 logger.info(
                     f"Reached the maximum KL divergence limit of {self.kl_divergence_limit} at step {self.update_counter}, stopping further updates."
                 )
-                return loss
+                return loss, agent_prediction
 
             perplexity = dist.mean_perplexity(dist_params, valid)
 

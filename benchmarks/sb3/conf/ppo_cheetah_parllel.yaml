@@ -1,0 +1,10 @@
+defaults:
+  - ppo_parllel
+  - logdirs
+  - _self_
+
+hydra:
+  job:
+    name: cheetah-ppo
+
+env_name: HalfCheetah-v4

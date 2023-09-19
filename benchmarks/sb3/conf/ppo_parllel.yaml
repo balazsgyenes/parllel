@@ -1,0 +1,41 @@
+framework: parllel
+parallel: False  # for fast environments, no speedup with parallel processes
+device: null
+batch_T: 512  # corresponds to "n_steps" in SB3 PPO
+batch_B: 16
+reward_clip_min: -5
+reward_clip_max: 5
+obs_norm_initial_count: 10000
+max_steps_decorrelate: 0
+model:
+  pi_hidden_sizes: [256, 256]  # from rl-baselines3-zoo
+  vf_hidden_sizes: [256, 256]  # from rl-baselines3-zoo
+  init_log_std: -2  # from rl-baselines3-zoo
+  hidden_nonlinearity: ReLU  # from rl-baselines3-zoo
+distribution:
+  deterministic_eval_mode: False  # from rl-baselines3-zoo
+algo:  # all parameters from rl-baselines3-zoo
+  discount: 0.99
+  gae_lambda: 0.9
+  normalize_advantage: True
+  ratio_clip: 0.4
+  value_loss_coeff: 0.5
+  entropy_loss_coeff: 0.0
+  epochs: 20
+  batch_size: 128
+  clip_grad_norm: 0.5
+  learning_rate: 3.0e-5
+  learning_rate_type: constant
+eval:
+  max_traj_length: 2000
+  max_trajectories: 40
+  n_eval_envs: 16
+runner:
+  n_steps: 2.0e+6
+  log_interval_steps: 50000
+  eval_interval_steps: ${runner.log_interval_steps}
+video:
+  video_length: 250
+  n_envs: 3
+  tiled_height: 1
+  tiled_width: 3

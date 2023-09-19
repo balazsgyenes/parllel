@@ -24,7 +24,8 @@ class BatchedDataLoader(Generic[TreeType]):
         self,
         tree: ArrayDict,
         sampler_batch_spec: BatchSpec,  # TODO: can this be inferred?
-        n_batches: int,
+        n_batches: int | None = None,
+        batch_size: int | None = None,
         batch_only_fields: list[str] | None = None,
         recurrent: bool = False,
         shuffle: bool = True,
@@ -42,16 +43,47 @@ class BatchedDataLoader(Generic[TreeType]):
 
         # If recurrent, use whole trajectories, only shuffle B; else shuffle all.
         self.size = sampler_batch_spec.B if recurrent else sampler_batch_spec.size
-        self.batch_size = self.size // n_batches
 
-        if self.size % n_batches != 0:
-            logger.warn(
-                f"{self.size} {'trajectories' if self.recurrent else 'samples'} "
-                f"cannot be split evenly into {n_batches} batches. The final "
-                f"batch will be {'dropped' if drop_last else 'truncated'}. "
-                "To avoid this, modify n_batches when creating the "
-                "BatchedDataLoader. "
+        if batch_size is None and n_batches is None:
+            raise ValueError("Must specify either `batch_size` or `n_batches`.")
+        if batch_size is not None and n_batches is not None:
+            raise ValueError(
+                "Must specify either `batch_size` or `n_batches` but not both."
             )
+        if batch_size is not None:
+            self.batch_size = batch_size
+
+            if self.size % batch_size != 0:
+                logger.warn(
+                    f"{self.size} {'trajectories' if self.recurrent else 'samples'} "
+                    f"cannot be split evenly into batches of {batch_size}. The final "
+                    f"batch will be {'dropped' if drop_last else 'truncated'}. "
+                    "To avoid this, modify n_batches when creating the "
+                    "BatchedDataLoader. "
+                )
+            else:
+                logger.info(
+                    f"{type(self).__name__}: Using a batch size of {batch_size}, "
+                    f"resulting in {self.size // batch_size} minibatches."
+                )
+
+        elif n_batches is not None:
+            self.batch_size = self.size // n_batches
+
+            if self.size % n_batches != 0:
+                logger.warn(
+                    f"{self.size} {'trajectories' if self.recurrent else 'samples'} "
+                    f"cannot be split evenly into {n_batches} batches. The final "
+                    f"batch will be {'dropped' if drop_last else 'truncated'}. "
+                    "To avoid this, modify n_batches when creating the "
+                    "BatchedDataLoader. "
+                )
+            else:
+                logger.info(
+                    f"{type(self).__name__}: Using a batch size of {self.batch_size} "
+                    f"computed from a sampler batch size of {self.size} divided into "
+                    f"{n_batches} minibatches."
+                )
 
         if pre_batches_transform is None:
             pre_batches_transform = lambda x: x

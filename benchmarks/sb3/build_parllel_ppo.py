@@ -1,4 +1,3 @@
-import itertools
 from contextlib import contextmanager
 from functools import partial
 from typing import Iterator
@@ -13,20 +12,29 @@ from omegaconf import DictConfig
 # isort: on
 import parllel.logger as logger
 from parllel.callbacks import RecordingSchedule
-from parllel.patterns import build_cages, build_sample_tree
-from parllel.replays import ReplayBuffer
+from parllel.patterns import (
+    add_advantage_estimation,
+    add_agent_info,
+    add_bootstrap_value,
+    add_obs_normalization,
+    add_reward_clipping,
+    add_reward_normalization,
+    build_cages,
+    build_sample_tree,
+)
+from parllel.replays import BatchedDataLoader
 from parllel.runners import RLRunner
 from parllel.samplers import BasicSampler
 from parllel.samplers.eval import EvalSampler
-from parllel.torch.agents.sac_agent import SacAgent
-from parllel.torch.algos.sac import SAC, build_replay_buffer_tree
-from parllel.torch.distributions.squashed_gaussian import SquashedGaussian
+from parllel.torch.agents.gaussian import GaussianPgAgent
+from parllel.torch.algos.ppo import PPO, build_loss_sample_tree
+from parllel.torch.distributions import Gaussian
 from parllel.transforms import RecordVectorizedVideo
 from parllel.types import BatchSpec
 
 # isort: split
 from common.traj_infos import SB3EvalTrajInfo, SB3TrajInfo
-from models.sac_q_and_pi import PiMlpModel, QMlpModel
+from models.gaussian_pg_mlp import GaussianPgMlpModel
 
 
 @contextmanager
@@ -54,125 +62,116 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         render_mode="rgb_array" if video_config is not None else None,
     )
 
-    replay_length = int(config["algo"]["replay_size"]) // batch_spec.B
-    replay_length = (replay_length // batch_spec.T) * batch_spec.T
     sample_tree, metadata = build_sample_tree(
         env_metadata=metadata,
         batch_spec=batch_spec,
         parallel=parallel,
-        full_size=replay_length,
     )
     obs_space, action_space = metadata.obs_space, metadata.action_space
     assert isinstance(obs_space, spaces.Box)
     assert isinstance(action_space, spaces.Box)
 
     # instantiate models
-    pi_model = PiMlpModel(
+    model = GaussianPgMlpModel(
         obs_space=obs_space,
         action_space=action_space,
-        **config["pi_model"],
+        **config["model"],
     )
-    q1_model = QMlpModel(
-        obs_space=obs_space,
-        action_space=action_space,
-        **config["q_model"],
-    )
-    q2_model = QMlpModel(
-        obs_space=obs_space,
-        action_space=action_space,
-        **config["q_model"],
-    )
-    model = torch.nn.ModuleDict(
-        {
-            "pi": pi_model,
-            "q1": q1_model,
-            "q2": q2_model,
-        }
-    )
-    distribution = SquashedGaussian(
-        dim=action_space.shape[0],
-        scale=action_space.high[0],
-        **config["distribution"],
-    )
+    distribution = Gaussian(dim=action_space.shape[0], **config["distribution"])
     device = config["device"] or ("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.config.update({"device": device}, allow_val_change=True)
     device = torch.device(device)
 
     # instantiate agent
-    agent = SacAgent(
+    agent = GaussianPgAgent(
         model=model,
         distribution=distribution,
+        example_obs=metadata.example_obs_batch,
         device=device,
-        learning_starts=config["algo"]["random_explore_steps"],
     )
 
-    # SAC requires no agent_info, so no need to add to sample_tree
+    # add agent info, which stores value predictions
+    sample_tree = add_agent_info(sample_tree, agent, metadata.example_obs_batch)
+
+    # for advantage estimation, we need to estimate the value of the last
+    # state in the batch
+    sample_tree = add_bootstrap_value(sample_tree)
+
+    # add several helpful transforms
+    batch_transforms, step_transforms = [], []
+
+    sample_tree, step_transforms = add_obs_normalization(
+        sample_tree,
+        step_transforms,
+        initial_count=config["obs_norm_initial_count"],
+    )
+
+    sample_tree, batch_transforms = add_reward_normalization(
+        sample_tree,
+        batch_transforms,
+        discount=config["algo"]["discount"],
+    )
+
+    sample_tree, batch_transforms = add_reward_clipping(
+        sample_tree,
+        batch_transforms,
+        reward_clip_min=config["reward_clip_min"],
+        reward_clip_max=config["reward_clip_max"],
+    )
+
+    # add advantage normalization, required for PPO
+    sample_tree, batch_transforms = add_advantage_estimation(
+        sample_tree,
+        batch_transforms,
+        discount=config["algo"]["discount"],
+        gae_lambda=config["algo"]["gae_lambda"],
+        normalize=config["algo"]["normalize_advantage"],
+    )
 
     sampler = BasicSampler(
         batch_spec=batch_spec,
         envs=cages,
         agent=agent,
         sample_tree=sample_tree,
+        max_steps_decorrelate=config["max_steps_decorrelate"],
+        get_bootstrap_value=True,
+        step_transforms=step_transforms,
+        batch_transforms=batch_transforms,
     )
 
-    replay_buffer_tree = build_replay_buffer_tree(sample_tree)
-    # because we are only using standard Array types which behave the same as
-    # torch Tensors, we can torchify the entire replay buffer here instead of
-    # doing it for each batch individually
-    replay_buffer_tree = replay_buffer_tree.to_ndarray()
-    replay_buffer_tree = replay_buffer_tree.apply(torch.from_numpy)
+    loss_sample_tree = build_loss_sample_tree(sample_tree)
+    loss_sample_tree = loss_sample_tree.to_ndarray()
+    loss_sample_tree = loss_sample_tree.apply(torch.from_numpy)
 
-    replay_buffer = ReplayBuffer(
-        tree=replay_buffer_tree,
+    dataloader = BatchedDataLoader(
+        tree=loss_sample_tree,
         sampler_batch_spec=batch_spec,
-        size_T=replay_length,
-        replay_batch_size=config["algo"]["batch_size"],
-        newest_n_samples_invalid=0,
-        oldest_n_samples_invalid=1,
-        batch_transform=lambda tree: tree.to(device=device),
+        batch_size=config["algo"]["batch_size"],
+        pre_batches_transform=lambda tree: tree.to(device=device),
     )
 
-    q_optimizer = torch.optim.Adam(
-        itertools.chain(
-            agent.model["q1"].parameters(),
-            agent.model["q2"].parameters(),
-        ),
-        lr=config["algo"]["learning_rate"],
-        **config.get("optimizer", {}),
-    )
-    pi_optimizer = torch.optim.Adam(
-        agent.model["pi"].parameters(),
+    optimizer = torch.optim.Adam(
+        agent.model.parameters(),
         lr=config["algo"]["learning_rate"],
         **config.get("optimizer", {}),
     )
 
     if config["algo"]["learning_rate_type"] == "linear":
-        lr_schedulers = [
-            torch.optim.lr_scheduler.LinearLR(
-                pi_optimizer,
-                start_factor=1.0,
-                end_factor=0.0,
-                # TODO: adjust total iters for delayed learning start
-                total_iters=max(1, int(config["runner"]["n_steps"] // batch_spec.size)),
-            ),
-            torch.optim.lr_scheduler.LinearLR(
-                q_optimizer,
-                start_factor=1.0,
-                end_factor=0.0,
-                total_iters=max(1, int(config["runner"]["n_steps"] // batch_spec.size)),
-            ),
-        ]
+        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=1.0,
+            end_factor=0.0,
+            total_iters=max(1, int(config["runner"]["n_steps"] // batch_spec.size)),
+        )
     else:
-        lr_schedulers = None
+        lr_scheduler = None
 
     # create algorithm
-    algorithm = SAC(
-        batch_spec=batch_spec,
+    algorithm = PPO(
         agent=agent,
-        replay_buffer=replay_buffer,
-        q_optimizer=q_optimizer,
-        pi_optimizer=pi_optimizer,
-        learning_rate_schedulers=lr_schedulers,
+        dataloader=dataloader,
+        optimizer=optimizer,
+        learning_rate_scheduler=lr_scheduler,
         **config["algo"],
     )
 

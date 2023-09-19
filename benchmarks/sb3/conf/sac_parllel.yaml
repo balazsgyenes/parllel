@@ -1,8 +1,8 @@
 framework: parllel
 parallel: False  # for fast environments, no speedup with parallel processes
+device: null
 batch_T: 8  # corresponds to "raw" train_freq in SB3
 batch_B: 8
-device: null
 pi_model:
   hidden_sizes: [400, 300]  # from rl-baselines3-zoo
   hidden_nonlinearity: ReLU  # from Haarnoja et al.

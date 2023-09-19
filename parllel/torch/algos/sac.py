@@ -6,6 +6,7 @@ from typing import Sequence
 import torch
 from torch import Tensor
 from torch.nn.utils.clip_grad import clip_grad_norm_
+from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 
 import parllel.logger as logger
@@ -25,8 +26,8 @@ class SAC(Algorithm):
         batch_spec: BatchSpec,
         agent: SacAgent,
         replay_buffer: ReplayBuffer[ArrayDict[Tensor]],
-        q_optimizer: torch.optim.Optimizer,
-        pi_optimizer: torch.optim.Optimizer,
+        q_optimizer: Optimizer,
+        pi_optimizer: Optimizer,
         discount: float,
         learning_starts: int,
         replay_ratio: int,  # data_consumption / data_generation
