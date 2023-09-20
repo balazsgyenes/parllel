@@ -1,0 +1,10 @@
+defaults:
+  - ppo_parllel
+  - logdirs
+  - _self_
+
+hydra:
+  job:
+    name: hopper-ppo
+
+env_name: Hopper-v4

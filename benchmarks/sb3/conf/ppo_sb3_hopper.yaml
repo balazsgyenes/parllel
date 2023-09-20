@@ -1,15 +1,13 @@
 defaults:
-  - sac_sb3
+  - ppo_sb3
   - logdirs
   - _self_
 
 hydra:
   job:
-    name: hopper-sac
+    name: hopper-ppo
 
 # hyperparameters for Hopper are here:
-# https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/sac.yml#L100C20-L100C20
+# https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/ppo.yml#L182
 env_name: Hopper-v4
 log_interval_episodes: 100  # each episode is up to 1000 steps
-algo:
-  learning_rate: lin_7.3e-4

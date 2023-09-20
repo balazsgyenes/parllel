@@ -1,0 +1,10 @@
+defaults:
+  - ppo_parllel
+  - logdirs
+  - _self_
+
+hydra:
+  job:
+    name: walker2d-ppo
+
+env_name: Walker2d-v4
