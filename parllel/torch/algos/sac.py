@@ -189,6 +189,14 @@ class SAC(Algorithm):
                 self.agent.model["q2"].parameters(),
                 self.clip_grad_norm,
             )
+            encoder_grad_norm = clip_grad_norm_(
+                self.agent.model["encoder"].parameters(), self.clip_grad_norm
+            )
+            tokenizer_grad_norm = clip_grad_norm_(
+                self.agent.model["tokenizer"].parameters(), self.clip_grad_norm
+            )
+            self.algo_log_info["encoder_grad_norm"].append(encoder_grad_norm.item())
+            self.algo_log_info["tokenizer_grad_norm"].append(tokenizer_grad_norm.item())
             self.algo_log_info["q1_grad_norm"].append(q1_grad_norm.item())
             self.algo_log_info["q2_grad_norm"].append(q2_grad_norm.item())
 
