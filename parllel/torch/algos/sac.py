@@ -5,6 +5,7 @@ from typing import Sequence
 
 import numpy as np
 import torch
+from gymnasium import spaces
 from torch import Tensor
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from torch.optim.lr_scheduler import LRScheduler
@@ -35,6 +36,7 @@ class SAC(Algorithm):
         target_update_interval: int,  # 1000 for hard update, 1 for soft.
         ent_coeff: float,
         ent_coeff_lr: float | None = None,
+        action_space: spaces.Box | None = None,
         clip_grad_norm: float | None = None,
         learning_rate_schedulers: Sequence[LRScheduler] | None = None,
         **kwargs,  # ignore additional arguments
@@ -65,22 +67,22 @@ class SAC(Algorithm):
         self.update_counter = 0
         self.algo_log_info = defaultdict(list)
 
-        self.ent_coeff_optimizer = None
-
         if ent_coeff_lr is not None:
+            assert action_space is not None
             init_value = ent_coeff
-            self.target_entropy = float(
-                -np.prod(self.agent.model["pi"].action_space.shape).astype(np.float32)  # type: ignore #TODO: model needs to save action_space?
+            self.target_entropy = -np.prod(action_space.shape).item()  # type: ignore
+            self._log_ent_coeff = (
+                torch.log(torch.tensor(init_value))
+                .to(device=agent.device)
+                .requires_grad_(True)
             )
-            self._log_ent_coeff = torch.log(
-                torch.ones(1, device=agent.device) * init_value
-            ).requires_grad_(True)
             self.ent_coeff_optimizer = torch.optim.Adam(
                 [self._log_ent_coeff], lr=ent_coeff_lr
             )
         else:
             self._ent_coeff = torch.tensor([ent_coeff]).to(agent.device)
             self._log_ent_coeff = torch.log(self._ent_coeff).to(agent.device)
+            self.ent_coeff_optimizer = None
 
     def optimize_agent(
         self,
@@ -147,12 +149,12 @@ class SAC(Algorithm):
         if self.ent_coeff_optimizer is not None:
             entropy_coeff = torch.exp(self._log_ent_coeff.detach())
             ent_coeff_loss = -(
-                self._log_ent_coeff * (log_prob + self.target_entropy).detach()
-            ).mean()
+                self._log_ent_coeff * (log_prob.detach().mean() + self.target_entropy)
+            )
             self.ent_coeff_optimizer.zero_grad()
             ent_coeff_loss.backward()
             self.ent_coeff_optimizer.step()
-            self.algo_log_info["ent_ceff_loss"].append(ent_coeff_loss.item())
+            self.algo_log_info["ent_coeff_loss"].append(ent_coeff_loss.item())
         else:
             entropy_coeff = self._ent_coeff
 
@@ -161,6 +163,8 @@ class SAC(Algorithm):
         # where a' ~ pi(.|s')
         with torch.no_grad():
             next_observation = self.agent.target_encode(samples["next_observation"])
+            # TODO: the learning policy receives an observation encoded by the target encoder,
+            # which is probably not optimal
             next_action, next_log_prob = self.agent.pi(next_observation)
             target_q1, target_q2 = self.agent.target_q(next_observation, next_action)
         min_target_q = torch.min(target_q1, target_q2)
@@ -181,24 +185,12 @@ class SAC(Algorithm):
         q_loss.backward()
 
         if self.clip_grad_norm is not None:
-            q1_grad_norm = clip_grad_norm_(
-                self.agent.model["q1"].parameters(),
-                self.clip_grad_norm,
-            )
-            q2_grad_norm = clip_grad_norm_(
-                self.agent.model["q2"].parameters(),
-                self.clip_grad_norm,
-            )
-            encoder_grad_norm = clip_grad_norm_(
-                self.agent.model["encoder"].parameters(), self.clip_grad_norm
-            )
-            tokenizer_grad_norm = clip_grad_norm_(
-                self.agent.model["tokenizer"].parameters(), self.clip_grad_norm
-            )
-            self.algo_log_info["encoder_grad_norm"].append(encoder_grad_norm.item())
-            self.algo_log_info["tokenizer_grad_norm"].append(tokenizer_grad_norm.item())
-            self.algo_log_info["q1_grad_norm"].append(q1_grad_norm.item())
-            self.algo_log_info["q2_grad_norm"].append(q2_grad_norm.item())
+            # clip all gradients except for pi, which is not updated yet
+            for name, model in self.agent.model.items():
+                if name == "pi":
+                    continue
+                grad_norm = clip_grad_norm_(model.parameters(), self.clip_grad_norm)
+                self.algo_log_info[f"{name}_grad_norm"].append(grad_norm.item())
 
         self.q_optimizer.step()
         self.algo_log_info["critic_loss"].append(q_loss.item())
@@ -217,7 +209,6 @@ class SAC(Algorithm):
         min_q = torch.min(q1, q2)
         pi_losses = entropy_coeff * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
-
         self.algo_log_info["actor_loss"].append(pi_loss.item())
 
         # update Pi model parameters according to pi loss
@@ -230,8 +221,6 @@ class SAC(Algorithm):
                 self.clip_grad_norm,
             )
             self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
-
-        self.algo_log_info["actor_loss"].append(pi_loss.item())
 
         self.pi_optimizer.step()
 
