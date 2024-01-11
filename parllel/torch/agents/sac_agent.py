@@ -43,6 +43,10 @@ class SacAgent(TorchAgent):
         model["target_q2"] = copy.deepcopy(model["q2"])
         model["target_q2"].requires_grad_(False)
 
+        if "encoder" in model:
+            model["target_encoder"] = copy.deepcopy(model["encoder"])
+            model["target_encoder"].requires_grad_(False)
+
         super().__init__(model, distribution, device)
 
         self.learning_starts = learning_starts
@@ -53,6 +57,11 @@ class SacAgent(TorchAgent):
     def encode(self, observation: ArrayTree[Tensor]) -> ArrayTree[Tensor]:
         if "encoder" in self.model:
             observation = self.model["encoder"](observation)
+        return observation
+
+    def target_encode(self, observation: ArrayTree[Tensor]) -> ArrayTree[Tensor]:
+        if "target_encoder" in self.model:
+            observation = self.model["target_encoder"](observation)
         return observation
 
     @torch.no_grad()
@@ -111,6 +120,10 @@ class SacAgent(TorchAgent):
     def update_target(self, tau: float | int = 1) -> None:
         update_state_dict(self.model["target_q1"], self.model["q1"].state_dict(), tau)
         update_state_dict(self.model["target_q2"], self.model["q2"].state_dict(), tau)
+        if "target_encoder" in self.model:
+            update_state_dict(
+                self.model["target_encoder"], self.model["encoder"].state_dict(), tau
+            )
 
     def train_mode(self, elapsed_steps: int) -> None:
         super().train_mode(elapsed_steps)
