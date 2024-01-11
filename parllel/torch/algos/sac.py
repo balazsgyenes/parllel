@@ -79,6 +79,9 @@ class SAC(Algorithm):
             self.ent_coeff_optimizer = torch.optim.Adam(
                 [self._log_ent_coeff], lr=ent_coeff_lr
             )
+            logger.info(
+                f"Using learnable entropy coefficient with target entropy of {self.target_entropy}"
+            )
         else:
             self._ent_coeff = torch.tensor([ent_coeff]).to(agent.device)
             self._log_ent_coeff = torch.log(self._ent_coeff).to(agent.device)

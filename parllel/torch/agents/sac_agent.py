@@ -120,6 +120,10 @@ class SacAgent(TorchAgent):
     def update_target(self, tau: float | int = 1) -> None:
         update_state_dict(self.model["target_q1"], self.model["q1"].state_dict(), tau)
         update_state_dict(self.model["target_q2"], self.model["q2"].state_dict(), tau)
+        if "target_encoder" in self.model:
+            update_state_dict(
+                self.model["target_encoder"], self.model["encoder"].state_dict(), tau
+            )
 
     def train_mode(self, elapsed_steps: int) -> None:
         super().train_mode(elapsed_steps)

@@ -153,6 +153,7 @@ def build(config: DictConfig) -> Iterator[RLRunner]:
         replay_buffer=replay_buffer,
         q_optimizer=q_optimizer,
         pi_optimizer=pi_optimizer,
+        action_space=action_space,
         **config["algo"],
     )
 
