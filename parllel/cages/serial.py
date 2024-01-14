@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from parllel import Array, ArrayTree
 
@@ -26,15 +26,17 @@ class SerialCage(Cage):
     def __init__(
         self,
         EnvClass: Callable,
-        env_kwargs: dict[str, Any],
-        TrajInfoClass: Callable,
+        env_kwargs: Mapping[str, Any] | None = None,
+        TrajInfoClass: Callable | None = None,
         reset_automatically: bool = True,
+        seed: int | None = None,
     ) -> None:
         super().__init__(
             EnvClass=EnvClass,
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
             reset_automatically=reset_automatically,
+            seed=seed,
         )
         # create env immediately in the local process
         self._create_env()

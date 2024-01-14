@@ -5,7 +5,6 @@ from typing import Any, Callable, Mapping
 
 import gymnasium as gym
 import numpy as np
-
 from parllel import Array, ArrayLike, ArrayOrMapping, ArrayTree, dict_map
 
 from .collections import EnvInfoType, EnvRandomStepType, EnvSpaces, EnvStepType, ObsType
@@ -28,14 +27,16 @@ class Cage(ABC):
     def __init__(
         self,
         EnvClass: Callable,
-        env_kwargs: Mapping[str, Any],
-        TrajInfoClass: Callable,
+        env_kwargs: Mapping[str, Any] | None = None,
+        TrajInfoClass: Callable | None = None,
         reset_automatically: bool = True,
+        seed: int | None = None,
     ) -> None:
         self.EnvClass = EnvClass
-        self.env_kwargs = env_kwargs
-        self.TrajInfoClass = TrajInfoClass
+        self.env_kwargs = env_kwargs or {}
+        self.TrajInfoClass = TrajInfoClass or TrajInfo
         self.reset_automatically = reset_automatically
+        self.seed = seed
 
         self._needs_reset: bool = False
         self._render: bool = False
@@ -45,7 +46,7 @@ class Cage(ABC):
         self._traj_info: TrajInfo = self.TrajInfoClass()
 
         self._env: gym.Env = self.EnvClass(**self.env_kwargs)
-        self._env.reset()
+        self._env.reset(seed=self.seed)
 
         # save obs and action spaces for easy access
         self._spaces = EnvSpaces(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import multiprocessing as mp
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from parllel import Array, ArrayTree
 
@@ -58,9 +58,10 @@ class ProcessCage(Cage, mp.Process):
     def __init__(
         self,
         EnvClass: Callable,
-        env_kwargs: dict[str, Any],
-        TrajInfoClass: Callable,
+        env_kwargs: Mapping[str, Any] | None = None,
+        TrajInfoClass: Callable | None = None,
         reset_automatically: bool = False,
+        seed: int | None = None,
     ) -> None:
         mp.Process.__init__(self)
 
@@ -69,6 +70,7 @@ class ProcessCage(Cage, mp.Process):
             env_kwargs=env_kwargs,
             TrajInfoClass=TrajInfoClass,
             reset_automatically=reset_automatically,
+            seed=seed,
         )
 
         # pipe is used for communication between main and child processes
