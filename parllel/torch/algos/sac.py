@@ -4,19 +4,18 @@ from collections import defaultdict
 from typing import Sequence
 
 import numpy as np
+import parllel.logger as logger
 import torch
 from gymnasium import spaces
-from torch import Tensor
-from torch.nn.utils.clip_grad import clip_grad_norm_
-from torch.optim.lr_scheduler import LRScheduler
-
-import parllel.logger as logger
 from parllel import Array, ArrayDict
 from parllel.algorithm import Algorithm
 from parllel.replays.replay import ReplayBuffer
 from parllel.torch.agents.sac_agent import SacAgent
 from parllel.torch.utils import valid_mean
 from parllel.types.batch_spec import BatchSpec
+from torch import Tensor
+from torch.nn.utils.clip_grad import clip_grad_norm_
+from torch.optim.lr_scheduler import LRScheduler
 
 
 class SAC(Algorithm):
@@ -177,11 +176,6 @@ class SAC(Algorithm):
         )
         q1, q2 = self.agent.q(observation, samples["action"])
         q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
-        self.algo_log_info["critic_loss"].append(q_loss.item())
-        self.algo_log_info["mean_ent_bonus"].append(entropy_bonus.mean().item())
-        self.algo_log_info["ent_coeff"].append(entropy_coeff.item())
-        self.algo_log_info["max_reward"].append(samples["reward"].max().item())
-        self.algo_log_info["min_reward"].append(samples["reward"].min().item())
 
         # update Q model parameters according to Q loss
         self.q_optimizer.zero_grad()
@@ -189,11 +183,21 @@ class SAC(Algorithm):
 
         if self.clip_grad_norm is not None:
             # clip all gradients except for pi, which is not updated yet
-            for name, model in self.agent.model.items():
-                if name == "pi":
-                    continue
-                grad_norm = clip_grad_norm_(model.parameters(), self.clip_grad_norm)
-                self.algo_log_info[f"{name}_grad_norm"].append(grad_norm.item())
+            for key in ("q1", "q2"):
+                q_grad_norm = clip_grad_norm_(
+                    self.agent.model["q1"].parameters(),
+                    self.clip_grad_norm,
+                )
+                self.algo_log_info[f"{key}_grad_norm"].append(q_grad_norm.item())
+
+            if "encoder" in self.agent.model:
+                encoder_grad_norm = clip_grad_norm_(
+                    self.agent.model["encoder"].parameters(),
+                    self.clip_grad_norm,
+                )
+                self.algo_log_info[f"encoder_grad_norm"].append(
+                    encoder_grad_norm.item()
+                )
 
         self.q_optimizer.step()
         self.algo_log_info["critic_loss"].append(q_loss.item())
@@ -201,6 +205,8 @@ class SAC(Algorithm):
         self.algo_log_info["mean_ent_bonus"].append(entropy_bonus.mean().item())
         self.algo_log_info["max_target_q"].append(min_target_q.max().item())
         self.algo_log_info["min_target_q"].append(min_target_q.min().item())
+        self.algo_log_info["max_reward"].append(samples["reward"].max().item())
+        self.algo_log_info["min_reward"].append(samples["reward"].min().item())
 
         # freeze Q models while optimizing policy model
         self.agent.freeze_q_models(True)
@@ -212,7 +218,6 @@ class SAC(Algorithm):
         min_q = torch.min(q1, q2)
         pi_losses = entropy_coeff * log_prob - min_q
         pi_loss = valid_mean(pi_losses)
-        self.algo_log_info["actor_loss"].append(pi_loss.item())
 
         # update Pi model parameters according to pi loss
         self.pi_optimizer.zero_grad()
@@ -226,6 +231,7 @@ class SAC(Algorithm):
             self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
 
         self.pi_optimizer.step()
+        self.algo_log_info["actor_loss"].append(pi_loss.item())
 
         # unfreeze Q models for next training iteration
         self.agent.freeze_q_models(False)
