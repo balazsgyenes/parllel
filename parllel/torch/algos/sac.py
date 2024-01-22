@@ -202,6 +202,7 @@ class SAC(Algorithm):
         self.q_optimizer.step()
         self.algo_log_info["critic_loss"].append(q_loss.item())
         self.algo_log_info["ent_coeff"].append(entropy_coeff.item())
+        self.algo_log_info["mean_entropy"].append(-next_log_prob.mean().item())
         self.algo_log_info["mean_ent_bonus"].append(entropy_bonus.mean().item())
         self.algo_log_info["max_target_q"].append(min_target_q.max().item())
         self.algo_log_info["min_target_q"].append(min_target_q.min().item())
