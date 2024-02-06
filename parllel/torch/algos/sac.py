@@ -53,14 +53,19 @@ class SAC(Algorithm):
         self.clip_grad_norm = clip_grad_norm
         self.lr_schedulers = learning_rate_schedulers
 
+        logger.debug(
+            f"{type(self).__name__}: Ignoring remaining kwargs: "
+            f"{','.join([f'{key}={value}' for key, value in kwargs.items()])}"
+        )
+
         replay_batch_size = self.replay_buffer.replay_batch_size
         self.updates_per_optimize = int(
             max(1, self.replay_ratio * batch_spec.size / replay_batch_size)
         )
         logger.info(
-            f"{type(self).__name__}: From sampler batch size {batch_spec.size}, "
+            f"{type(self).__name__}: Given sampler batch size {batch_spec.size}, "
             f"training batch size {replay_batch_size}, and replay ratio "
-            f"{self.replay_ratio}, computed {self.updates_per_optimize} "
+            f"{self.replay_ratio}, there will be {self.updates_per_optimize} "
             f"updates per iteration."
         )
         self.update_counter = 0
@@ -79,7 +84,7 @@ class SAC(Algorithm):
                 [self._log_ent_coeff], lr=ent_coeff_lr
             )
             logger.info(
-                f"Using learnable entropy coefficient with target entropy of {self.target_entropy}"
+                f"{type(self).__name__}: Using learnable entropy coefficient with target entropy of {self.target_entropy}"
             )
         else:
             self._ent_coeff = torch.tensor([ent_coeff]).to(agent.device)
@@ -183,21 +188,12 @@ class SAC(Algorithm):
 
         if self.clip_grad_norm is not None:
             # clip all gradients except for pi, which is not updated yet
-            for key in ("q1", "q2"):
-                q_grad_norm = clip_grad_norm_(
-                    self.agent.model["q1"].parameters(),
-                    self.clip_grad_norm,
-                )
-                self.algo_log_info[f"{key}_grad_norm"].append(q_grad_norm.item())
-
-            if "encoder" in self.agent.model:
-                encoder_grad_norm = clip_grad_norm_(
-                    self.agent.model["encoder"].parameters(),
-                    self.clip_grad_norm,
-                )
-                self.algo_log_info[f"encoder_grad_norm"].append(
-                    encoder_grad_norm.item()
-                )
+            for key, model in self.agent.model.items():
+                if "target" not in key and key != "pi":
+                    q_grad_norm = clip_grad_norm_(
+                        model.parameters(), self.clip_grad_norm
+                    )
+                    self.algo_log_info[f"{key}_grad_norm"].append(q_grad_norm.item())
 
         self.q_optimizer.step()
         self.algo_log_info["critic_loss"].append(q_loss.item())
