@@ -40,7 +40,10 @@ class Message:
     data: Any = None
 
 
-class ProcessCage(Cage, mp.Process):
+ctx = mp.get_context("spawn")
+
+
+class ProcessCage(Cage, ctx.Process):
     """Environment is created and stepped within a subprocess. Commands are
     sent across Pipes, but data is read from and written directly to the batch
     buffer.
@@ -63,7 +66,7 @@ class ProcessCage(Cage, mp.Process):
         reset_automatically: bool = False,
         seed: int | None = None,
     ) -> None:
-        mp.Process.__init__(self)
+        ctx.Process.__init__(self)
 
         super().__init__(
             EnvClass=EnvClass,
@@ -74,7 +77,7 @@ class ProcessCage(Cage, mp.Process):
         )
 
         # pipe is used for communication between main and child processes
-        self._parent_pipe, self._child_pipe = mp.Pipe()
+        self._parent_pipe, self._child_pipe = ctx.Pipe()
 
         # start executing `run` method, which also creates the environment
         self.start()
@@ -180,7 +183,7 @@ class ProcessCage(Cage, mp.Process):
         assert not self.waiting
         self._parent_pipe.send(Message(Command.close))
         self.join()  # wait for close command to finish
-        mp.Process.close(self)
+        ctx.Process.close(self)
 
     def run(self) -> None:
         """This method runs in a child process. It receives messages through
