@@ -96,12 +96,6 @@ class SAC(Algorithm):
         elapsed_steps: int,
         samples: ArrayDict[Array],
     ) -> dict[str, int | list[float]]:
-        """
-        Extracts the needed fields from input samples and stores them in the
-        replay buffer.  Then samples from the replay buffer to train the agent
-        by gradient updates (with the number of updates determined by replay
-        ratio, sampler batch size, and training batch size).
-        """
         self.replay_buffer.next_iteration()
 
         if elapsed_steps < self.learning_starts:
@@ -137,50 +131,8 @@ class SAC(Algorithm):
         return self.algo_log_info
 
     def train_once(self, samples: ArrayDict[Tensor]) -> None:
-        """
-        Computes losses for twin Q-values against the min of twin target Q-values
-        and an entropy term.  Computes reparameterized policy loss, and loss for
-        tuning entropy weighting, alpha.
 
-        Input samples have leading batch dimension [B,..] (but not time).
-        """
-        # encode once, allowing the agent to reuse its encodings for q and
-        # pi predictions.
-        # we then later detach the encoding from its computational graph
-        # during q prediction, since we only want to optimize the encoder
-        # using the gradients from the policy network.
-        observation = self.agent.encode(samples["observation"])
-
-        new_action, log_prob = self.agent.pi(observation.detach())
-
-        if self.ent_coeff_optimizer is not None:
-            entropy_coeff = torch.exp(self._log_ent_coeff.detach())
-            ent_coeff_loss = -(
-                self._log_ent_coeff * (log_prob.detach().mean() + self.target_entropy)
-            )
-            self.ent_coeff_optimizer.zero_grad()
-            ent_coeff_loss.backward()
-            self.ent_coeff_optimizer.step()
-            self.algo_log_info["ent_coeff_loss"].append(ent_coeff_loss.item())
-        else:
-            entropy_coeff = self._ent_coeff
-
-        # compute target Q according to formula
-        # r + gamma * (1 - d) * (min Q_targ(s', a') - alpha * log pi(s', a'))
-        # where a' ~ pi(.|s')
-        with torch.no_grad():
-            next_observation = self.agent.target_encode(samples["next_observation"])
-            # TODO: the learning policy receives an observation encoded by the target encoder,
-            # which is probably not optimal
-            next_action, next_log_prob = self.agent.pi(next_observation)
-            target_q1, target_q2 = self.agent.target_q(next_observation, next_action)
-        min_target_q = torch.min(target_q1, target_q2)
-        entropy_bonus = -entropy_coeff * next_log_prob
-        y = samples["reward"] + self.discount * ~samples["terminated"] * (
-            min_target_q + entropy_bonus
-        )
-        q1, q2 = self.agent.q(observation, samples["action"])
-        q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
+        q_loss = self.critic_loss(samples)
 
         # update Q model parameters according to Q loss
         self.q_optimizer.zero_grad()
@@ -196,25 +148,14 @@ class SAC(Algorithm):
                     self.algo_log_info[f"{key}_grad_norm"].append(q_grad_norm.item())
 
         self.q_optimizer.step()
-        self.algo_log_info["critic_loss"].append(q_loss.item())
-        self.algo_log_info["ent_coeff"].append(entropy_coeff.item())
-        self.algo_log_info["mean_entropy"].append(-next_log_prob.mean().item())
-        self.algo_log_info["mean_ent_bonus"].append(entropy_bonus.mean().item())
-        self.algo_log_info["max_target_q"].append(min_target_q.max().item())
-        self.algo_log_info["min_target_q"].append(min_target_q.min().item())
-        self.algo_log_info["max_reward"].append(samples["reward"].max().item())
-        self.algo_log_info["min_reward"].append(samples["reward"].min().item())
 
         # freeze Q models while optimizing policy model
         self.agent.freeze_q_models(True)
 
-        # train policy model by maximizing the predicted Q value
-        # maximize (min Q(s, a) - alpha * log pi(a, s))
-        # where a ~ pi(.|s)
-        q1, q2 = self.agent.q(observation.detach(), new_action)
-        min_q = torch.min(q1, q2)
-        pi_losses = entropy_coeff * log_prob - min_q
-        pi_loss = valid_mean(pi_losses)
+        pi_loss, ent_coeff_loss = self.actor_loss(samples)
+
+        # unfreeze Q models for next training iteration
+        self.agent.freeze_q_models(False)
 
         # update Pi model parameters according to pi loss
         self.pi_optimizer.zero_grad()
@@ -228,10 +169,97 @@ class SAC(Algorithm):
             self.algo_log_info["pi_grad_norm"].append(pi_grad_norm.item())
 
         self.pi_optimizer.step()
+
+        if self.ent_coeff_optimizer is not None:
+            assert ent_coeff_loss is not None
+            self.ent_coeff_optimizer.zero_grad()
+            ent_coeff_loss.backward()
+            self.ent_coeff_optimizer.step()
+
+    def critic_loss(self, samples: ArrayDict[Tensor]) -> Tensor:
+        """
+        Computes losses for twin Q-values against the min of twin target Q-values
+        and an entropy term.  Computes reparameterized policy loss, and loss for
+        tuning entropy weighting, alpha. If an encoder is present, it is trained
+        only on the critic loss.
+
+        Input samples have leading batch dimension [B,..] (but not time).
+        """
+        entropy_coeff = (
+            torch.exp(self._log_ent_coeff.detach())
+            if self.ent_coeff_optimizer is not None
+            else self._ent_coeff
+        )
+
+        # compute target Q according to formula
+        # r + gamma * (1 - d) * (min Q_targ(s', a') - alpha * log pi(s', a'))
+        # where a' ~ pi(.|s')
+        with torch.no_grad():
+            # encode for learning policy network with learning encoder
+            next_observation = self.agent.encode(samples["next_observation"])
+            next_action, next_log_prob = self.agent.pi(next_observation)
+
+            # encode for target_q network with target encoder
+            next_observation = self.agent.target_encode(samples["next_observation"])
+            target_q1, target_q2 = self.agent.target_q(next_observation, next_action)
+
+            min_target_q = torch.min(target_q1, target_q2)
+            entropy_bonus = -entropy_coeff * next_log_prob
+            y = samples["reward"] + self.discount * ~samples["terminated"] * (
+                min_target_q + entropy_bonus
+            )
+
+        # encode once and add it back to the samples, allowing the actor loss
+        # to reuse the value
+        observation = self.agent.encode(samples["observation"])
+        samples["encoding"] = observation
+
+        q1, q2 = self.agent.q(observation, samples["action"])
+        q_loss = 0.5 * valid_mean((y - q1) ** 2 + (y - q2) ** 2)
+
+        self.algo_log_info["critic_loss"].append(q_loss.item())
+        self.algo_log_info["mean_entropy"].append(-next_log_prob.mean().item())
+        self.algo_log_info["mean_ent_bonus"].append(entropy_bonus.mean().item())
+        self.algo_log_info["max_target_q"].append(min_target_q.max().item())
+        self.algo_log_info["min_target_q"].append(min_target_q.min().item())
+        self.algo_log_info["max_reward"].append(samples["reward"].max().item())
+        self.algo_log_info["min_reward"].append(samples["reward"].min().item())
+
+        return q_loss
+
+    def actor_loss(self, samples: ArrayDict[Tensor]) -> tuple[Tensor, Tensor | None]:
+        """Compute reparametrized policy loss by maximizing the predicted Q value.
+        maximize (min Q(s, a) - alpha * log pi(a, s))
+        where a ~ pi(.|s)
+        """
+        entropy_coeff = (
+            torch.exp(self._log_ent_coeff.detach())
+            if self.ent_coeff_optimizer is not None
+            else self._ent_coeff
+        )
+
+        # detach the encoded observation from the encoder gradients
+        # the encoder was already updated using the critic loss
+        observation = samples["encoding"].detach()
+
+        new_action, log_prob = self.agent.pi(observation)
+        q1, q2 = self.agent.q(observation.detach(), new_action)
+        min_q = torch.min(q1, q2)
+        pi_losses = entropy_coeff * log_prob - min_q
+        pi_loss = valid_mean(pi_losses)
+
         self.algo_log_info["actor_loss"].append(pi_loss.item())
 
-        # unfreeze Q models for next training iteration
-        self.agent.freeze_q_models(False)
+        if self.ent_coeff_optimizer is not None:
+            self.algo_log_info["ent_coeff"].append(entropy_coeff.item())
+            ent_coeff_loss = -(
+                self._log_ent_coeff * (log_prob.detach().mean() + self.target_entropy)
+            )
+            self.algo_log_info["ent_coeff_loss"].append(ent_coeff_loss.item())
+        else:
+            ent_coeff_loss = None
+
+        return pi_loss, ent_coeff_loss
 
 
 def build_replay_buffer_tree(sample_buffer: ArrayDict[Array]) -> ArrayDict[Array]:
