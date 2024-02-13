@@ -63,9 +63,8 @@ class RLRunner(Runner):
         progress_bar = tqdm(total=self.n_steps, unit="steps")
         batch_size = self.batch_spec.size
 
+        elapsed_steps = 0
         for itr in range(self.n_iterations):
-            elapsed_steps = itr * batch_size
-
             if self.eval_sampler is not None and itr % self.eval_interval_iters == 0:
                 self.evaluate_agent(elapsed_steps)
 
@@ -90,6 +89,7 @@ class RLRunner(Runner):
             )
 
             logger.debug(f"{type(self).__name__}: Optimizing agent...")
+            elapsed_steps = (itr + 1) * batch_size
             for callback in self.callbacks:
                 callback.pre_optimization(elapsed_steps)
             algo_info = self.algorithm.optimize_agent(
@@ -104,7 +104,6 @@ class RLRunner(Runner):
             progress_bar.update(batch_size)
 
         # log final progress
-        elapsed_steps = self.n_iterations * batch_size
         if self.eval_sampler is not None:
             self.evaluate_agent(elapsed_steps)
         self.log_progress(self.n_iterations * batch_size, self.n_iterations)
